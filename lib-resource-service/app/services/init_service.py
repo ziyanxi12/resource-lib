@@ -31,15 +31,14 @@ from app.services.resource_service import upsert_resource, create_resource
 # ──────────────────────────────────────────────────────────────────
 
 def import_components(db: Session) -> dict:
-    base = os.path.join(settings.FILE_ROOT_DIR, "component")
-    if not os.path.isdir(base):
-        return {"added": 0, "updated": 0, "error": f"目录不存在：{base}"}
+    from app.services.component_service import get_component_map
+    component_map = get_component_map()
+    if not component_map:
+        return {"added": 0, "updated": 0, "error": "component_map.json 为空或不存在"}
 
     added = updated = 0
-    for entry in sorted(os.scandir(base), key=lambda e: e.name):
-        if not entry.is_dir():
-            continue
-        index_path = os.path.join(entry.path, "component_index.json")
+    for entry in component_map:
+        index_path = os.path.join(settings.FILE_ROOT_DIR, entry.get("indexPath", ""))
         if not os.path.exists(index_path):
             continue
 
@@ -49,20 +48,30 @@ def import_components(db: Session) -> dict:
         components = data if isinstance(data, list) else data.get("componentSets", [])
 
         for comp in components:
-            hex_file  = comp.get("hexFile")
-            file_name = os.path.basename(hex_file) if hex_file else None
-            row = {
-                "resource_type": int(ResourceType.component_set),
-                "name":          comp.get("name", "未命名组件集"),
-                "file_name":     file_name,
-                "file_path":     hex_file,
-                "raw_data":      json.dumps(comp, ensure_ascii=False),
-            }
-            _, is_new = upsert_resource(db, row)
-            if is_new:
-                added += 1
-            else:
-                updated += 1
+            hex_file    = comp.get("hexFile")
+            file_name   = os.path.basename(hex_file) if hex_file else None
+            parent_name = comp.get("name", "未命名组件集")
+
+            for variant in comp.get("variants", []):
+                row = {
+                    "resource_type": int(ResourceType.component_set),
+                    "name":          f"{parent_name} / {variant.get('name', '')}",
+                    "file_name":     file_name,
+                    "file_path":     hex_file,
+                    "mime_type":     "text/plain",
+                    "raw_data":      json.dumps({
+                        "variantKey":     variant.get("variantKey"),
+                        "parentKey":      variant.get("parentKey"),
+                        "parentName":     parent_name,
+                        "guid":           variant.get("guid"),
+                        "componentProps": variant.get("componentProps", []),
+                    }, ensure_ascii=False),
+                }
+                _, is_new = upsert_resource(db, row)
+                if is_new:
+                    added += 1
+                else:
+                    updated += 1
 
     return {"added": added, "updated": updated}
 

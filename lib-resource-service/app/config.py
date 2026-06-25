@@ -31,7 +31,7 @@ class Settings:
 
     # ── 组件库映射表 ──────────────────────────────────────────
     # JSON 文件，格式：[{ "fileKey": "xxx", "name": "组件库名称" }]
-    COMPONENT_MAP_FILE: str = os.getenv("COMPONENT_MAP_FILE", "./component_map.json")
+    COMPONENT_MAP_FILE: str = os.getenv("COMPONENT_MAP_FILE", "./storage/component/component_map.json")
 
 
     # ── Mock 开关 ─────────────────────────────────────────────

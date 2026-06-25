@@ -72,8 +72,8 @@ DB_PASSWORD=你的密码
 # 文件存储根目录（component/icon/template/image 子目录均在此下）
 FILE_ROOT_DIR=./storage
 
-# 组件库映射表
-COMPONENT_MAP_FILE=./component_map.json
+# 组件库映射表（位于 storage/component/ 下）
+COMPONENT_MAP_FILE=./storage/component/component_map.json
 
 # Mock 模式：true = 不调用真实外部 API（本地开发用）
 USE_MOCK=true

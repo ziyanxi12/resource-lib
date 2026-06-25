@@ -35,6 +35,22 @@ def get_component_map() -> List[dict]:
         return json.load(f)
 
 
+def _update_component_map(file_key: str, index_path: str) -> None:
+    """同步完成后更新 component_map.json 中对应条目的 indexPath 和 updatedAt。"""
+    from datetime import datetime, timezone
+    map_path = settings.COMPONENT_MAP_FILE
+    items    = get_component_map()
+
+    for item in items:
+        if item["fileKey"] == file_key:
+            item["indexPath"] = index_path
+            item["updatedAt"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            break
+
+    with open(map_path, "w", encoding="utf-8") as f:
+        json.dump(items, f, ensure_ascii=False, indent=2)
+
+
 async def sync_component(db: Session, file_key: str) -> dict:
     # 步骤 1：获取版本
     version_resp = await external.get_component_version(file_key)
@@ -54,6 +70,9 @@ async def sync_component(db: Session, file_key: str) -> dict:
     index_path = os.path.join(pix_dir, "component_index.json")
     if not os.path.exists(index_path):
         _write_mock_index(index_path, file_key)
+
+    # 拆解完成后更新 component_map.json 中的 indexPath
+    _update_component_map(file_key, f"component/{file_key}/component_index.json")
 
     # 步骤 4：解析并写入数据库
     components = _parse_index(index_path)
@@ -78,20 +97,30 @@ def _parse_index(index_path: str) -> List[dict]:
 def _write_to_db(db: Session, components: List[dict]) -> dict:
     added, updated = 0, 0
     for comp in components:
-        hex_file  = comp.get("hexFile")
-        file_name = os.path.basename(hex_file) if hex_file else None
-        data = {
-            "resource_type": int(ResourceType.component_set),
-            "name":          comp.get("name", "未命名组件集"),
-            "file_name":     file_name,
-            "file_path":     hex_file,
-            "raw_data":      json.dumps(comp, ensure_ascii=False),
-        }
-        _, is_new = upsert_resource(db, data)
-        if is_new:
-            added += 1
-        else:
-            updated += 1
+        hex_file    = comp.get("hexFile")
+        file_name   = os.path.basename(hex_file) if hex_file else None
+        parent_name = comp.get("name", "未命名组件集")
+
+        for variant in comp.get("variants", []):
+            data = {
+                "resource_type": int(ResourceType.component_set),
+                "name":          f"{parent_name} / {variant.get('name', '')}",
+                "file_name":     file_name,
+                "file_path":     hex_file,
+                "mime_type":     "text/plain",
+                "raw_data":      json.dumps({
+                    "variantKey":     variant.get("variantKey"),
+                    "parentKey":      variant.get("parentKey"),
+                    "parentName":     parent_name,
+                    "guid":           variant.get("guid"),
+                    "componentProps": variant.get("componentProps", []),
+                }, ensure_ascii=False),
+            }
+            _, is_new = upsert_resource(db, data)
+            if is_new:
+                added += 1
+            else:
+                updated += 1
     return {"added": added, "updated": updated}
 
 
