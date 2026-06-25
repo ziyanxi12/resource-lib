@@ -1,26 +1,25 @@
-import { useState, useEffect } from 'react'
-import { Button, Alert, Spin, Space, Statistic, Typography, message, Tag } from 'antd'
-import { SyncOutlined, BlockOutlined, CheckCircleFilled } from '@ant-design/icons'
+import { useState, useEffect, useRef } from 'react'
+import { Button, Modal, Alert, Spin, Space, Statistic, Tag, message } from 'antd'
+import { SyncOutlined, BlockOutlined, CheckCircleFilled, SettingOutlined } from '@ant-design/icons'
+import ResourceList, { type ResourceListHandle } from './ResourceList'
 import { api } from '../api'
 import type { ComponentMapItem, SyncResult } from '../types'
 
-interface SyncState {
-  loading: boolean
-  result?: SyncResult
-  error?: string
-}
+interface SyncState { loading: boolean; result?: SyncResult; error?: string }
 
-export default function ComponentManage() {
+function SyncModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [components, setComponents] = useState<ComponentMapItem[]>([])
   const [listLoading, setListLoading] = useState(true)
-  const [syncStates, setSyncStates]   = useState<Record<string, SyncState>>({})
+  const [syncStates, setSyncStates] = useState<Record<string, SyncState>>({})
 
   useEffect(() => {
+    if (!open) return
+    setListLoading(true)
     api.listComponentMap()
       .then(d => setComponents(d.items))
       .catch(() => message.error('加载组件库列表失败'))
       .finally(() => setListLoading(false))
-  }, [])
+  }, [open])
 
   const handleSync = async (fileKey: string) => {
     setSyncStates(p => ({ ...p, [fileKey]: { loading: true } }))
@@ -35,131 +34,125 @@ export default function ComponentManage() {
     }
   }
 
-  if (listLoading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 100 }}><Spin size="large" /></div>
-  }
-
   return (
-    <div>
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>组件集管理</h1>
-        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>
-          点击「同步」触发：获取版本 → 下载文件 → 拆解 → 写入数据库 → 向量化
-        </p>
-      </div>
-
-      {components.length === 0 ? (
-        <Alert message="component_map.json 中暂无组件库配置" type="info" showIcon style={{ borderRadius: 10 }} />
+    <Modal
+      title="同步组件库"
+      open={open}
+      onCancel={onClose}
+      footer={null}
+      width={640}
+      destroyOnClose
+    >
+      {listLoading ? (
+        <div style={{ textAlign: 'center', padding: '40px 0' }}><Spin /></div>
+      ) : components.length === 0 ? (
+        <Alert message="component_map.json 中暂无组件库配置" type="info" showIcon />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 8 }}>
           {components.map(item => {
             const state = syncStates[item.fileKey]
-            const done  = !!state?.result
-
+            const done = !!state?.result
             return (
               <div
                 key={item.fileKey}
                 style={{
-                  background: '#fff',
-                  borderRadius: 14,
+                  background: done ? '#f0fdf4' : '#f8fafc',
+                  borderRadius: 10,
                   border: `1px solid ${done ? '#bbf7d0' : '#e2e8f0'}`,
-                  overflow: 'hidden',
+                  padding: '14px 16px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
                   transition: 'border-color 0.3s',
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
                 }}
               >
-                {/* Card header */}
                 <div
                   style={{
-                    padding: '18px 20px 16px',
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 14,
-                    borderBottom: '1px solid #f1f5f9',
+                    width: 36, height: 36, borderRadius: 9,
+                    background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#fff', fontSize: 16, flexShrink: 0,
                   }}
                 >
-                  <div
+                  <BlockOutlined />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a' }}>{item.name}</div>
+                  <Tag
                     style={{
-                      width: 40, height: 40, borderRadius: 10,
-                      background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      color: '#fff', fontSize: 18, flexShrink: 0,
+                      marginTop: 2, fontSize: 11, borderRadius: 4,
+                      fontFamily: 'ui-monospace,monospace', color: '#94a3b8',
+                      background: '#fff', border: '1px solid #e2e8f0',
                     }}
                   >
-                    <BlockOutlined />
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 600, fontSize: 15, color: '#0f172a' }}>{item.name}</div>
-                    <Tag
-                      style={{
-                        marginTop: 4, fontSize: 11, borderRadius: 4,
-                        fontFamily: 'ui-monospace, monospace', color: '#94a3b8',
-                        background: '#f8fafc', border: '1px solid #e2e8f0',
-                      }}
-                    >
-                      {item.fileKey}
-                    </Tag>
-                  </div>
-                  <Button
-                    type={done ? 'default' : 'primary'}
-                    size="small"
-                    icon={done
-                      ? <CheckCircleFilled style={{ color: '#10b981' }} />
-                      : <SyncOutlined spin={state?.loading} />
-                    }
-                    loading={state?.loading}
-                    onClick={() => handleSync(item.fileKey)}
-                    style={done ? { borderColor: '#bbf7d0', color: '#10b981' } : {}}
-                  >
-                    {done ? '已同步' : '同步'}
-                  </Button>
+                    {item.fileKey}
+                  </Tag>
                 </div>
-
-                {/* Card body */}
-                <div style={{ padding: '16px 20px', minHeight: 60 }}>
-                  {!state && (
-                    <Typography.Text type="secondary" style={{ fontSize: 13 }}>
-                      点击「同步」更新此组件库的资源数据
-                    </Typography.Text>
-                  )}
-
-                  {state?.loading && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#6366f1' }}>
-                      <Spin size="small" />
-                      <span style={{ fontSize: 13 }}>同步中，请稍候…</span>
-                    </div>
-                  )}
-
-                  {state?.result && (
-                    <Space size={40}>
-                      <Statistic
-                        title={<span style={{ fontSize: 12, color: '#64748b' }}>新增</span>}
-                        value={state.result.added}
-                        valueStyle={{ fontSize: 22, fontWeight: 700, color: '#10b981' }}
-                      />
-                      <Statistic
-                        title={<span style={{ fontSize: 12, color: '#64748b' }}>更新</span>}
-                        value={state.result.updated}
-                        valueStyle={{ fontSize: 22, fontWeight: 700, color: '#6366f1' }}
-                      />
-                    </Space>
-                  )}
-
-                  {state?.error && (
-                    <Alert
-                      message="同步失败"
-                      description={state.error}
-                      type="error"
-                      showIcon
-                      style={{ borderRadius: 8 }}
+                {state?.result && (
+                  <Space size={24} style={{ flexShrink: 0 }}>
+                    <Statistic
+                      title={<span style={{ fontSize: 11 }}>新增</span>}
+                      value={state.result.added}
+                      valueStyle={{ fontSize: 18, fontWeight: 700, color: '#10b981' }}
                     />
-                  )}
-                </div>
+                    <Statistic
+                      title={<span style={{ fontSize: 11 }}>更新</span>}
+                      value={state.result.updated}
+                      valueStyle={{ fontSize: 18, fontWeight: 700, color: '#6366f1' }}
+                    />
+                  </Space>
+                )}
+                {state?.error && (
+                  <span style={{ fontSize: 12, color: '#ef4444', maxWidth: 160 }}>{state.error}</span>
+                )}
+                <Button
+                  type={done ? 'default' : 'primary'}
+                  size="small"
+                  icon={done
+                    ? <CheckCircleFilled style={{ color: '#10b981' }} />
+                    : <SyncOutlined spin={state?.loading} />
+                  }
+                  loading={state?.loading}
+                  onClick={() => handleSync(item.fileKey)}
+                  style={done ? { borderColor: '#bbf7d0', color: '#10b981' } : {}}
+                >
+                  {done ? '已同步' : '同步'}
+                </Button>
               </div>
             )
           })}
         </div>
       )}
-    </div>
+    </Modal>
+  )
+}
+
+export default function ComponentManage() {
+  const [modalOpen, setModalOpen] = useState(false)
+  const listRef = useRef<ResourceListHandle | null>(null)
+
+  return (
+    <>
+      <ResourceList
+        type="component_set"
+        label="组件"
+        handleRef={listRef}
+        extraActions={
+          <Button
+            icon={<SettingOutlined />}
+            onClick={() => setModalOpen(true)}
+          >
+            同步组件库
+          </Button>
+        }
+      />
+      <SyncModal
+        open={modalOpen}
+        onClose={() => {
+          setModalOpen(false)
+          listRef.current?.refresh()
+        }}
+      />
+    </>
   )
 }

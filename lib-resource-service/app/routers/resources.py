@@ -18,6 +18,33 @@ from app.schemas.resource import ResourceUpdateRequest
 router = APIRouter(prefix="/api/resources", tags=["资源管理"])
 
 
+@router.get("/categories")
+def get_categories(db: Session = Depends(get_db)):
+    """返回所有有数据的资源类别及各自的数量"""
+    return {"categories": resource_service.get_categories_with_counts(db)}
+
+
+@router.get("/all")
+def get_all_by_category(
+    type_id: int = Query(..., description="资源类型 ID：1=组件集 2=模版 3=SVG 4=插画 5=图片"),
+    db: Session = Depends(get_db),
+):
+    """返回指定类别的全量数据（不分页）"""
+    try:
+        resource_type = ResourceType(type_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"未知 type_id: {type_id}，可选值: {[e.value for e in ResourceType]}")
+
+    items, total = resource_service.get_all_by_type(db, type_id)
+    return {
+        "type_id": type_id,
+        "type":    resource_type.name,
+        "label":   resource_type.label,
+        "total":   total,
+        "items":   [_fmt(r) for r in items],
+    }
+
+
 @router.get("")
 def list_resources(
     type:   Optional[str] = Query(None, description="资源类型名，如 component_set"),
@@ -87,21 +114,19 @@ def delete_resource(resource_id: int, db: Session = Depends(get_db)):
 # ──────────────────────────────────────────────────────────────────
 
 def _fmt(r) -> dict:
-    """ORM 对象 → 响应字典，附加 resource_type_name 字段"""
     return {
         "id":                 r.id,
         "resource_type":      r.resource_type,
         "resource_type_name": ResourceType(r.resource_type).name,
         "name":               r.name,
-        "unique_key":         r.unique_key,
+        "file_name":          r.file_name,
         "file_path":          r.file_path,
-        "thumbnail_path":     r.thumbnail_path,
         "file_size":          r.file_size,
         "mime_type":          r.mime_type,
+        "thumbnail_path":     r.thumbnail_path,
         "dimensions":         r.dimensions,
         "description":        r.description,
-        "english_name":       r.english_name,
-        "domain":             r.domain,
+        "raw_data":           r.raw_data,
         "created_by":         r.created_by,
         "sort_order":         r.sort_order,
         "created_at":         r.created_at.isoformat() if r.created_at else None,

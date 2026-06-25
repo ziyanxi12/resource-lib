@@ -3,15 +3,14 @@ export interface Resource {
   resource_type: number
   resource_type_name: string
   name: string
-  unique_key: string
+  file_name: string | null
   file_path: string | null
   thumbnail_path: string | null
   file_size: number | null
   mime_type: string | null
   dimensions: { width: number; height: number } | null
   description: string | null
-  english_name: string | null
-  domain: string | null
+  raw_data: string | null        // JSON 字符串，前端按需 parse
   created_by: string | null
   sort_order: number
   created_at: string | null

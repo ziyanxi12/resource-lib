@@ -27,24 +27,21 @@ const PAGES: Record<PageKey, React.ReactNode> = {
 }
 
 const NAV = [
-  { key: 'overview' as PageKey, icon: <AppstoreOutlined />, label: '资源总览' },
-  { key: 'component' as PageKey, icon: <BlockOutlined />, label: '组件集' },
-  { key: 'template' as PageKey, icon: <FileTextOutlined />, label: '模版' },
-  { key: 'svg' as PageKey, icon: <FunctionOutlined />, label: 'SVG 图标' },
-  { key: 'illustration' as PageKey, icon: <StarOutlined />, label: '插画' },
-  { key: 'image' as PageKey, icon: <PictureOutlined />, label: '图片' },
+  { key: 'overview' as PageKey,      icon: <AppstoreOutlined />,  label: '数据总览' },
+  { key: 'component' as PageKey,     icon: <BlockOutlined />,     label: '组件' },
+  { key: 'template' as PageKey,      icon: <FileTextOutlined />,  label: '模版' },
+  { key: 'svg' as PageKey,           icon: <FunctionOutlined />,  label: '图标' },
+  { key: 'illustration' as PageKey,  icon: <StarOutlined />,      label: '插画' },
+  { key: 'image' as PageKey,         icon: <PictureOutlined />,   label: '图片' },
 ]
 
+const HEADER_H = 56
+const SIDEBAR_W = 200
+
 function NavItem({
-  icon,
-  label,
-  active,
-  onClick,
+  icon, label, active, onClick,
 }: {
-  icon: React.ReactNode
-  label: string
-  active: boolean
-  onClick: () => void
+  icon: React.ReactNode; label: string; active: boolean; onClick: () => void
 }) {
   return (
     <div
@@ -104,55 +101,73 @@ export default function App() {
         },
       }}
     >
-      <div style={{ display: 'flex', minHeight: '100vh' }}>
+      {/* ── Top header ── */}
+      <header
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: HEADER_H,
+          background: '#fff',
+          borderBottom: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          padding: '0 24px',
+          zIndex: 200,
+          boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#fff',
+              fontWeight: 800,
+              fontSize: 16,
+              flexShrink: 0,
+            }}
+          >
+            R
+          </div>
+          <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', letterSpacing: -0.3 }}>
+            资源库管理
+          </span>
+        </div>
+      </header>
+
+      <div style={{ display: 'flex', minHeight: '100vh', paddingTop: HEADER_H }}>
         {/* ── Sidebar ── */}
         <aside
           style={{
-            width: 216,
+            width: SIDEBAR_W,
             background: '#0f172a',
             position: 'fixed',
-            inset: '0 auto 0 0',
+            top: HEADER_H,
+            left: 0,
+            bottom: 0,
             display: 'flex',
             flexDirection: 'column',
             zIndex: 100,
           }}
         >
-          {/* Logo */}
-          <div
-            style={{
-              padding: '18px 20px 16px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 10,
-              borderBottom: '1px solid rgba(255,255,255,0.06)',
-            }}
-          >
+          <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
             <div
               style={{
-                width: 30,
-                height: 30,
-                borderRadius: 8,
-                background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#fff',
-                fontWeight: 800,
-                fontSize: 15,
-                flexShrink: 0,
-                letterSpacing: -0.5,
+                padding: '6px 16px 8px',
+                fontSize: 11,
+                color: '#475569',
+                fontWeight: 600,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
               }}
             >
-              R
-            </div>
-            <span style={{ color: '#f1f5f9', fontSize: 14, fontWeight: 600, letterSpacing: -0.2 }}>
-              资源库管理
-            </span>
-          </div>
-
-          {/* Nav */}
-          <nav style={{ flex: 1, padding: '10px 0', overflowY: 'auto' }}>
-            <div style={{ padding: '6px 16px 4px', fontSize: 11, color: '#475569', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
               导航
             </div>
             {NAV.map(item => (
@@ -166,8 +181,15 @@ export default function App() {
             ))}
           </nav>
 
-          <div style={{ padding: '14px 20px', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: 11, color: '#334155' }}>
-            v0.1.0 · mock 模式
+          <div
+            style={{
+              padding: '14px 20px',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              fontSize: 11,
+              color: '#334155',
+            }}
+          >
+            v0.1.0
           </div>
         </aside>
 
@@ -175,13 +197,20 @@ export default function App() {
         <main
           style={{
             flex: 1,
-            marginLeft: 216,
-            minHeight: '100vh',
+            marginLeft: SIDEBAR_W,
+            height: `calc(100vh - ${HEADER_H}px)`,
             background: '#f1f5f9',
             padding: '28px 32px',
+            boxSizing: 'border-box',
+            display: 'flex',
+            flexDirection: 'column',
+            overflow: 'hidden',
           }}
         >
-          {PAGES[page]}
+          {/* inner wrapper so page components can use flex:1 to fill height */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            {PAGES[page]}
+          </div>
         </main>
       </div>
     </ConfigProvider>

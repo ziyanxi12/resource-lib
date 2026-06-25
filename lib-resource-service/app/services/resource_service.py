@@ -1,12 +1,8 @@
-"""
-通用资源 CRUD 服务
-提供 resources 表和 resource_tags 表的基础操作，供各类型 service 复用。
-"""
-
 from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from app.models.resource import Resource, ResourceTag
+from app.enums import ResourceType
 
 
 def get_resources(
@@ -16,11 +12,6 @@ def get_resources(
     page: int = 1,
     limit: int = 20,
 ) -> Tuple[List[Resource], int]:
-    """
-    查询资源列表。
-    支持：按 resource_type 过滤 / 关键词搜索（name、english_name、description）/ 分页。
-    默认排序：sort_order 降序 → created_at 降序。
-    """
     query = db.query(Resource).filter(Resource.is_deleted == 0)
 
     if resource_type is not None:
@@ -31,7 +22,6 @@ def get_resources(
         query = query.filter(
             or_(
                 Resource.name.like(pattern),
-                Resource.english_name.like(pattern),
                 Resource.description.like(pattern),
             )
         )
@@ -47,24 +37,49 @@ def get_resources(
 
 
 def get_resource_by_id(db: Session, resource_id: int) -> Optional[Resource]:
-    """查询单个资源（已软删除的不返回）"""
     return db.query(Resource).filter(
         Resource.id == resource_id,
         Resource.is_deleted == 0,
     ).first()
 
 
+def get_categories_with_counts(db: Session) -> List[dict]:
+    rows = (
+        db.query(Resource.resource_type, func.count(Resource.id))
+          .filter(Resource.is_deleted == 0)
+          .group_by(Resource.resource_type)
+          .all()
+    )
+    return [
+        {
+            "type":    ResourceType(rt).name,
+            "type_id": rt,
+            "label":   ResourceType(rt).label,
+            "count":   count,
+        }
+        for rt, count in rows
+    ]
+
+
+def get_all_by_type(db: Session, resource_type: int) -> Tuple[List[Resource], int]:
+    items = (
+        db.query(Resource)
+          .filter(Resource.is_deleted == 0, Resource.resource_type == resource_type)
+          .order_by(Resource.sort_order.desc(), Resource.created_at.desc())
+          .all()
+    )
+    return items, len(items)
+
+
 def upsert_resource(db: Session, data: dict) -> Tuple[Resource, bool]:
-    """
-    按 unique_key 插入或更新资源（UPSERT）。
-    返回 (resource, is_new)：is_new=True 表示新增，False 表示更新。
-    """
+    """按 (name, resource_type) 做 UPSERT，用于同步类操作（组件、图标、插画）。"""
     existing = db.query(Resource).filter(
-        Resource.unique_key == data["unique_key"]
+        Resource.name == data["name"],
+        Resource.resource_type == data["resource_type"],
+        Resource.is_deleted == 0,
     ).first()
 
     if existing:
-        # 更新：只覆盖 data 中明确传入的非 None 字段
         for key, value in data.items():
             if hasattr(existing, key) and value is not None:
                 setattr(existing, key, value)
@@ -79,34 +94,37 @@ def upsert_resource(db: Session, data: dict) -> Tuple[Resource, bool]:
         return resource, True
 
 
+def create_resource(db: Session, data: dict) -> Resource:
+    """直接插入新资源，用于上传类操作（图片、模版）。"""
+    resource = Resource(**data)
+    db.add(resource)
+    db.commit()
+    db.refresh(resource)
+    return resource
+
+
 def update_resource(db: Session, resource_id: int, data: dict) -> Optional[Resource]:
-    """更新资源元数据，返回更新后的对象；资源不存在时返回 None。"""
     resource = get_resource_by_id(db, resource_id)
     if not resource:
         return None
-
     for key, value in data.items():
         if hasattr(resource, key):
             setattr(resource, key, value)
-
     db.commit()
     db.refresh(resource)
     return resource
 
 
 def soft_delete_resource(db: Session, resource_id: int) -> bool:
-    """软删除：将 is_deleted 置为 1，数据保留在库中。"""
     resource = get_resource_by_id(db, resource_id)
     if not resource:
         return False
-
     resource.is_deleted = 1
     db.commit()
     return True
 
 
 def update_tags(db: Session, resource_id: int, tags: List[str]) -> None:
-    """替换资源的全部标签（先清空，再批量插入）。"""
     db.query(ResourceTag).filter(ResourceTag.resource_id == resource_id).delete()
     for tag in tags:
         db.add(ResourceTag(resource_id=resource_id, tag=tag.strip()))
