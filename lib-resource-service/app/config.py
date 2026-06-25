@@ -29,9 +29,6 @@ class Settings:
     # 所有 file_path 均相对于此目录；实际绝对路径 = FILE_ROOT_DIR + file_path
     FILE_ROOT_DIR: str = os.getenv("FILE_ROOT_DIR", "./storage")
 
-    # 初始化数据源目录（存放 component/icon/template 的 JSON 预置文件）
-    INIT_DATA_DIR: str = os.getenv("INIT_DATA_DIR", "../storage/init")
-
     # ── 组件库映射表 ──────────────────────────────────────────
     # JSON 文件，格式：[{ "fileKey": "xxx", "name": "组件库名称" }]
     COMPONENT_MAP_FILE: str = os.getenv("COMPONENT_MAP_FILE", "./component_map.json")

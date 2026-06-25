@@ -6,9 +6,12 @@
 
 ```
 lib-resource/
-├── lib-resource-service/   # 后端（Python FastAPI）
-├── lib-resource-ui/        # 前端（React + Vite）
-└── storage/                # 文件存储根目录
+├── lib-resource-service/       # 后端（Python FastAPI）
+│   ├── storage/                # 文件存储根目录（component/icon/template/image）
+│   ├── app/                    # 业务代码
+│   ├── requirements.txt
+│   └── .env                    # 环境变量（从 .env.example 复制后填写）
+└── lib-resource-ui/            # 前端（React + Vite）
 ```
 
 ---
@@ -66,11 +69,8 @@ DB_NAME=resource_lib
 DB_USER=root
 DB_PASSWORD=你的密码
 
-# 文件存储根目录
+# 文件存储根目录（component/icon/template/image 子目录均在此下）
 FILE_ROOT_DIR=./storage
-
-# 初始化数据源目录
-INIT_DATA_DIR=../storage/init
 
 # 组件库映射表
 COMPONENT_MAP_FILE=./component_map.json

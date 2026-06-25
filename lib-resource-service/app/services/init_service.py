@@ -31,7 +31,7 @@ from app.services.resource_service import upsert_resource, create_resource
 # ──────────────────────────────────────────────────────────────────
 
 def import_components(db: Session) -> dict:
-    base = os.path.join(settings.INIT_DATA_DIR, "component")
+    base = os.path.join(settings.FILE_ROOT_DIR, "component")
     if not os.path.isdir(base):
         return {"added": 0, "updated": 0, "error": f"目录不存在：{base}"}
 
@@ -72,7 +72,7 @@ def import_components(db: Session) -> dict:
 # ──────────────────────────────────────────────────────────────────
 
 def import_icons(db: Session, icon_type: str) -> dict:
-    file_path = os.path.join(settings.INIT_DATA_DIR, "icon", f"{icon_type}.json")
+    file_path = os.path.join(settings.FILE_ROOT_DIR, "icon", f"{icon_type}.json")
     if not os.path.exists(file_path):
         return {"added": 0, "updated": 0, "error": f"文件不存在：{file_path}"}
 
@@ -104,7 +104,7 @@ def import_icons(db: Session, icon_type: str) -> dict:
 # ──────────────────────────────────────────────────────────────────
 
 def import_templates(db: Session) -> dict:
-    json_path = os.path.join(settings.INIT_DATA_DIR, "template", "templates.json")
+    json_path = os.path.join(settings.FILE_ROOT_DIR, "template", "templates.json")
     if not os.path.exists(json_path):
         return {"added": 0, "updated": 0, "error": f"文件不存在：{json_path}"}
 
