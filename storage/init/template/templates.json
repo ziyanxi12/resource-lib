@@ -1,0 +1,4 @@
+[
+  { "name": "登录页模版", "description": "标准登录页布局", "hex_data": "0x414243" },
+  { "name": "列表页模版", "description": "带搜索和分页的列表页", "hex_data": "0x444546" }
+]

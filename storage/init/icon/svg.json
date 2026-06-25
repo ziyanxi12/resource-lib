@@ -1,0 +1,5 @@
+[
+  { "id": 100, "name": "首页", "englishName": "home", "description": "房子图标，用于导航首页" },
+  { "id": 101, "name": "设置", "englishName": "settings", "description": "齿轮图标，用于系统设置" },
+  { "id": 102, "name": "通知", "englishName": "notification", "description": "铃铛图标，用于消息通知" }
+]
