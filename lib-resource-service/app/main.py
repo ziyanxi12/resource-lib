@@ -23,7 +23,7 @@ from app.routers import init_router
 async def lifespan(app: FastAPI):
     """应用启动时：自动建表 + 创建文件存储子目录"""
     Base.metadata.create_all(bind=engine)
-    for sub in ["component", "template", "icon", "image"]:
+    for sub in ["component", "template", "icon", "illus", "image"]:
         os.makedirs(os.path.join(settings.FILE_ROOT_DIR, sub), exist_ok=True)
     yield
     # 关闭时无需额外清理

@@ -1,8 +1,0 @@
-{
-  "domain": "ICT_UI",
-  "componentSets": [
-    { "componentKey": "init-btn-001", "name": "主按钮", "hexFile": "component/init-btn-001.txt" },
-    { "componentKey": "init-btn-002", "name": "次按钮", "hexFile": "component/init-btn-002.txt" },
-    { "componentKey": "init-input-001", "name": "文本输入框", "hexFile": "component/init-input-001.txt" }
-  ]
-}

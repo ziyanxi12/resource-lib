@@ -19,9 +19,13 @@ async def sync_icons(db: Session, icon_type: Literal["svg", "illustration"]) -> 
     icons = await external.fetch_icon_list()
 
     # 步骤 2：保存 JSON 文件
-    icon_dir  = os.path.join(settings.FILE_ROOT_DIR, "icon")
-    os.makedirs(icon_dir, exist_ok=True)
-    json_path = os.path.join(icon_dir, f"{icon_type}.json")
+    if icon_type == "svg":
+        save_dir  = os.path.join(settings.FILE_ROOT_DIR, "icon")
+        json_path = os.path.join(save_dir, "icons.json")
+    else:
+        save_dir  = os.path.join(settings.FILE_ROOT_DIR, "illus")
+        json_path = os.path.join(save_dir, "illus.json")
+    os.makedirs(save_dir, exist_ok=True)
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(icons, f, ensure_ascii=False, indent=2)
 

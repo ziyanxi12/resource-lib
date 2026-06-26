@@ -47,8 +47,9 @@ lib-resource-service/
 │   ├── component/
 │   │   └── component_map.json  # 组件库映射表（fileKey/name/indexPath/updatedAt）
 │   ├── icon/
-│   │   ├── svg.json          # SVG 初始化数据
-│   │   └── illustration.json # 插画初始化数据
+│   │   └── icons.json        # SVG 图标数据
+│   ├── illus/
+│   │   └── illus.json        # 插画数据
 │   ├── template/
 │   │   └── templates.json    # 模版初始化数据
 │   └── image/                # 上传的图片文件
@@ -87,7 +88,8 @@ lib-resource-service/
 
 从 `storage/` 读预置 JSON 文件写入数据库，**不调用外部 API**：
 - 组件集：读 `storage/component/component_map.json`，按每条记录的 `indexPath` 定位对应的 `component_index.json`，以 variant 为粒度入库
-- SVG/插画：`storage/icon/svg.json` / `storage/icon/illustration.json`
+- SVG：`storage/icon/icons.json`
+- 插画：`storage/illus/illus.json`
 - 模版：`storage/template/templates.json`
 
 ### Mock 模式

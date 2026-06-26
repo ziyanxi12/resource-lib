@@ -1,4 +1,0 @@
-[
-  { "id": 200, "name": "空状态", "englishName": "empty", "description": "用于列表为空时的占位插画" },
-  { "id": 201, "name": "成功", "englishName": "success", "description": "用于操作成功后的反馈插画" }
-]

@@ -81,7 +81,10 @@ def import_components(db: Session) -> dict:
 # ──────────────────────────────────────────────────────────────────
 
 def import_icons(db: Session, icon_type: str) -> dict:
-    file_path = os.path.join(settings.FILE_ROOT_DIR, "icon", f"{icon_type}.json")
+    if icon_type == "svg":
+        file_path = os.path.join(settings.FILE_ROOT_DIR, "icon", "icons.json")
+    else:
+        file_path = os.path.join(settings.FILE_ROOT_DIR, "illus", "illus.json")
     if not os.path.exists(file_path):
         return {"added": 0, "updated": 0, "error": f"文件不存在：{file_path}"}
 
