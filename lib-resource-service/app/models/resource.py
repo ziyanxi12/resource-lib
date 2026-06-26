@@ -25,6 +25,8 @@ class Resource(Base):
     updated_at     = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     tags = relationship("ResourceTag", back_populates="resource", cascade="all, delete-orphan")
+    component_variant = relationship("ComponentVariant", back_populates="resource", uselist=False)
+    icon_detail       = relationship("ResourceIcon", back_populates="resource", uselist=False)
 
 
 class ResourceTag(Base):
@@ -36,3 +38,37 @@ class ResourceTag(Base):
     created_at  = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     resource = relationship("Resource", back_populates="tags")
+
+
+class ComponentVariant(Base):
+    """组件变体详情，通过 resource_id 关联主表，parent_key 用于分组查询同一组件集的所有变体"""
+    __tablename__ = "component_variants"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    resource_id     = Column(Integer, ForeignKey("resources.id", ondelete="CASCADE"), nullable=False, unique=True)
+    canvas_name     = Column(String(255), nullable=True,  comment="画布分组名，如 '1.基础类'")
+    component_name  = Column(String(255), nullable=True,  comment="组件集名称")
+    component_guid  = Column(String(100), nullable=True,  comment="组件集 guid")
+    component_key   = Column(String(100), nullable=True,  comment="组件集 key，即 parentKey")
+    name            = Column(String(500), nullable=False, comment="变体属性字符串")
+    guid            = Column(String(100), nullable=True,  unique=True)
+    variant_key     = Column(String(100), nullable=True,  unique=True)
+    component_props = Column(JSON, nullable=True,         comment="[{name, type}, ...]")
+    created_at      = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at      = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    resource = relationship("Resource", back_populates="component_variant")
+
+
+class ResourceIcon(Base):
+    """SVG / 插画结构化详情，通过 resource_id 关联主表"""
+    __tablename__ = "resource_icons"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    resource_id  = Column(Integer, ForeignKey("resources.id", ondelete="CASCADE"), nullable=False, unique=True)
+    english_name = Column(String(255), nullable=True)
+    category     = Column(String(100), nullable=True)
+    created_at   = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at   = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    resource = relationship("Resource", back_populates="icon_detail")

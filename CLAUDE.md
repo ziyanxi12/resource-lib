@@ -20,7 +20,7 @@ lib-resource-service/
 │   ├── database.py          # SQLAlchemy engine / session / Base
 │   ├── enums.py             # ResourceType 枚举（1~5 对应五类资源）
 │   ├── models/
-│   │   └── resource.py      # ORM：Resource 主表 + ResourceTag 标签表
+│   │   └── resource.py      # ORM：Resource / ResourceTag / ComponentVariant / ResourceIcon
 │   ├── schemas/
 │   │   ├── resource.py      # ResourceOut / ResourceUpdateRequest
 │   │   ├── component.py     # ComponentSyncRequest/Response
@@ -64,6 +64,16 @@ lib-resource-service/
 
 启动时 `create_all` 自动建表，**无需手动建表或迁移**。
 
+### 表结构总览
+
+```
+resources (主表)
+    │
+    ├─ 1:N ── resource_tags        resource_id → resources.id
+    ├─ 1:1 ── component_variants   resource_id → resources.id
+    └─ 1:1 ── resource_icons       resource_id → resources.id
+```
+
 ### resources 主表关键字段
 
 | 字段 | 说明 |
@@ -74,6 +84,28 @@ lib-resource-service/
 | `file_path` | 相对于 FILE_ROOT_DIR 的路径 |
 | `raw_data` | 外部 API 返回的原始 JSON 字符串 |
 | `is_deleted` | 软删除，0=正常 1=已删除 |
+
+### component_variants 关键字段（resource_type=1）
+
+| 字段 | 说明 |
+|------|------|
+| `resource_id` | FK → resources.id |
+| `canvas_name` | 画布分组名，如 `1.基础类` |
+| `component_name` | 组件集名称 |
+| `component_guid` | 组件集 guid |
+| `component_key` | 组件集 key（即 variant.parentKey），按此字段分组可得同一组件集的所有变体 |
+| `name` | 变体属性字符串，如 `size=normal, disabled=false` |
+| `guid` | 变体 guid |
+| `variant_key` | 变体 key（upsert key） |
+| `component_props` | JSON 数组，如 `[{name, type}, ...]` |
+
+### resource_icons 关键字段（resource_type=3/4）
+
+| 字段 | 说明 |
+|------|------|
+| `resource_id` | FK → resources.id |
+| `english_name` | 英文名，如 `home` |
+| `category` | 分类，如 `navigation` / `system` / `feedback` |
 
 ---
 
@@ -86,11 +118,62 @@ lib-resource-service/
 
 ### 初始化入库（`/api/init`）
 
-从 `storage/` 读预置 JSON 文件写入数据库，**不调用外部 API**：
-- 组件集：读 `storage/component/component_map.json`，按每条记录的 `indexPath` 定位对应的 `component_index.json`，以 variant 为粒度入库
-- SVG：`storage/icon/icons.json`
-- 插画：`storage/illus/illus.json`
-- 模版：`storage/template/templates.json`
+从 `storage/` 读预置 JSON 文件写入数据库，**不调用外部 API**，**可重复调用（幂等）**。
+
+#### 接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/init` | 一次性导入全部类型 |
+| POST | `/api/init/component` | 仅导入组件集 |
+| POST | `/api/init/icon` | 仅导入 SVG + 插画 |
+| POST | `/api/init/template` | 仅导入模版 |
+
+#### 各类型入库流程
+
+**组件集**
+
+1. 读 `storage/component/component_map.json`，格式：
+   ```json
+   [{ "indexPath": "component/ICT_UI/component_index.json", ... }]
+   ```
+2. 按 `indexPath` 找到对应的 `component_index.json`，格式：
+   ```json
+   {
+     "domain": "ICT_UI",
+     "componentSets": [
+       {
+         "name": "文字链接",
+         "guid": "8229:277383",
+         "componentKey": "be1d...",
+         "canvasName": "1.基础类",
+         "hexFile": "component/be1d....txt",
+         "variants": [
+           {
+             "name": "size=normal, disabled=false",
+             "guid": "8229:277395",
+             "variantKey": "f884...",
+             "parentKey": "be1d...",
+             "componentProps": [{ "name": "text", "type": "TEXT" }]
+           }
+         ]
+       }
+     ]
+   }
+   ```
+3. 以 variant 为粒度，每条写 `resources`（upsert key: `name + resource_type`）+ `component_variants`（upsert key: `variant_key`）
+
+**SVG / 插画**
+
+读 `storage/icon/icons.json` / `storage/illus/illus.json`，格式：
+```json
+[{ "id": 100, "name": "首页", "englishName": "home", "category": "navigation", "description": "..." }]
+```
+每条写 `resources`（upsert key: `name + resource_type`）+ `resource_icons`（upsert key: `resource_id`）
+
+**模版**
+
+读 `storage/template/templates.json`，每次都 create（不幂等），只写 `resources`。
 
 ### Mock 模式
 
@@ -122,6 +205,8 @@ lib-resource-ui/src/
 |------|-------------|
 | 加新资源类型 | `enums.py` 加枚举 → `models/resource.py` 按需加字段 → 新建 router + service + schema |
 | 加/改 API 字段 | `models/resource.py`（ORM） → `schemas/resource.py`（Pydantic） → `routers/resources.py` 的 `_fmt()` |
+| 加/改组件结构化字段 | `models/resource.py` 的 `ComponentVariant` → `services/init_service.py` 的 `_upsert_component_variant` |
+| 加/改图标结构化字段 | `models/resource.py` 的 `ResourceIcon` → `services/init_service.py` 的 `_upsert_resource_icon` |
 | 修改初始化逻辑 | `services/init_service.py` |
 | 修改外部 API 对接 | `clients/external.py`（Mock 和真实实现都在这里） |
 | 加前端页面 | `pages/` 下新建 → `App.tsx` 注册导航和路由 |

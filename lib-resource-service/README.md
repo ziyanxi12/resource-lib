@@ -13,7 +13,7 @@ lib-resource-service/
 │   ├── config.py             # 所有配置项（从 .env 读取）
 │   ├── database.py           # 数据库连接（SQLite / MySQL 二选一）
 │   ├── enums.py              # ResourceType 枚举，DB 整数 ↔ API 字符串
-│   ├── models/resource.py    # ORM 表定义（resources / resource_tags）
+│   ├── models/resource.py    # ORM 表定义（resources / resource_tags / component_variants / resource_icons）
 │   ├── schemas/              # Pydantic 请求/响应模型（每类资源一个文件）
 │   ├── clients/
 │   │   └── external.py       # ★ 所有外部 API 调用集中在此，Mock 开关在这里
@@ -127,6 +127,78 @@ REBUILD_ICON_API_URL=http://your-service/api/rebuild/icon
 "file_path":  comp.get("hexFile"),
 "domain":     domain,          # 来自顶层 domain 字段
 ```
+
+---
+
+## 数据初始化
+
+服务启动后，调用初始化接口将 `storage/` 下的预置文件批量写入数据库。**接口可重复调用（幂等）**，已存在的记录会更新，不会重复插入。
+
+### 接口
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/init` | 一次性导入全部类型 |
+| POST | `/api/init/component` | 仅导入组件集 |
+| POST | `/api/init/icon` | 仅导入 SVG + 插画 |
+| POST | `/api/init/template` | 仅导入模版 |
+
+### 各类型数据来源与格式
+
+**组件集**
+
+入口文件：`storage/component/component_map.json`
+```json
+[
+  { "indexPath": "component/ICT_UI/component_index.json" }
+]
+```
+
+按 `indexPath` 找到各组件库的索引文件 `component_index.json`：
+```json
+{
+  "domain": "ICT_UI",
+  "componentSets": [
+    {
+      "name": "文字链接",
+      "guid": "8229:277383",
+      "componentKey": "be1d...",
+      "canvasName": "1.基础类",
+      "hexFile": "component/be1d....txt",
+      "variants": [
+        {
+          "name": "size=normal, disabled=false",
+          "guid": "8229:277395",
+          "variantKey": "f884...",
+          "parentKey": "be1d...",
+          "componentProps": [{ "name": "text", "type": "TEXT" }]
+        }
+      ]
+    }
+  ]
+}
+```
+
+以 variant 为粒度入库，每条 variant 写：
+- `resources`（upsert key：`name + resource_type`）
+- `component_variants`（upsert key：`variant_key`）
+
+**SVG / 插画**
+
+- SVG：`storage/icon/icons.json`
+- 插画：`storage/illus/illus.json`
+
+```json
+[
+  { "id": 100, "name": "首页", "englishName": "home", "category": "navigation", "description": "..." }
+]
+```
+
+每条写 `resources` + `resource_icons`（upsert key：`name + resource_type`）。
+
+**模版**
+
+`storage/template/templates.json`，每次调用均 create 新记录（**不幂等**），只写 `resources`。
 
 ---
 
