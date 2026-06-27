@@ -182,7 +182,7 @@ interface Props {
   handleRef?: React.MutableRefObject<ComponentListHandle | null>
 }
 
-export default function ComponentList({ extraActions, handleRef }: Props) {
+export default function ComponentList({ handleRef }: Props) {
   const [items, setItems] = useState<Resource[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -311,9 +311,6 @@ export default function ComponentList({ extraActions, handleRef }: Props) {
         padding: '12px 16px', marginBottom: 14,
         display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flexShrink: 0,
       }}>
-        {extraActions && (
-          <>{extraActions}<div style={{ width: 1, height: 20, background: '#e2e8f0' }} /></>
-        )}
         <Input.Search
           placeholder="向量搜索组件"
           allowClear

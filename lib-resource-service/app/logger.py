@@ -4,6 +4,12 @@ import re
 from logging.handlers import TimedRotatingFileHandler
 
 
+class _DebugOnlyFilter(logging.Filter):
+    """只放行 DEBUG 级别，INFO 及以上交给 app.txt。"""
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno == logging.DEBUG
+
+
 def setup_logging(log_dir: str, log_level: str = "INFO") -> None:
     os.makedirs(log_dir, exist_ok=True)
 
@@ -12,19 +18,35 @@ def setup_logging(log_dir: str, log_level: str = "INFO") -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    handler = TimedRotatingFileHandler(
+    # INFO / WARNING / ERROR / CRITICAL → app.txt，保留 30 天
+    app_handler = TimedRotatingFileHandler(
         filename=os.path.join(log_dir, "app.txt"),
         when="midnight",
         interval=1,
         backupCount=30,
         encoding="utf-8",
     )
-    handler.namer = _namer
-    handler.setFormatter(fmt)
+    app_handler.setLevel(logging.INFO)
+    app_handler.namer = _namer
+    app_handler.setFormatter(fmt)
+
+    # DEBUG only → debug.txt（含 httpx/httpcore 请求明细），保留 7 天
+    debug_handler = TimedRotatingFileHandler(
+        filename=os.path.join(log_dir, "debug.txt"),
+        when="midnight",
+        interval=1,
+        backupCount=7,
+        encoding="utf-8",
+    )
+    debug_handler.setLevel(logging.DEBUG)
+    debug_handler.addFilter(_DebugOnlyFilter())
+    debug_handler.namer = _namer
+    debug_handler.setFormatter(fmt)
 
     root = logging.getLogger()
     root.setLevel(getattr(logging, log_level.upper(), logging.INFO))
-    root.addHandler(handler)
+    root.addHandler(app_handler)
+    root.addHandler(debug_handler)
 
 
 def _namer(name: str) -> str:

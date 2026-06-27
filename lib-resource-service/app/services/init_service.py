@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.enums import ResourceType
 from app.models.resource import ComponentVariant, ResourceIcon
-from app.services.resource_service import upsert_resource, create_resource
+from app.services.resource_service import create_resource, bulk_upsert_resources
 from app.services.vector_text_builder import build_component_text, build_icon_text
 
 logger = logging.getLogger(__name__)
@@ -35,49 +35,45 @@ logger = logging.getLogger(__name__)
 # 内部工具：upsert component_variants
 # ──────────────────────────────────────────────────────────────────
 
-def _upsert_component_variant(
-    db: Session,
-    comp: dict,
-    variant: dict,
-    resource_id: int,
-    domain: str = None,
-) -> None:
-    """以 variant_key 为幂等键，upsert 一条 ComponentVariant 记录。"""
-    variant_key = variant.get("variantKey")
-    guid = variant.get("guid")
+def _bulk_upsert_component_variants(db: Session, rows: list) -> None:
+    """批量 upsert component_variants，优先按 variant_key，其次 guid，最后 resource_id。"""
+    if not rows:
+        return
 
-    row = db.query(ComponentVariant).filter(
-        ComponentVariant.variant_key == variant_key
-    ).first() if variant_key else None
+    # 按 variant_key 批量预取
+    vk_rows    = {r["variant_key"]: r for r in rows if r.get("variant_key")}
+    guid_rows  = {r["guid"]: r       for r in rows if not r.get("variant_key") and r.get("guid")}
+    rid_rows   = {r["resource_id"]: r for r in rows if not r.get("variant_key") and not r.get("guid")}
 
-    if row is None and guid:
-        row = db.query(ComponentVariant).filter(ComponentVariant.guid == guid).first()
+    existing_by_vk  = {}
+    existing_by_guid = {}
+    existing_by_rid  = {}
 
-    if row is None:
-        row = db.query(ComponentVariant).filter(ComponentVariant.resource_id == resource_id).first()
+    if vk_rows:
+        for cv in db.query(ComponentVariant).filter(ComponentVariant.variant_key.in_(vk_rows)).all():
+            existing_by_vk[cv.variant_key] = cv
+    if guid_rows:
+        for cv in db.query(ComponentVariant).filter(ComponentVariant.guid.in_(guid_rows)).all():
+            existing_by_guid[cv.guid] = cv
+    if rid_rows:
+        for cv in db.query(ComponentVariant).filter(ComponentVariant.resource_id.in_(rid_rows)).all():
+            existing_by_rid[cv.resource_id] = cv
 
-    if row is None:
-        db.add(ComponentVariant(
-            resource_id=resource_id,
-            domain=domain,
-            canvas_name=comp.get("canvasName"),
-            component_name=comp.get("name"),
-            component_guid=comp.get("guid"),
-            component_key=variant.get("parentKey") or comp.get("componentKey"),
-            name=variant.get("name", ""),
-            guid=guid,
-            variant_key=variant_key,
-            component_props=variant.get("componentProps"),
-        ))
-    else:
-        row.resource_id     = resource_id
-        row.domain          = domain if domain is not None else row.domain
-        row.canvas_name     = comp.get("canvasName", row.canvas_name)
-        row.component_name  = comp.get("name", row.component_name)
-        row.component_guid  = comp.get("guid", row.component_guid)
-        row.component_key   = variant.get("parentKey") or comp.get("componentKey") or row.component_key
-        row.name            = variant.get("name", row.name)
-        row.component_props = variant.get("componentProps", row.component_props)
+    FIELDS = ["resource_id", "domain", "canvas_name", "component_name",
+              "component_guid", "component_key", "name", "component_props"]
+
+    for r in rows:
+        existing = (
+            existing_by_vk.get(r.get("variant_key"))
+            or existing_by_guid.get(r.get("guid"))
+            or existing_by_rid.get(r.get("resource_id"))
+        )
+        if existing:
+            for f in FIELDS:
+                if r.get(f) is not None:
+                    setattr(existing, f, r[f])
+        else:
+            db.add(ComponentVariant(**r))
 
     db.flush()
 
@@ -86,23 +82,27 @@ def _upsert_component_variant(
 # 内部工具：upsert resource_icons
 # ──────────────────────────────────────────────────────────────────
 
-def _upsert_resource_icon(db: Session, item: dict, resource_id: int) -> None:
-    row = db.query(ResourceIcon).filter(ResourceIcon.resource_id == resource_id).first()
-    if row is None:
-        db.add(ResourceIcon(
-            resource_id=resource_id,
-            icon_id=item.get("id"),
-            chinese_name=item.get("chineseName"),
-            name=item.get("name"),
-            english_name=item.get("englishName"),
-            category=item.get("category"),
-        ))
-    else:
-        row.icon_id = item.get("id", row.icon_id)
-        row.chinese_name = item.get("chineseName", row.chinese_name)
-        row.name = item.get("name", row.name)
-        row.english_name = item.get("englishName", row.english_name)
-        row.category = item.get("category", row.category)
+def _bulk_upsert_resource_icons(db: Session, rows: list) -> None:
+    """批量 upsert resource_icons，按 resource_id 做幂等键。"""
+    if not rows:
+        return
+
+    resource_ids = [r["resource_id"] for r in rows]
+    existing_map = {
+        cv.resource_id: cv
+        for cv in db.query(ResourceIcon).filter(ResourceIcon.resource_id.in_(resource_ids)).all()
+    }
+
+    FIELDS = ["icon_id", "chinese_name", "name", "english_name", "category"]
+    for r in rows:
+        existing = existing_map.get(r["resource_id"])
+        if existing:
+            for f in FIELDS:
+                if r.get(f) is not None:
+                    setattr(existing, f, r[f])
+        else:
+            db.add(ResourceIcon(**r))
+
     db.flush()
 
 
@@ -116,8 +116,9 @@ def import_components(db: Session) -> dict:
     if not component_map:
         return {"added": 0, "updated": 0, "error": "component_map.json 为空或不存在"}
 
-    added = updated = 0
-    vector_items = []
+    # 第1步：遍历所有文件，收集全量数据
+    all_resource_data = []
+    all_variant_meta  = []  # 与 all_resource_data 一一对应，存 comp/variant/domain
 
     for entry in component_map:
         index_path = os.path.join(settings.FILE_ROOT_DIR, entry.get("indexPath", ""))
@@ -136,53 +137,95 @@ def import_components(db: Session) -> dict:
             parent_name = comp.get("name", "未命名组件集")
 
             for variant in comp.get("variants", []):
-                # 写 resources 主表
-                resource_row, is_new = upsert_resource(db, {
+                resource_name = f"{parent_name} / {variant.get('name', '')}"
+                all_resource_data.append({
                     "resource_type": int(ResourceType.component_set),
-                    "name":          f"{parent_name} / {variant.get('name', '')}",
+                    "name":          resource_name,
                     "file_name":     file_name,
                     "file_path":     hex_file,
                     "mime_type":     "text/plain",
                     "raw_data":      json.dumps({
-                        "domain":          domain,
-                        "canvasName":      comp.get("canvasName"),
-                        "componentKey":    comp.get("componentKey"),
-                        "componentGuid":   comp.get("guid"),
-                        "componentName":   parent_name,
-                        "variantName":     variant.get("name"),
-                        "variantKey":      variant.get("variantKey"),
-                        "variantGuid":     variant.get("guid"),
-                        "parentKey":       variant.get("parentKey"),
-                        "componentProps":  variant.get("componentProps", []),
+                        "domain":         domain,
+                        "canvasName":     comp.get("canvasName"),
+                        "componentKey":   comp.get("componentKey"),
+                        "componentGuid":  comp.get("guid"),
+                        "componentName":  parent_name,
+                        "variantName":    variant.get("name"),
+                        "variantKey":     variant.get("variantKey"),
+                        "variantGuid":    variant.get("guid"),
+                        "parentKey":      variant.get("parentKey"),
+                        "componentProps": variant.get("componentProps", []),
                     }, ensure_ascii=False),
                 })
-
-                # 写 component_variants 详情表
-                _upsert_component_variant(db, comp, variant, resource_row.id, domain=domain)
-
-                if is_new:
-                    added += 1
-                else:
-                    updated += 1
-
-                vector_items.append({
-                    "data_id": str(resource_row.id),
-                    "text": build_component_text(
-                        parent_name,
-                        comp.get("canvasName", ""),
-                        variant.get("name", ""),
-                    ),
-                    "metadata": {
-                        "name": resource_row.name,
-                        "canvas_name": comp.get("canvasName", ""),
-                        "component_name": parent_name,
-                        "domain": domain or "",
-                    },
+                all_variant_meta.append({
+                    "comp":          comp,
+                    "variant":       variant,
+                    "domain":        domain,
+                    "resource_name": resource_name,
+                    "parent_name":   parent_name,
                 })
 
+    if not all_resource_data:
+        return {"added": 0, "updated": 0}
+
+    logger.info("组件集：共 %d 条 variant，开始 DB 入库", len(all_resource_data))
+
+    # 第2步：批量 upsert resources（1次 SELECT + add_all + flush）
+    resource_map = bulk_upsert_resources(db, all_resource_data, int(ResourceType.component_set))
+    added   = sum(1 for _, is_new in resource_map.values() if is_new)
+    updated = sum(1 for _, is_new in resource_map.values() if not is_new)
+    logger.info("组件集 DB 入库完成：新增 %d 条，更新 %d 条", added, updated)
+
+    # 第3步：组装 component_variants 数据
+    variant_rows = []
+    vector_items = []
+    for meta in all_variant_meta:
+        comp        = meta["comp"]
+        variant     = meta["variant"]
+        domain      = meta["domain"]
+        parent_name = meta["parent_name"]
+        name        = meta["resource_name"]
+
+        resource_row, _ = resource_map.get(name, (None, None))
+        if resource_row is None:
+            continue
+
+        variant_rows.append({
+            "resource_id":     resource_row.id,
+            "domain":          domain,
+            "canvas_name":     comp.get("canvasName"),
+            "component_name":  comp.get("name"),
+            "component_guid":  comp.get("guid"),
+            "component_key":   variant.get("parentKey") or comp.get("componentKey"),
+            "name":            variant.get("name", ""),
+            "guid":            variant.get("guid"),
+            "variant_key":     variant.get("variantKey"),
+            "component_props": variant.get("componentProps"),
+        })
+        vector_items.append({
+            "data_id": str(resource_row.id),
+            "text": build_component_text(
+                parent_name,
+                comp.get("canvasName", ""),
+                variant.get("name", ""),
+            ),
+            "metadata": {
+                "name":           resource_row.name,
+                "canvas_name":    comp.get("canvasName", ""),
+                "component_name": parent_name,
+                "domain":         domain or "",
+            },
+        })
+
+    # 第4步：批量 upsert component_variants（最多3次 SELECT + add_all + flush）
+    _bulk_upsert_component_variants(db, variant_rows)
+
+    # 第5步：统一提交
     db.commit()
+    logger.info("组件集：DB 全部提交完成")
 
     if settings.VECTOR_SERVICE_ENABLED and vector_items:
+        logger.info("组件集：开始向量入库，共 %d 条", len(vector_items))
         try:
             from app.clients import vector_client
             result = vector_client.ingest("component", vector_items)
@@ -211,26 +254,43 @@ def import_icons(db: Session, icon_type: str) -> dict:
     resource_type = int(
         ResourceType.svg if icon_type == "svg" else ResourceType.illustration
     )
-    added = updated = 0
-    vector_items = []
 
+    # 第1步：收集全量 resource 数据
+    all_resource_data = []
     for item in items:
         chinese_name = item.get("chineseName") or item.get("name", "未命名")
-        # 写 resources 主表
-        resource_row, is_new = upsert_resource(db, {
+        all_resource_data.append({
             "resource_type": resource_type,
             "name":          chinese_name,
             "description":   item.get("description"),
             "raw_data":      json.dumps(item, ensure_ascii=False),
         })
 
-        # 写 resource_icons 详情表
-        _upsert_resource_icon(db, item, resource_row.id)
+    logger.info("%s：共 %d 条，开始 DB 入库", icon_type, len(all_resource_data))
 
-        if is_new:
-            added += 1
-        else:
-            updated += 1
+    # 第2步：批量 upsert resources
+    resource_map = bulk_upsert_resources(db, all_resource_data, resource_type)
+    added   = sum(1 for _, is_new in resource_map.values() if is_new)
+    updated = sum(1 for _, is_new in resource_map.values() if not is_new)
+    logger.info("%s DB 入库完成：新增 %d 条，更新 %d 条", icon_type, added, updated)
+
+    # 第3步：组装 icon 详情数据
+    icon_rows    = []
+    vector_items = []
+    for item in items:
+        chinese_name = item.get("chineseName") or item.get("name", "未命名")
+        resource_row, _ = resource_map.get(chinese_name, (None, None))
+        if resource_row is None:
+            continue
+
+        icon_rows.append({
+            "resource_id":  resource_row.id,
+            "icon_id":      item.get("id"),
+            "chinese_name": item.get("chineseName"),
+            "name":         item.get("name"),
+            "english_name": item.get("englishName"),
+            "category":     item.get("category"),
+        })
 
         if icon_type == "svg":
             vector_items.append({
@@ -243,16 +303,22 @@ def import_icons(db: Session, icon_type: str) -> dict:
                     item.get("description", ""),
                 ),
                 "metadata": {
-                    "name": resource_row.name,
-                    "description": item.get("description", ""),
+                    "name":         resource_row.name,
+                    "description":  item.get("description", ""),
                     "english_name": item.get("englishName", ""),
-                    "category": item.get("category", ""),
+                    "category":     item.get("category", ""),
                 },
             })
 
+    # 第4步：批量 upsert resource_icons
+    _bulk_upsert_resource_icons(db, icon_rows)
+
+    # 第5步：统一提交
     db.commit()
+    logger.info("%s：DB 全部提交完成", icon_type)
 
     if settings.VECTOR_SERVICE_ENABLED and vector_items:
+        logger.info("%s：开始向量入库，共 %d 条", icon_type, len(vector_items))
         try:
             from app.clients import vector_client
             result = vector_client.ingest("icon", vector_items)

@@ -15,7 +15,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-_BATCH_SIZE = 100
+_BATCH_SIZE = 200
 
 
 def ingest(vec_type: str, items: List[dict]) -> dict:
@@ -27,12 +27,16 @@ def ingest(vec_type: str, items: List[dict]) -> dict:
     if not items:
         return {"succeeded": [], "failed": []}
 
+    total_batches = (len(items) + _BATCH_SIZE - 1) // _BATCH_SIZE
+    logger.info("[ingest] 开始向量入库: type=%s  总计=%d条  共%d批", vec_type, len(items), total_batches)
+
     succeeded, failed = [], []
     for i in range(0, len(items), _BATCH_SIZE):
-        batch = items[i: i + _BATCH_SIZE]
-        logger.debug(
-            "[ingest] 发起入库: type=%s  batch=%d  items=%d条",
-            vec_type, i // _BATCH_SIZE, len(batch),
+        batch     = items[i: i + _BATCH_SIZE]
+        batch_num = i // _BATCH_SIZE + 1
+        logger.info(
+            "[ingest] 批次 %d/%d: type=%s  本批=%d条",
+            batch_num, total_batches, vec_type, len(batch),
         )
         try:
             resp = httpx.post(
@@ -47,9 +51,9 @@ def ingest(vec_type: str, items: List[dict]) -> dict:
             fail = data.get("failed", [])
             succeeded.extend(ok)
             failed.extend(fail)
-            logger.debug(
-                "[ingest] 批次结果: succeeded=%d  failed=%d",
-                len(ok), len(fail),
+            logger.info(
+                "[ingest] 批次 %d/%d 完成: 成功=%d  失败=%d  累计成功=%d",
+                batch_num, total_batches, len(ok), len(fail), len(succeeded),
             )
         except Exception as e:
             logger.warning("向量入库失败 (batch %d): %s", i // _BATCH_SIZE, e)
