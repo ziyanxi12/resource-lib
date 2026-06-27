@@ -10,12 +10,34 @@ export interface Resource {
   mime_type: string | null
   dimensions: { width: number; height: number } | null
   description: string | null
-  raw_data: string | null        // JSON 字符串，前端按需 parse
+  raw_data: string | null
   created_by: string | null
   sort_order: number
   created_at: string | null
   updated_at: string | null
   tags: string[]
+  score?: number
+}
+
+export interface ComponentRawData {
+  domain: string | null
+  canvasName: string | null
+  componentKey: string | null
+  componentGuid: string | null
+  componentName: string | null
+  variantName: string | null
+  variantKey: string | null
+  variantGuid: string | null
+  parentKey: string | null
+  componentProps: { name: string; type: string }[]
+}
+
+export interface IconRawData {
+  id: number
+  name: string
+  englishName: string | null
+  category: string | null
+  description: string | null
 }
 
 export interface ResourceListResponse {

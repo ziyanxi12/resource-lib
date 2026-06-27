@@ -1,12 +1,12 @@
 import { useState, useRef } from 'react'
 import { Button, message } from 'antd'
 import { SyncOutlined } from '@ant-design/icons'
-import ResourceList, { type ResourceListHandle } from './ResourceList'
+import IconList, { type IconListHandle } from './IconList'
 import { api } from '../api'
 
 export default function IllustrationManage() {
   const [syncing, setSyncing] = useState(false)
-  const listRef = useRef<ResourceListHandle | null>(null)
+  const listRef = useRef<IconListHandle | null>(null)
 
   const handleSync = async () => {
     setSyncing(true)
@@ -22,7 +22,7 @@ export default function IllustrationManage() {
   }
 
   return (
-    <ResourceList
+    <IconList
       type="illustration"
       label="插画"
       handleRef={listRef}

@@ -34,6 +34,10 @@ class Settings:
     COMPONENT_MAP_FILE: str = os.getenv("COMPONENT_MAP_FILE", "./storage/component/component_map.json")
 
 
+    # ── 向量服务 ──────────────────────────────────────────────
+    VECTOR_SERVICE_URL: str  = os.getenv("VECTOR_SERVICE_URL", "http://localhost:8000")
+    VECTOR_SERVICE_ENABLED: bool = os.getenv("VECTOR_SERVICE_ENABLED", "false").lower() == "true"
+
     # ── Mock 开关 ─────────────────────────────────────────────
     # true = 不调用真实外部 API，全部返回模拟数据，便于本地开发
     USE_MOCK: bool = os.getenv("USE_MOCK", "true").lower() == "true"

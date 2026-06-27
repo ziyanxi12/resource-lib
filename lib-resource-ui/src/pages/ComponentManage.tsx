@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { Button, Modal, Alert, Spin, Space, Statistic, Tag, message } from 'antd'
 import { SyncOutlined, BlockOutlined, CheckCircleFilled, SettingOutlined } from '@ant-design/icons'
-import ResourceList, { type ResourceListHandle } from './ResourceList'
+import ComponentList, { type ComponentListHandle } from './ComponentList'
 import { api } from '../api'
 import type { ComponentMapItem, SyncResult } from '../types'
 
-interface SyncState { loading: boolean; result?: SyncResult; error?: string }
+type SyncState = { loading: boolean; result?: SyncResult; error?: string }
 
 function SyncModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [components, setComponents] = useState<ComponentMapItem[]>([])
@@ -129,13 +129,11 @@ function SyncModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 export default function ComponentManage() {
   const [modalOpen, setModalOpen] = useState(false)
-  const listRef = useRef<ResourceListHandle | null>(null)
+  const listRef = useRef<ComponentListHandle | null>(null)
 
   return (
     <>
-      <ResourceList
-        type="component_set"
-        label="组件"
+      <ComponentList
         handleRef={listRef}
         extraActions={
           <Button

@@ -16,7 +16,7 @@ from app.database import engine, Base
 from app.models import resource  # noqa: F401
 
 from app.routers import resources, component, template, icon, image
-from app.routers import init_router
+from app.routers import init_router, vector_router
 
 
 @asynccontextmanager
@@ -51,6 +51,7 @@ app.include_router(template.router)
 app.include_router(icon.router)
 app.include_router(image.router)
 app.include_router(init_router.router)
+app.include_router(vector_router.router)
 
 # 静态文件服务：前端可通过 /static/{file_path} 直接访问上传文件
 if os.path.exists(settings.FILE_ROOT_DIR):

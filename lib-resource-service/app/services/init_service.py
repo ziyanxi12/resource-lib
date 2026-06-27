@@ -16,6 +16,7 @@
 """
 
 import json
+import logging
 import os
 import uuid
 
@@ -25,6 +26,9 @@ from app.config import settings
 from app.enums import ResourceType
 from app.models.resource import ComponentVariant, ResourceIcon
 from app.services.resource_service import upsert_resource, create_resource
+from app.services.vector_text_builder import build_component_text, build_icon_text
+
+logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -36,6 +40,7 @@ def _upsert_component_variant(
     comp: dict,
     variant: dict,
     resource_id: int,
+    domain: str = None,
 ) -> None:
     """以 variant_key 为幂等键，upsert 一条 ComponentVariant 记录。"""
     variant_key = variant.get("variantKey")
@@ -49,8 +54,12 @@ def _upsert_component_variant(
         row = db.query(ComponentVariant).filter(ComponentVariant.guid == guid).first()
 
     if row is None:
+        row = db.query(ComponentVariant).filter(ComponentVariant.resource_id == resource_id).first()
+
+    if row is None:
         db.add(ComponentVariant(
             resource_id=resource_id,
+            domain=domain,
             canvas_name=comp.get("canvasName"),
             component_name=comp.get("name"),
             component_guid=comp.get("guid"),
@@ -62,6 +71,7 @@ def _upsert_component_variant(
         ))
     else:
         row.resource_id     = resource_id
+        row.domain          = domain if domain is not None else row.domain
         row.canvas_name     = comp.get("canvasName", row.canvas_name)
         row.component_name  = comp.get("name", row.component_name)
         row.component_guid  = comp.get("guid", row.component_guid)
@@ -101,6 +111,8 @@ def import_components(db: Session) -> dict:
         return {"added": 0, "updated": 0, "error": "component_map.json 为空或不存在"}
 
     added = updated = 0
+    vector_items = []
+
     for entry in component_map:
         index_path = os.path.join(settings.FILE_ROOT_DIR, entry.get("indexPath", ""))
         if not os.path.exists(index_path):
@@ -109,6 +121,7 @@ def import_components(db: Session) -> dict:
         with open(index_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
+        domain     = data.get("domain") if isinstance(data, dict) else None
         components = data if isinstance(data, list) else data.get("componentSets", [])
 
         for comp in components:
@@ -125,6 +138,7 @@ def import_components(db: Session) -> dict:
                     "file_path":     hex_file,
                     "mime_type":     "text/plain",
                     "raw_data":      json.dumps({
+                        "domain":          domain,
                         "canvasName":      comp.get("canvasName"),
                         "componentKey":    comp.get("componentKey"),
                         "componentGuid":   comp.get("guid"),
@@ -138,14 +152,38 @@ def import_components(db: Session) -> dict:
                 })
 
                 # 写 component_variants 详情表
-                _upsert_component_variant(db, comp, variant, resource_row.id)
+                _upsert_component_variant(db, comp, variant, resource_row.id, domain=domain)
 
                 if is_new:
                     added += 1
                 else:
                     updated += 1
 
+                vector_items.append({
+                    "data_id": str(resource_row.id),
+                    "text": build_component_text(
+                        parent_name,
+                        comp.get("canvasName", ""),
+                        variant.get("name", ""),
+                    ),
+                    "metadata": {
+                        "name": resource_row.name,
+                        "canvas_name": comp.get("canvasName", ""),
+                        "component_name": parent_name,
+                        "domain": domain or "",
+                    },
+                })
+
     db.commit()
+
+    if settings.VECTOR_SERVICE_ENABLED and vector_items:
+        try:
+            from app.clients import vector_client
+            result = vector_client.ingest("component", vector_items)
+            logger.info("组件向量入库完成：成功 %d 条，失败 %d 条", len(result["succeeded"]), len(result["failed"]))
+        except Exception as e:
+            logger.warning("组件向量入库异常（不影响 DB 结果）: %s", e)
+
     return {"added": added, "updated": updated}
 
 
@@ -168,6 +206,8 @@ def import_icons(db: Session, icon_type: str) -> dict:
         ResourceType.svg if icon_type == "svg" else ResourceType.illustration
     )
     added = updated = 0
+    vector_items = []
+
     for item in items:
         # 写 resources 主表
         resource_row, is_new = upsert_resource(db, {
@@ -185,7 +225,33 @@ def import_icons(db: Session, icon_type: str) -> dict:
         else:
             updated += 1
 
+        if icon_type == "svg":
+            vector_items.append({
+                "data_id": str(resource_row.id),
+                "text": build_icon_text(
+                    item.get("name", ""),
+                    item.get("englishName", ""),
+                    item.get("description", ""),
+                    item.get("category", ""),
+                ),
+                "metadata": {
+                    "name": resource_row.name,
+                    "description": item.get("description", ""),
+                    "english_name": item.get("englishName", ""),
+                    "category": item.get("category", ""),
+                },
+            })
+
     db.commit()
+
+    if settings.VECTOR_SERVICE_ENABLED and vector_items:
+        try:
+            from app.clients import vector_client
+            result = vector_client.ingest("icon", vector_items)
+            logger.info("图标向量入库完成：成功 %d 条，失败 %d 条", len(result["succeeded"]), len(result["failed"]))
+        except Exception as e:
+            logger.warning("图标向量入库异常（不影响 DB 结果）: %s", e)
+
     return {"added": added, "updated": updated}
 
 

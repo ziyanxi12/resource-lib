@@ -46,6 +46,7 @@ class ComponentVariant(Base):
 
     id              = Column(Integer, primary_key=True, autoincrement=True)
     resource_id     = Column(Integer, ForeignKey("resources.id", ondelete="CASCADE"), nullable=False, unique=True)
+    domain          = Column(String(255), nullable=True,  comment="所属域，如 ICT_UI")
     canvas_name     = Column(String(255), nullable=True,  comment="画布分组名，如 '1.基础类'")
     component_name  = Column(String(255), nullable=True,  comment="组件集名称")
     component_guid  = Column(String(100), nullable=True,  comment="组件集 guid")

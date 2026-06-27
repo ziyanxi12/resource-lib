@@ -60,4 +60,14 @@ export const api = {
       method: 'POST',
       body: formData,
     }),
+
+  // Mock 向量搜索：返回带 score 的资源列表，按分数降序
+  vectorSearch: async (params: { query: string; type: string; limit?: number }) => {
+    const data = await request(`/api/resources?type=${params.type}&limit=50`)
+    const items: Array<Record<string, unknown>> = data.items ?? []
+    return items
+      .map(item => ({ ...item, score: Math.random() }))
+      .sort((a, b) => (b.score as number) - (a.score as number))
+      .slice(0, params.limit ?? 10)
+  },
 }
