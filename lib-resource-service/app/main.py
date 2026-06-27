@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import engine, Base
+from app.logger import setup_logging
 
 # 导入所有 ORM 模型，确保 create_all 能扫描到表定义
 from app.models import resource  # noqa: F401
@@ -21,7 +22,8 @@ from app.routers import init_router, vector_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用启动时：自动建表 + 创建文件存储子目录"""
+    """应用启动时：初始化日志 + 自动建表 + 创建文件存储子目录"""
+    setup_logging(settings.LOG_DIR, settings.LOG_LEVEL)
     Base.metadata.create_all(bind=engine)
     for sub in ["component", "template", "icon", "illus", "image"]:
         os.makedirs(os.path.join(settings.FILE_ROOT_DIR, sub), exist_ok=True)

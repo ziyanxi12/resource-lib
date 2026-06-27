@@ -1,9 +1,12 @@
 import json
+import logging
 import os
 import re
 from typing import Optional
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 _translations: Optional[dict] = None
 
@@ -11,16 +14,22 @@ _translations: Optional[dict] = None
 def _load_translations() -> dict:
     global _translations
     if _translations is None:
-        path = os.path.join(settings.FILE_ROOT_DIR, "component", "value_translations.json")
+        path = settings.TRANSLATION_FILE
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 _translations = json.load(f)
         else:
+            logger.warning("翻译文件不存在，属性值将不做中文翻译: %s", path)
             _translations = {}
     return _translations
 
 
 def build_component_text(component_name: str, canvas_name: str, variant_name: str) -> str:
+    logger.debug(
+        "[build_component_text] 入参: component_name=%r  canvas_name=%r  variant_name=%r",
+        component_name, canvas_name, variant_name,
+    )
+
     translations = _load_translations()
 
     clean_canvas = re.sub(r"^\d+\.", "", canvas_name or "").strip()
@@ -39,7 +48,9 @@ def build_component_text(component_name: str, canvas_name: str, variant_name: st
         zh = translations.get(pair, "") or translations.get(value, "")
         parts.append(f"{value} {zh}" if zh else value)
 
-    return " ".join(p for p in parts if p)
+    result = " ".join(p for p in parts if p)
+    logger.debug("[build_component_text] 输出: %r", result)
+    return result
 
 
 def _process_english_name(english_name: str) -> str:
@@ -62,10 +73,17 @@ def _process_description(description: str) -> str:
 
 
 def build_icon_text(name: str, english_name: str, description: str, category: str) -> str:
+    logger.debug(
+        "[build_icon_text] 入参: name=%r  english_name=%r  description=%r  category=%r",
+        name, english_name, description, category,
+    )
+
     parts = [
         name or "",
         _process_english_name(english_name),
         _process_description(description),
         category or "",
     ]
-    return " ".join(p for p in parts if p)
+    result = " ".join(p for p in parts if p)
+    logger.debug("[build_icon_text] 输出: %r", result)
+    return result

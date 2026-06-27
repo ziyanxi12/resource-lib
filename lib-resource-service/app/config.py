@@ -34,7 +34,18 @@ class Settings:
     COMPONENT_MAP_FILE: str = os.getenv("COMPONENT_MAP_FILE", "./storage/component/component_map.json")
 
 
-    # ── 向量服务 ──────────────────────────────────────────────
+    # ── 日志 ──────────────────────────────────────────────────────
+    LOG_DIR:   str = os.getenv("LOG_DIR",   "./logs")
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+
+    # ── 翻译文件 ──────────────────────────────────────────────────
+    # 组件属性值中文翻译表，build_component_text 使用
+    TRANSLATION_FILE: str = os.getenv(
+        "TRANSLATION_FILE",
+        "./storage/component/value_translations.json",
+    )
+
+    # ── 向量服务 ──────────────────────────────────────────────────
     VECTOR_SERVICE_URL: str  = os.getenv("VECTOR_SERVICE_URL", "http://localhost:8000")
     VECTOR_SERVICE_ENABLED: bool = os.getenv("VECTOR_SERVICE_ENABLED", "false").lower() == "true"
 
