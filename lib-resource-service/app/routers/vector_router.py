@@ -8,12 +8,16 @@ from fastapi import Depends
 from app.clients import vector_client
 from app.database import get_db
 from app.models.resource import Resource
+from app.routers.resources import _fmt
 
 router = APIRouter(prefix="/api/vector", tags=["向量搜索"])
 
 _TYPE_MAP = {
-    "component": "component",
-    "icon": "icon",
+    "component":     "component",
+    "component_set": "component",
+    "icon":          "icon",
+    "svg":           "icon",
+    "illustration":  "icon",
 }
 
 
@@ -68,19 +72,10 @@ def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
             rid = None
 
         res_row = resources_by_id.get(rid) if rid else None
-        output.append({
-            "data_id": r.get("data_id"),
-            "score": r.get("score"),
-            "text": r.get("text"),
-            "metadata": r.get("metadata"),
-            "resource": {
-                "id": res_row.id,
-                "name": res_row.name,
-                "resource_type": res_row.resource_type,
-                "description": res_row.description,
-                "file_path": res_row.file_path,
-                "thumbnail_path": res_row.thumbnail_path,
-            } if res_row else None,
-        })
+        if res_row is None:
+            continue
+        item = _fmt(res_row)
+        item["score"] = r.get("score")
+        output.append(item)
 
     return {"results": output}

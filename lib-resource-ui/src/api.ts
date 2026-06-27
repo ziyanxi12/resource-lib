@@ -61,13 +61,21 @@ export const api = {
       body: formData,
     }),
 
-  // Mock 向量搜索：返回带 score 的资源列表，按分数降序
   vectorSearch: async (params: { query: string; type: string; limit?: number }) => {
-    const data = await request(`/api/resources?type=${params.type}&limit=50`)
-    const items: Array<Record<string, unknown>> = data.items ?? []
-    return items
-      .map(item => ({ ...item, score: Math.random() }))
-      .sort((a, b) => (b.score as number) - (a.score as number))
-      .slice(0, params.limit ?? 10)
+    const typeMap: Record<string, string> = {
+      component_set: 'component',
+      svg: 'icon',
+      illustration: 'icon',
+    }
+    const data = await request('/api/vector/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: typeMap[params.type] ?? params.type,
+        query: params.query,
+        top_k: params.limit ?? 50,
+      }),
+    })
+    return data.results ?? []
   },
 }
