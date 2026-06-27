@@ -211,4 +211,17 @@ def _fmt(r) -> dict:
         "created_at":         r.created_at.isoformat() if r.created_at else None,
         "updated_at":         r.updated_at.isoformat() if r.updated_at else None,
         "tags":               [t.tag for t in r.tags],
+        "vector_text":        _build_vector_text(r),
     }
+
+
+def _build_vector_text(r) -> str | None:
+    if r.resource_type == int(ResourceType.component_set):
+        cv = r.component_variant
+        if cv:
+            return build_component_text(cv.component_name or "", cv.canvas_name or "", cv.name or "")
+    elif r.resource_type == int(ResourceType.svg):
+        ic = r.icon_detail
+        if ic:
+            return build_icon_text(r.name, ic.english_name or "", r.description or "", ic.category or "")
+    return None

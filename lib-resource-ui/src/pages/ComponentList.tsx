@@ -150,8 +150,22 @@ function ComponentDetail({ item, open, onClose }: {
         <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
           向量库映射
         </div>
+        <Field label="向量文本">
+          {item.vector_text
+            ? <code style={{
+                display: 'block', background: '#f1f5f9', border: '1px solid #e2e8f0',
+                borderRadius: 5, padding: '5px 8px', fontSize: 12,
+                fontFamily: 'ui-monospace,monospace', color: '#334155',
+                wordBreak: 'break-all', lineHeight: 1.7,
+              }}>{item.vector_text}</code>
+            : dash}
+        </Field>
+        <div style={{ borderTop: '1px dashed #e2e8f0', margin: '10px 0 6px', opacity: 0.6 }} />
         <Field label="组件名">
           <span style={{ fontWeight: 600, color: '#0f172a', fontSize: 13 }}>{raw?.componentName ?? dash}</span>
+        </Field>
+        <Field label="画布分类">
+          <span style={{ color: '#334155', fontSize: 13 }}>{raw?.canvasName ?? dash}</span>
         </Field>
         <Field label="变体名">
           <span style={{ color: '#334155', fontSize: 13 }}>{raw?.variantName ?? dash}</span>

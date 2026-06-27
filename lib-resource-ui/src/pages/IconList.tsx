@@ -132,9 +132,21 @@ function IconDetail({ item, open, onClose }: {
         <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
           向量库映射
         </div>
+        <Field label="向量文本">
+          {item.vector_text
+            ? <code style={{
+                display: 'block', background: '#f1f5f9', border: '1px solid #e2e8f0',
+                borderRadius: 5, padding: '5px 8px', fontSize: 12,
+                fontFamily: 'ui-monospace,monospace', color: '#334155',
+                wordBreak: 'break-all', lineHeight: 1.7,
+              }}>{item.vector_text}</code>
+            : dash}
+        </Field>
+        <div style={{ borderTop: '1px dashed #e2e8f0', margin: '10px 0 6px', opacity: 0.6 }} />
         <Field label="中文名"><span style={{ fontWeight: 600, color: '#0f172a' }}>{raw?.name ?? item.name}</span></Field>
         <Field label="英文名"><span style={{ color: '#334155' }}>{raw?.englishName ?? dash}</span></Field>
         <Field label="描述"><span style={{ color: '#334155' }}>{raw?.description ?? item.description ?? '—'}</span></Field>
+        <Field label="分类"><span style={{ color: '#334155' }}>{raw?.category ?? dash}</span></Field>
       </div>
     </Drawer>
   )

@@ -33,9 +33,9 @@ def build_component_text(component_name: str, canvas_name: str, variant_name: st
             if pair:
                 parts.append(pair)
             continue
-        _, value = pair.split("=", 1)
+        key_part, value = pair.split("=", 1)
         value = value.strip()
-        zh = translations.get(value, "")
+        zh = translations.get(pair, "") or translations.get(value, "")
         parts.append(f"{value} {zh}" if zh else value)
 
     return " ".join(p for p in parts if p)

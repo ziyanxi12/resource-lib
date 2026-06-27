@@ -17,6 +17,7 @@ export interface Resource {
   updated_at: string | null
   tags: string[]
   score?: number
+  vector_text?: string | null
 }
 
 export interface ComponentRawData {
