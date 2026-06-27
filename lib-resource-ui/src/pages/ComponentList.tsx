@@ -163,7 +163,7 @@ function ComponentDetail({ item, open, onClose }: {
         <Field label="组件名">
           <span style={{ fontWeight: 600, color: '#0f172a', fontSize: 13 }}>{item.cv_component_name ?? dash}</span>
         </Field>
-        <Field label="画布分类">
+        <Field label="组件类别">
           <span style={{ color: '#334155', fontSize: 13 }}>{item.cv_canvas_name ?? dash}</span>
         </Field>
         <Field label="变体名">

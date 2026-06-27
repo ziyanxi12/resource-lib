@@ -90,7 +90,7 @@ resources (主表)
 | 字段 | 说明 |
 |------|------|
 | `resource_id` | FK → resources.id |
-| `canvas_name` | 画布分组名，如 `1.基础类` |
+| `canvas_name` | 组件类别，如 `1.基础类` |
 | `component_name` | 组件集名称 |
 | `component_guid` | 组件集 guid |
 | `component_key` | 组件集 key（即 variant.parentKey），按此字段分组可得同一组件集的所有变体 |

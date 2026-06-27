@@ -34,27 +34,6 @@ export interface Resource {
   cv_component_props?: { name: string; type: string }[] | null
 }
 
-export interface ComponentRawData {
-  domain: string | null
-  canvasName: string | null
-  componentKey: string | null
-  componentGuid: string | null
-  componentName: string | null
-  variantName: string | null
-  variantKey: string | null
-  variantGuid: string | null
-  parentKey: string | null
-  componentProps: { name: string; type: string }[]
-}
-
-export interface IconRawData {
-  id: number
-  name: string
-  chineseName: string | null
-  englishName: string | null
-  category: string | null
-  description: string | null
-}
 
 export interface ResourceListResponse {
   total: number
