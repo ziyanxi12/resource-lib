@@ -110,7 +110,7 @@ def _bulk_upsert_resource_icons(db: Session, rows: list) -> None:
 # 组件集
 # ──────────────────────────────────────────────────────────────────
 
-def import_components(db: Session) -> dict:
+def import_components(db: Session, skip_vector: bool = False) -> dict:
     from app.services.component_service import get_component_map
     component_map = get_component_map()
     if not component_map:
@@ -137,7 +137,7 @@ def import_components(db: Session) -> dict:
             parent_name = comp.get("name", "未命名组件集")
 
             for variant in comp.get("variants", []):
-                resource_name = f"{parent_name} / {variant.get('name', '')}"
+                resource_name = variant.get("name", "")
                 all_resource_data.append({
                     "resource_type": int(ResourceType.component_set),
                     "name":          resource_name,
@@ -224,7 +224,7 @@ def import_components(db: Session) -> dict:
     db.commit()
     logger.info("组件集：DB 全部提交完成")
 
-    if settings.VECTOR_SERVICE_ENABLED and vector_items:
+    if not skip_vector and settings.VECTOR_SERVICE_ENABLED and vector_items:
         logger.info("组件集：开始向量入库，共 %d 条", len(vector_items))
         try:
             from app.clients import vector_client
@@ -240,7 +240,7 @@ def import_components(db: Session) -> dict:
 # SVG / 插画
 # ──────────────────────────────────────────────────────────────────
 
-def import_icons(db: Session, icon_type: str) -> dict:
+def import_icons(db: Session, icon_type: str, skip_vector: bool = False) -> dict:
     if icon_type == "svg":
         file_path = os.path.join(settings.FILE_ROOT_DIR, "icon", "icons.json")
     else:
@@ -317,7 +317,7 @@ def import_icons(db: Session, icon_type: str) -> dict:
     db.commit()
     logger.info("%s：DB 全部提交完成", icon_type)
 
-    if settings.VECTOR_SERVICE_ENABLED and vector_items:
+    if not skip_vector and settings.VECTOR_SERVICE_ENABLED and vector_items:
         logger.info("%s：开始向量入库，共 %d 条", icon_type, len(vector_items))
         try:
             from app.clients import vector_client
@@ -372,17 +372,17 @@ def import_templates(db: Session) -> dict:
 # 总入口
 # ──────────────────────────────────────────────────────────────────
 
-def run_init_import(db: Session) -> dict:
+def run_init_import(db: Session, skip_vector: bool = False) -> dict:
     results = {}
 
     try:
-        results["component"] = import_components(db)
+        results["component"] = import_components(db, skip_vector=skip_vector)
     except Exception as e:
         results["component"] = {"added": 0, "updated": 0, "error": str(e)}
 
     for icon_type in ("svg", "illustration"):
         try:
-            results[icon_type] = import_icons(db, icon_type)
+            results[icon_type] = import_icons(db, icon_type, skip_vector=skip_vector)
         except Exception as e:
             results[icon_type] = {"added": 0, "updated": 0, "error": str(e)}
 
