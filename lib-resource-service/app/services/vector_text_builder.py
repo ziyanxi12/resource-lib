@@ -24,8 +24,9 @@ def build_component_text(component_name: str, canvas_name: str, variant_name: st
     translations = _load_translations()
 
     clean_canvas = re.sub(r"^\d+\.", "", canvas_name or "").strip()
+    clean_name   = re.sub(r"^\d+\.", "", component_name or "").strip()
 
-    parts = [component_name or "", clean_canvas]
+    parts = [clean_name, clean_canvas]
 
     for pair in (variant_name or "").split(","):
         pair = pair.strip()
