@@ -35,6 +35,7 @@ def ingest(vec_type: str, items: List[dict]) -> dict:
                 f"{settings.VECTOR_SERVICE_URL}/api/v1/ingest",
                 json={"type": vec_type, "items": batch},
                 timeout=60,
+                trust_env=False,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -73,6 +74,7 @@ def search(
         f"{settings.VECTOR_SERVICE_URL}/api/v1/search",
         json=payload,
         timeout=30,
+        trust_env=False,
     )
     resp.raise_for_status()
     return resp.json().get("results", [])
@@ -93,6 +95,7 @@ def update(
         f"{settings.VECTOR_SERVICE_URL}/api/v1/update",
         json=payload,
         timeout=30,
+        trust_env=False,
     )
     resp.raise_for_status()
 
@@ -103,5 +106,6 @@ def delete(vec_type: str, data_id: str) -> None:
         f"{settings.VECTOR_SERVICE_URL}/api/v1/item",
         json={"type": vec_type, "data_id": data_id},
         timeout=10,
+        trust_env=False,
     )
     resp.raise_for_status()
