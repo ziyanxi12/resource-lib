@@ -78,6 +78,25 @@ def search(
     return resp.json().get("results", [])
 
 
+def update(
+    vec_type: str,
+    data_id: str,
+    text: Optional[str] = None,
+    metadata: Optional[dict] = None,
+) -> None:
+    payload: Dict[str, Any] = {"type": vec_type, "data_id": data_id}
+    if text is not None:
+        payload["text"] = text
+    if metadata is not None:
+        payload["metadata"] = metadata
+    resp = httpx.put(
+        f"{settings.VECTOR_SERVICE_URL}/api/v1/update",
+        json=payload,
+        timeout=30,
+    )
+    resp.raise_for_status()
+
+
 def delete(vec_type: str, data_id: str) -> None:
     resp = httpx.request(
         "DELETE",

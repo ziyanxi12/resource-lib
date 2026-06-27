@@ -46,9 +46,7 @@ class Settings:
     GET_VERSION_API_URL:       str = os.getenv("GET_VERSION_API_URL", "")
     GET_FILE_API_URL:          str = os.getenv("GET_FILE_API_URL", "")
     SPLIT_API_URL:             str = os.getenv("SPLIT_API_URL", "")
-    REBUILD_COMPONENT_API_URL: str = os.getenv("REBUILD_COMPONENT_API_URL", "")
     ICON_API_URL:              str = os.getenv("ICON_API_URL", "")
-    REBUILD_ICON_API_URL:      str = os.getenv("REBUILD_ICON_API_URL", "")
 
 
 # 全局单例，其他模块 from app.config import settings 即可使用

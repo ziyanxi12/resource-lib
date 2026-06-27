@@ -2,20 +2,32 @@
 通用资源路由
 GET  /api/resources        列表（支持类型过滤、搜索、分页）
 GET  /api/resources/{id}   详情
-PUT  /api/resources/{id}   更新元数据
-DELETE /api/resources/{id} 软删除
+PUT  /api/resources/{id}   更新元数据，同步更新向量库
+DELETE /api/resources/{id} 软删除，同步从向量库删除
 """
 
+import logging
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import get_db
 from app.enums import ResourceType
+from app.models.resource import Resource, ComponentVariant, ResourceIcon
 from app.services import resource_service
 from app.schemas.resource import ResourceUpdateRequest
+from app.services.vector_text_builder import build_component_text, build_icon_text
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/resources", tags=["资源管理"])
+
+_VECTOR_TYPES = {
+    int(ResourceType.component_set): "component",
+    int(ResourceType.svg):           "icon",
+}
 
 
 @router.get("/categories")
@@ -86,7 +98,7 @@ def update_resource(
     body: ResourceUpdateRequest,
     db: Session = Depends(get_db),
 ):
-    """更新资源元数据（名称、描述、排序等）"""
+    """更新资源元数据（名称、描述、排序等），组件/图标同步更新向量库"""
     update_data = body.model_dump(exclude_none=True)
     tags = update_data.pop("tags", None)
 
@@ -97,21 +109,88 @@ def update_resource(
     if tags is not None:
         resource_service.update_tags(db, resource_id, tags)
 
+    if settings.VECTOR_SERVICE_ENABLED and resource.resource_type in _VECTOR_TYPES:
+        _sync_to_vector(db, resource)
+
     return {"message": "更新成功", "id": resource_id}
 
 
 @router.delete("/{resource_id}")
 def delete_resource(resource_id: int, db: Session = Depends(get_db)):
-    """软删除资源"""
+    """软删除资源，组件/图标同步从向量库删除"""
+    resource = resource_service.get_resource_by_id(db, resource_id)
+    if not resource:
+        raise HTTPException(status_code=404, detail="资源不存在")
+
+    resource_type = resource.resource_type
+    rid = resource.id
+
     ok = resource_service.soft_delete_resource(db, resource_id)
     if not ok:
         raise HTTPException(status_code=404, detail="资源不存在")
+
+    if settings.VECTOR_SERVICE_ENABLED and resource_type in _VECTOR_TYPES:
+        vec_type = _VECTOR_TYPES[resource_type]
+        try:
+            from app.clients import vector_client
+            vector_client.delete(vec_type, str(rid))
+        except Exception as e:
+            logger.warning("向量删除异常 (resource_id=%s): %s", rid, e)
+
     return {"message": "删除成功", "id": resource_id}
 
 
 # ──────────────────────────────────────────────────────────────────
-# 辅助
+# 内部工具
 # ──────────────────────────────────────────────────────────────────
+
+def _sync_to_vector(db: Session, resource: Resource) -> None:
+    """将单条资源的最新数据同步到向量库（update 接口）。"""
+    from app.clients import vector_client
+
+    vec_type = _VECTOR_TYPES[resource.resource_type]
+
+    if resource.resource_type == int(ResourceType.component_set):
+        variant = db.query(ComponentVariant).filter(
+            ComponentVariant.resource_id == resource.id
+        ).first()
+        if not variant:
+            return
+        text = build_component_text(
+            variant.component_name or "",
+            variant.canvas_name or "",
+            variant.name or "",
+        )
+        metadata = {
+            "name":           resource.name,
+            "canvas_name":    variant.canvas_name or "",
+            "component_name": variant.component_name or "",
+            "domain":         variant.domain or "",
+        }
+    else:
+        icon = db.query(ResourceIcon).filter(
+            ResourceIcon.resource_id == resource.id
+        ).first()
+        if not icon:
+            return
+        text = build_icon_text(
+            resource.name,
+            icon.english_name or "",
+            resource.description or "",
+            icon.category or "",
+        )
+        metadata = {
+            "name":         resource.name,
+            "description":  resource.description or "",
+            "english_name": icon.english_name or "",
+            "category":     icon.category or "",
+        }
+
+    try:
+        vector_client.update(vec_type, str(resource.id), text=text, metadata=metadata)
+    except Exception as e:
+        logger.warning("向量更新异常 (resource_id=%s): %s", resource.id, e)
+
 
 def _fmt(r) -> dict:
     return {

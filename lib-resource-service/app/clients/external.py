@@ -81,17 +81,6 @@ async def call_split_api(pix_file_path: str) -> dict:
         return resp.json()
 
 
-async def call_rebuild_component_api() -> dict:
-    """调用组件向量化 API，将组件数据写入向量库。"""
-    if settings.USE_MOCK:
-        return {"success": True}
-
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(settings.REBUILD_COMPONENT_API_URL)
-        resp.raise_for_status()
-        return resp.json()
-
-
 # ──────────────────────────────────────────────────────────────────
 # SVG / 插画相关
 # ──────────────────────────────────────────────────────────────────
@@ -110,12 +99,3 @@ async def fetch_icon_list() -> list:
         return resp.json()
 
 
-async def call_rebuild_icon_api() -> dict:
-    """调用图标向量化 API，将 SVG/插画数据写入向量库。"""
-    if settings.USE_MOCK:
-        return {"success": True}
-
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(settings.REBUILD_ICON_API_URL)
-        resp.raise_for_status()
-        return resp.json()
