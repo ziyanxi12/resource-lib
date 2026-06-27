@@ -5,14 +5,9 @@ import {
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api } from '../api'
-import type { Resource, ComponentRawData } from '../types'
+import type { Resource } from '../types'
 
 const PAGE_LIMIT = 20
-
-function parseRaw(raw: string | null): ComponentRawData | null {
-  if (!raw) return null
-  try { return JSON.parse(raw) } catch { return null }
-}
 
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`
@@ -64,7 +59,6 @@ function ComponentDetail({ item, open, onClose }: {
   item: Resource | null; open: boolean; onClose: () => void
 }) {
   if (!item) return null
-  const raw = parseRaw(item.raw_data)
 
   return (
     <Drawer
@@ -75,51 +69,56 @@ function ComponentDetail({ item, open, onClose }: {
       destroyOnClose
       styles={{ body: { padding: '12px 20px 24px', overflowY: 'auto' } }}
     >
-      {/* ── 上区 ── */}
+      {/* ── 基础信息 ── */}
       <SectionHeader title="基础信息" />
-      <Field label="ID"><span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: '#94a3b8' }}>#{item.id}</span></Field>
+      <Field label="ID"><span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: '#94a3b8' }}>{item.id}</span></Field>
       <Field label="类型"><Tag style={{ margin: 0 }}>{item.resource_type_name}</Tag></Field>
       <Field label="名称">{item.name}</Field>
-      {item.description && <Field label="描述">{item.description}</Field>}
-      {item.tags.length > 0 && (
-        <Field label="标签">
-          <Space size={4} wrap>
-            {item.tags.map(t => <Tag key={t} style={{ margin: 0 }}>{t}</Tag>)}
-          </Space>
-        </Field>
-      )}
+      <Field label="描述">{item.description ?? dash}</Field>
+      <Field label="标签">
+        {item.tags.length > 0
+          ? <Space size={4} wrap>{item.tags.map(t => <Tag key={t} style={{ margin: 0 }}>{t}</Tag>)}</Space>
+          : dash}
+      </Field>
+      <Field label="创建者">{item.created_by ?? dash}</Field>
       <Field label="排序">{item.sort_order}</Field>
       <Field label="创建时间">{item.created_at ? item.created_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="更新时间">{item.updated_at ? item.updated_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
-      <Field label="领域">{raw?.domain ?? dash}</Field>
-      <Field label="组件类别">{raw?.canvasName ?? dash}</Field>
-      <Field label="组件名">{raw?.componentName ?? dash}</Field>
-      <Field label="变体名">{raw?.variantName ?? dash}</Field>
-      <Field label="组件 Key"><HashVal value={raw?.componentKey} /></Field>
-      <Field label="变体 Key"><HashVal value={raw?.variantKey} /></Field>
-      <Field label="组件 GUID"><HashVal value={raw?.componentGuid} /></Field>
-      <Field label="变体 GUID"><HashVal value={raw?.variantGuid} /></Field>
-      {raw?.componentProps != null && (
-        <Field label="Props">
-          {raw.componentProps.length ? (
-            <Space size={4} wrap>
-              {raw.componentProps.map((p, i) => (
+
+      {/* ── 文件信息 ── */}
+      <SectionHeader title="文件信息" />
+      <Field label="文件名"><HashVal value={item.file_name} /></Field>
+      <Field label="文件路径"><HashVal value={item.file_path} /></Field>
+      <Field label="缩略图路径"><HashVal value={item.thumbnail_path} /></Field>
+      <Field label="MIME">
+        {item.mime_type
+          ? <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12 }}>{item.mime_type}</span>
+          : dash}
+      </Field>
+      <Field label="大小">{item.file_size != null ? formatSize(item.file_size) : dash}</Field>
+      <Field label="尺寸">
+        {item.dimensions ? `${item.dimensions.width} × ${item.dimensions.height} px` : dash}
+      </Field>
+
+      {/* ── 组件信息 ── */}
+      <SectionHeader title="组件信息" />
+      <Field label="领域">{item.cv_domain ?? dash}</Field>
+      <Field label="组件类别">{item.cv_canvas_name ?? dash}</Field>
+      <Field label="组件名">{item.cv_component_name ?? dash}</Field>
+      <Field label="组件 GUID"><HashVal value={item.cv_component_guid} /></Field>
+      <Field label="组件 Key"><HashVal value={item.cv_component_key} /></Field>
+      <Field label="变体名">{item.cv_variant_name ?? dash}</Field>
+      <Field label="变体 GUID"><HashVal value={item.cv_variant_guid} /></Field>
+      <Field label="变体 Key"><HashVal value={item.cv_variant_key} /></Field>
+      <Field label="Props">
+        {item.cv_component_props?.length
+          ? <Space size={4} wrap>
+              {item.cv_component_props.map((p, i) => (
                 <Tag key={i} style={{ margin: 0, fontFamily: 'ui-monospace,monospace', fontSize: 11 }}>{p.name}: {p.type}</Tag>
               ))}
             </Space>
-          ) : dash}
-        </Field>
-      )}
-
-      {(item.file_name || item.file_path || item.mime_type || item.file_size != null) && (
-        <>
-          <SectionHeader title="文件信息" />
-          {item.file_name && <Field label="文件名"><HashVal value={item.file_name} /></Field>}
-          {item.file_path && <Field label="文件路径"><HashVal value={item.file_path} /></Field>}
-          {item.mime_type && <Field label="MIME"><span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12 }}>{item.mime_type}</span></Field>}
-          {item.file_size != null && <Field label="大小">{formatSize(item.file_size)}</Field>}
-        </>
-      )}
+          : dash}
+      </Field>
 
       {item.raw_data && (
         <Collapse
@@ -135,14 +134,14 @@ function ComponentDetail({ item, open, onClose }: {
                 padding: 10, fontSize: 11, overflow: 'auto', maxHeight: 240,
                 fontFamily: 'ui-monospace,monospace', color: '#334155', margin: 0, lineHeight: 1.6,
               }}>
-                {JSON.stringify(raw, null, 2)}
+                {(() => { try { return JSON.stringify(JSON.parse(item.raw_data!), null, 2) } catch { return item.raw_data } })()}
               </pre>
             ),
           }]}
         />
       )}
 
-      {/* ── 下区：向量库映射 ── */}
+      {/* ── 向量库映射 ── */}
       <div style={{
         marginTop: 20, padding: '14px 16px', borderRadius: 10,
         background: '#f8fafc', border: '1px solid #e2e8f0',
@@ -162,13 +161,13 @@ function ComponentDetail({ item, open, onClose }: {
         </Field>
         <div style={{ borderTop: '1px dashed #e2e8f0', margin: '10px 0 6px', opacity: 0.6 }} />
         <Field label="组件名">
-          <span style={{ fontWeight: 600, color: '#0f172a', fontSize: 13 }}>{raw?.componentName ?? dash}</span>
+          <span style={{ fontWeight: 600, color: '#0f172a', fontSize: 13 }}>{item.cv_component_name ?? dash}</span>
         </Field>
         <Field label="画布分类">
-          <span style={{ color: '#334155', fontSize: 13 }}>{raw?.canvasName ?? dash}</span>
+          <span style={{ color: '#334155', fontSize: 13 }}>{item.cv_canvas_name ?? dash}</span>
         </Field>
         <Field label="变体名">
-          <span style={{ color: '#334155', fontSize: 13 }}>{raw?.variantName ?? dash}</span>
+          <span style={{ color: '#334155', fontSize: 13 }}>{item.cv_variant_name ?? dash}</span>
         </Field>
       </div>
     </Drawer>
@@ -250,32 +249,32 @@ export default function ComponentList({ extraActions, handleRef }: Props) {
   const baseColumns: ColumnsType<Resource> = [
     {
       title: 'ID', dataIndex: 'id', width: 68,
-      render: (v: number) => <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: '#94a3b8' }}>#{v}</span>,
+      render: (v: number) => <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: '#94a3b8' }}>{v}</span>,
     },
     {
       title: '领域', width: 90,
-      render: (_: unknown, r: Resource) => parseRaw(r.raw_data)?.domain ?? dash,
+      render: (_: unknown, r: Resource) => r.cv_domain ?? dash,
     },
     {
       title: '组件类别', width: 120,
-      render: (_: unknown, r: Resource) => parseRaw(r.raw_data)?.canvasName ?? dash,
+      render: (_: unknown, r: Resource) => r.cv_canvas_name ?? dash,
     },
     {
       title: '组件名', width: 150,
       render: (_: unknown, r: Resource) => (
         <span style={{ fontWeight: 500, color: '#0f172a' }}>
-          {parseRaw(r.raw_data)?.componentName ?? '—'}
+          {r.cv_component_name ?? '—'}
         </span>
       ),
     },
     {
       title: '变体名', ellipsis: true,
-      render: (_: unknown, r: Resource) => parseRaw(r.raw_data)?.variantName ?? dash,
+      render: (_: unknown, r: Resource) => r.cv_variant_name ?? dash,
     },
     {
       title: '属性数', width: 72,
       render: (_: unknown, r: Resource) => {
-        const props = parseRaw(r.raw_data)?.componentProps ?? []
+        const props = r.cv_component_props ?? []
         return <Tag style={{ margin: 0 }}>{props.length}</Tag>
       },
     },

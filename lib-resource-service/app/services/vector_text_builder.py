@@ -72,17 +72,18 @@ def _process_description(description: str) -> str:
     return re.sub(r"([a-z])([A-Z])", r"\1 \2", description)
 
 
-def build_icon_text(name: str, english_name: str, description: str, category: str) -> str:
+def build_icon_text(category: str, chinese_name: str, name: str, english_name: str, description: str) -> str:
     logger.debug(
-        "[build_icon_text] 入参: name=%r  english_name=%r  description=%r  category=%r",
-        name, english_name, description, category,
+        "[build_icon_text] 入参: category=%r  chinese_name=%r  name=%r  english_name=%r  description=%r",
+        category, chinese_name, name, english_name, description,
     )
 
     parts = [
-        name or "",
+        category or "",
+        chinese_name or "",
+        _process_english_name(name),
         _process_english_name(english_name),
         _process_description(description),
-        category or "",
     ]
     result = " ".join(p for p in parts if p)
     logger.debug("[build_icon_text] 输出: %r", result)

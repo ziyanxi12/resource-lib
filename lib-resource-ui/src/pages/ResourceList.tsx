@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table, Input, Select, Button, Tooltip, Tag, Space, message, Spin,
-  Drawer, Descriptions,
+  Drawer, Collapse,
 } from 'antd'
 import { TableOutlined, AppstoreOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -11,12 +11,52 @@ import type { Resource } from '../types'
 const TABLE_LIMIT = 20
 const CARD_LIMIT = 24
 
-// ── Detail Drawer ────────────────────────────────────────────────
+// ── Detail Drawer helpers ────────────────────────────────────────
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`
   return `${(bytes / 1024).toFixed(1)} KB`
 }
 
+const dash = <span style={{ color: '#cbd5e1' }}>—</span>
+
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <div style={{
+      fontSize: 11, fontWeight: 700, color: '#94a3b8',
+      textTransform: 'uppercase' as const, letterSpacing: '0.08em',
+      padding: '14px 0 6px', borderBottom: '1px solid #f1f5f9', marginBottom: 2,
+    }}>
+      {title}
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', padding: '5px 0', gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ width: 76, flexShrink: 0, fontSize: 12, color: '#94a3b8', paddingTop: 2 }}>{label}</div>
+      <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#1e293b' }}>{children}</div>
+    </div>
+  )
+}
+
+function HashVal({ value }: { value: string | null | undefined }) {
+  if (!value) return dash
+  return (
+    <Tooltip title={value} placement="topLeft">
+      <code style={{
+        fontFamily: 'ui-monospace,monospace', fontSize: 11,
+        background: '#f1f5f9', padding: '2px 6px', borderRadius: 4,
+        display: 'block', overflow: 'hidden', textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap', cursor: 'default', color: '#475569',
+      }}>
+        {value}
+      </code>
+    </Tooltip>
+  )
+}
+
+// ── Detail Drawer ────────────────────────────────────────────────
 function ResourceDetail({ item, open, onClose }: {
   item: Resource | null; open: boolean; onClose: () => void
 }) {
@@ -25,131 +65,99 @@ function ResourceDetail({ item, open, onClose }: {
 
   return (
     <Drawer
-      title={
-        <div style={{ fontWeight: 700, fontSize: 16, color: '#0f172a' }}>{item.name}</div>
-      }
+      title={<span style={{ fontWeight: 700, fontSize: 15, color: '#0f172a' }}>{item.name}</span>}
       open={open}
       onClose={onClose}
-      width={560}
+      width={460}
       destroyOnClose
-      styles={{ body: { padding: '20px 24px' } }}
+      styles={{ body: { padding: '12px 20px 24px', overflowY: 'auto' } }}
     >
-      {/* Preview image */}
       {thumb && (
-        <div
-          style={{
-            marginBottom: 20, borderRadius: 10, overflow: 'hidden',
-            border: '1px solid #e2e8f0', background: '#f8fafc',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            maxHeight: 220,
-          }}
-        >
+        <div style={{
+          marginBottom: 16, borderRadius: 10, overflow: 'hidden',
+          border: '1px solid #e2e8f0', background: '#f8fafc',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          maxHeight: 200,
+        }}>
           <img
             src={`/static/${thumb}`}
             alt={item.name}
-            style={{ maxWidth: '100%', maxHeight: 220, objectFit: 'contain', display: 'block' }}
+            style={{ maxWidth: '100%', maxHeight: 200, objectFit: 'contain', display: 'block' }}
           />
         </div>
       )}
 
-      {/* Core fields */}
-      <Descriptions bordered column={2} size="small" labelStyle={{ color: '#64748b', whiteSpace: 'nowrap' }}>
-        <Descriptions.Item label="ID">
-          <span style={{ color: '#94a3b8', fontFamily: 'ui-monospace,monospace' }}>#{item.id}</span>
-        </Descriptions.Item>
-        <Descriptions.Item label="类型">
-          <Tag style={{ margin: 0 }}>{item.resource_type_name}</Tag>
-        </Descriptions.Item>
+      {/* ── 基础信息 ── */}
+      <SectionHeader title="基础信息" />
+      <Field label="ID"><span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: '#94a3b8' }}>{item.id}</span></Field>
+      <Field label="类型"><Tag style={{ margin: 0 }}>{item.resource_type_name}</Tag></Field>
+      <Field label="名称">{item.name}</Field>
+      <Field label="描述">{item.description ?? dash}</Field>
+      <Field label="标签">
+        {item.tags.length > 0
+          ? <Space size={4} wrap>{item.tags.map(t => <Tag key={t} style={{ margin: 0 }}>{t}</Tag>)}</Space>
+          : dash}
+      </Field>
+      <Field label="创建者">{item.created_by ?? dash}</Field>
+      <Field label="排序">{item.sort_order}</Field>
+      <Field label="创建时间">{item.created_at ? item.created_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
+      <Field label="更新时间">{item.updated_at ? item.updated_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
 
-        <Descriptions.Item label="名称" span={2}>{item.name}</Descriptions.Item>
+      {/* ── 文件信息 ── */}
+      <SectionHeader title="文件信息" />
+      <Field label="文件名"><HashVal value={item.file_name} /></Field>
+      <Field label="文件路径"><HashVal value={item.file_path} /></Field>
+      <Field label="缩略图路径"><HashVal value={item.thumbnail_path} /></Field>
+      <Field label="MIME">
+        {item.mime_type
+          ? <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12 }}>{item.mime_type}</span>
+          : dash}
+      </Field>
+      <Field label="大小">{item.file_size != null ? formatSize(item.file_size) : dash}</Field>
+      <Field label="尺寸">
+        {item.dimensions ? `${item.dimensions.width} × ${item.dimensions.height} px` : dash}
+      </Field>
 
-        {item.description && (
-          <Descriptions.Item label="描述" span={2}>{item.description}</Descriptions.Item>
-        )}
-
-        {item.tags.length > 0 && (
-          <Descriptions.Item label="标签" span={2}>
-            <Space size={4} wrap>
-              {item.tags.map(t => <Tag key={t} style={{ margin: 0 }}>{t}</Tag>)}
-            </Space>
-          </Descriptions.Item>
-        )}
-
-        {item.file_name && (
-          <Descriptions.Item label="文件名" span={2}>
-            <code style={{ fontSize: 12, background: '#f1f5f9', padding: '1px 6px', borderRadius: 4 }}>
-              {item.file_name}
-            </code>
-          </Descriptions.Item>
-        )}
-
-        {item.file_path && (
-          <Descriptions.Item label="文件路径" span={2}>
-            <code style={{ fontSize: 12, background: '#f1f5f9', padding: '1px 6px', borderRadius: 4, wordBreak: 'break-all' }}>
-              {item.file_path}
-            </code>
-          </Descriptions.Item>
-        )}
-
-        {item.thumbnail_path && (
-          <Descriptions.Item label="缩略图路径" span={2}>
-            <code style={{ fontSize: 12, background: '#f1f5f9', padding: '1px 6px', borderRadius: 4, wordBreak: 'break-all' }}>
-              {item.thumbnail_path}
-            </code>
-          </Descriptions.Item>
-        )}
-
-        {item.mime_type && (
-          <Descriptions.Item label="MIME 类型" span={item.file_size ? 1 : 2}>
-            <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12 }}>{item.mime_type}</span>
-          </Descriptions.Item>
-        )}
-
-        {item.file_size != null && (
-          <Descriptions.Item label="文件大小" span={item.mime_type ? 1 : 2}>
-            {formatSize(item.file_size)}
-          </Descriptions.Item>
-        )}
-
-        {item.dimensions && (
-          <Descriptions.Item label="尺寸" span={2}>
-            {item.dimensions.width} × {item.dimensions.height} px
-          </Descriptions.Item>
-        )}
-
-        {item.created_by && (
-          <Descriptions.Item label="创建者">{item.created_by}</Descriptions.Item>
-        )}
-
-        <Descriptions.Item label="排序权重">{item.sort_order}</Descriptions.Item>
-
-        <Descriptions.Item label="创建时间">
-          {item.created_at ? item.created_at.slice(0, 19).replace('T', ' ') : '—'}
-        </Descriptions.Item>
-        <Descriptions.Item label="更新时间">
-          {item.updated_at ? item.updated_at.slice(0, 19).replace('T', ' ') : '—'}
-        </Descriptions.Item>
-      </Descriptions>
-
-      {/* raw_data */}
-      {item.raw_data && (() => {
-        let parsed: unknown = null
-        try { parsed = JSON.parse(item.raw_data) } catch { /* not valid JSON */ }
-        return (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ marginBottom: 8, fontWeight: 600, fontSize: 13, color: '#475569' }}>原始数据</div>
-            <pre
-              style={{
-                background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8,
-                padding: 14, fontSize: 12, overflow: 'auto', maxHeight: 320,
+      {item.raw_data && (
+        <Collapse
+          ghost
+          size="small"
+          style={{ marginTop: 16 }}
+          items={[{
+            key: '1',
+            label: <span style={{ fontSize: 12, color: '#94a3b8' }}>原始 JSON</span>,
+            children: (
+              <pre style={{
+                background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6,
+                padding: 10, fontSize: 11, overflow: 'auto', maxHeight: 240,
                 fontFamily: 'ui-monospace,monospace', color: '#334155', margin: 0, lineHeight: 1.6,
-              }}
-            >
-              {parsed ? JSON.stringify(parsed, null, 2) : item.raw_data}
-            </pre>
-          </div>
-        )
-      })()}
+              }}>
+                {(() => { try { return JSON.stringify(JSON.parse(item.raw_data!), null, 2) } catch { return item.raw_data } })()}
+              </pre>
+            ),
+          }]}
+        />
+      )}
+
+      {/* ── 向量库映射 ── */}
+      <div style={{
+        marginTop: 20, padding: '14px 16px', borderRadius: 10,
+        background: '#f8fafc', border: '1px solid #e2e8f0',
+      }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
+          向量库映射
+        </div>
+        <Field label="向量文本">
+          {item.vector_text
+            ? <code style={{
+                display: 'block', background: '#f1f5f9', border: '1px solid #e2e8f0',
+                borderRadius: 5, padding: '5px 8px', fontSize: 12,
+                fontFamily: 'ui-monospace,monospace', color: '#334155',
+                wordBreak: 'break-all', lineHeight: 1.7,
+              }}>{item.vector_text}</code>
+            : dash}
+        </Field>
+      </div>
     </Drawer>
   )
 }
@@ -380,7 +388,7 @@ export default function ResourceList({ type, label, extraActions, handleRef }: P
       title: 'ID',
       dataIndex: 'id',
       width: 72,
-      render: (v: number) => <span style={{ color: '#94a3b8', fontSize: 12, fontFamily: 'ui-monospace,monospace' }}>#{v}</span>,
+      render: (v: number) => <span style={{ color: '#94a3b8', fontSize: 12, fontFamily: 'ui-monospace,monospace' }}>{v}</span>,
     },
     {
       title: '名称',

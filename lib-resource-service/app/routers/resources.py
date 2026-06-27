@@ -174,10 +174,11 @@ def _sync_to_vector(db: Session, resource: Resource) -> None:
         if not icon:
             return
         text = build_icon_text(
-            resource.name,
+            icon.category or "",
+            icon.chinese_name or resource.name,
+            icon.name or "",
             icon.english_name or "",
             resource.description or "",
-            icon.category or "",
         )
         metadata = {
             "name":         resource.name,
@@ -212,6 +213,20 @@ def _fmt(r) -> dict:
         "updated_at":         r.updated_at.isoformat() if r.updated_at else None,
         "tags":               [t.tag for t in r.tags],
         "vector_text":        _build_vector_text(r),
+        "icon_id":            r.icon_detail.icon_id      if r.icon_detail else None,
+        "icon_chinese_name":  r.icon_detail.chinese_name if r.icon_detail else None,
+        "icon_name":          r.icon_detail.name         if r.icon_detail else None,
+        "icon_english_name":  r.icon_detail.english_name if r.icon_detail else None,
+        "icon_category":      r.icon_detail.category     if r.icon_detail else None,
+        "cv_domain":          r.component_variant.domain          if r.component_variant else None,
+        "cv_canvas_name":     r.component_variant.canvas_name     if r.component_variant else None,
+        "cv_component_name":  r.component_variant.component_name  if r.component_variant else None,
+        "cv_component_guid":  r.component_variant.component_guid  if r.component_variant else None,
+        "cv_component_key":   r.component_variant.component_key   if r.component_variant else None,
+        "cv_variant_name":    r.component_variant.name            if r.component_variant else None,
+        "cv_variant_guid":    r.component_variant.guid            if r.component_variant else None,
+        "cv_variant_key":     r.component_variant.variant_key     if r.component_variant else None,
+        "cv_component_props": r.component_variant.component_props if r.component_variant else None,
     }
 
 
@@ -223,5 +238,11 @@ def _build_vector_text(r) -> str | None:
     elif r.resource_type == int(ResourceType.svg):
         ic = r.icon_detail
         if ic:
-            return build_icon_text(r.name, ic.english_name or "", r.description or "", ic.category or "")
+            return build_icon_text(
+                ic.category or "",
+                ic.chinese_name or r.name,
+                ic.name or "",
+                ic.english_name or "",
+                r.description or "",
+            )
     return None

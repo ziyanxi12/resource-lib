@@ -91,10 +91,16 @@ def _upsert_resource_icon(db: Session, item: dict, resource_id: int) -> None:
     if row is None:
         db.add(ResourceIcon(
             resource_id=resource_id,
+            icon_id=item.get("id"),
+            chinese_name=item.get("chineseName"),
+            name=item.get("name"),
             english_name=item.get("englishName"),
             category=item.get("category"),
         ))
     else:
+        row.icon_id = item.get("id", row.icon_id)
+        row.chinese_name = item.get("chineseName", row.chinese_name)
+        row.name = item.get("name", row.name)
         row.english_name = item.get("englishName", row.english_name)
         row.category = item.get("category", row.category)
     db.flush()
@@ -209,10 +215,11 @@ def import_icons(db: Session, icon_type: str) -> dict:
     vector_items = []
 
     for item in items:
+        chinese_name = item.get("chineseName") or item.get("name", "未命名")
         # 写 resources 主表
         resource_row, is_new = upsert_resource(db, {
             "resource_type": resource_type,
-            "name":          item.get("name", "未命名"),
+            "name":          chinese_name,
             "description":   item.get("description"),
             "raw_data":      json.dumps(item, ensure_ascii=False),
         })
@@ -229,10 +236,11 @@ def import_icons(db: Session, icon_type: str) -> dict:
             vector_items.append({
                 "data_id": str(resource_row.id),
                 "text": build_icon_text(
+                    item.get("category", ""),
+                    chinese_name,
                     item.get("name", ""),
                     item.get("englishName", ""),
                     item.get("description", ""),
-                    item.get("category", ""),
                 ),
                 "metadata": {
                     "name": resource_row.name,

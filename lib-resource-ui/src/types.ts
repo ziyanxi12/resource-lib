@@ -18,6 +18,20 @@ export interface Resource {
   tags: string[]
   score?: number
   vector_text?: string | null
+  icon_id?: number | null
+  icon_chinese_name?: string | null
+  icon_name?: string | null
+  icon_english_name?: string | null
+  icon_category?: string | null
+  cv_domain?: string | null
+  cv_canvas_name?: string | null
+  cv_component_name?: string | null
+  cv_component_guid?: string | null
+  cv_component_key?: string | null
+  cv_variant_name?: string | null
+  cv_variant_guid?: string | null
+  cv_variant_key?: string | null
+  cv_component_props?: { name: string; type: string }[] | null
 }
 
 export interface ComponentRawData {
@@ -36,6 +50,7 @@ export interface ComponentRawData {
 export interface IconRawData {
   id: number
   name: string
+  chineseName: string | null
   englishName: string | null
   category: string | null
   description: string | null

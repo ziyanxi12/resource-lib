@@ -67,7 +67,10 @@ class ResourceIcon(Base):
 
     id           = Column(Integer, primary_key=True, autoincrement=True)
     resource_id  = Column(Integer, ForeignKey("resources.id", ondelete="CASCADE"), nullable=False, unique=True)
-    english_name = Column(String(255), nullable=True)
+    icon_id      = Column(Integer, nullable=True, comment="图标原始 id（来自 JSON 数据）")
+    chinese_name = Column(String(255), nullable=True, comment="中文名称")
+    name         = Column(String(255), nullable=True, comment="英文全称，如 it_home")
+    english_name = Column(String(255), nullable=True, comment="英文短名，如 home")
     category     = Column(String(100), nullable=True)
     created_at   = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at   = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

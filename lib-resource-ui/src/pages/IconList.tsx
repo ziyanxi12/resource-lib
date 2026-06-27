@@ -5,14 +5,9 @@ import {
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api } from '../api'
-import type { Resource, IconRawData } from '../types'
+import type { Resource } from '../types'
 
 const PAGE_LIMIT = 20
-
-function parseRaw(raw: string | null): IconRawData | null {
-  if (!raw) return null
-  try { return JSON.parse(raw) } catch { return null }
-}
 
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`
@@ -63,7 +58,6 @@ function IconDetail({ item, open, onClose }: {
   item: Resource | null; open: boolean; onClose: () => void
 }) {
   if (!item) return null
-  const raw = parseRaw(item.raw_data)
 
   return (
     <Drawer
@@ -74,34 +68,48 @@ function IconDetail({ item, open, onClose }: {
       destroyOnClose
       styles={{ body: { padding: '12px 20px 24px', overflowY: 'auto' } }}
     >
-      {/* ── 上区 ── */}
+      {/* ── 基础信息 ── */}
       <SectionHeader title="基础信息" />
-      <Field label="ID"><span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: '#94a3b8' }}>#{item.id}</span></Field>
+      <Field label="ID"><span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: '#94a3b8' }}>{item.id}</span></Field>
       <Field label="类型"><Tag style={{ margin: 0 }}>{item.resource_type_name}</Tag></Field>
       <Field label="名称">{item.name}</Field>
-      {item.description && <Field label="描述">{item.description}</Field>}
-      {item.tags.length > 0 && (
-        <Field label="标签">
-          <Space size={4} wrap>
-            {item.tags.map(t => <Tag key={t} style={{ margin: 0 }}>{t}</Tag>)}
-          </Space>
-        </Field>
-      )}
+      <Field label="描述">{item.description ?? dash}</Field>
+      <Field label="标签">
+        {item.tags.length > 0
+          ? <Space size={4} wrap>{item.tags.map(t => <Tag key={t} style={{ margin: 0 }}>{t}</Tag>)}</Space>
+          : dash}
+      </Field>
+      <Field label="创建者">{item.created_by ?? dash}</Field>
       <Field label="排序">{item.sort_order}</Field>
       <Field label="创建时间">{item.created_at ? item.created_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="更新时间">{item.updated_at ? item.updated_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
-      <Field label="英文名">{raw?.englishName ?? dash}</Field>
-      <Field label="分类">{raw?.category ?? dash}</Field>
 
-      {(item.file_name || item.file_path || item.mime_type || item.file_size != null) && (
-        <>
-          <SectionHeader title="文件信息" />
-          {item.file_name && <Field label="文件名"><HashVal value={item.file_name} /></Field>}
-          {item.file_path && <Field label="文件路径"><HashVal value={item.file_path} /></Field>}
-          {item.mime_type && <Field label="MIME"><span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12 }}>{item.mime_type}</span></Field>}
-          {item.file_size != null && <Field label="大小">{formatSize(item.file_size)}</Field>}
-        </>
-      )}
+      {/* ── 文件信息 ── */}
+      <SectionHeader title="文件信息" />
+      <Field label="文件名"><HashVal value={item.file_name} /></Field>
+      <Field label="文件路径"><HashVal value={item.file_path} /></Field>
+      <Field label="缩略图路径"><HashVal value={item.thumbnail_path} /></Field>
+      <Field label="MIME">
+        {item.mime_type
+          ? <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12 }}>{item.mime_type}</span>
+          : dash}
+      </Field>
+      <Field label="大小">{item.file_size != null ? formatSize(item.file_size) : dash}</Field>
+      <Field label="尺寸">
+        {item.dimensions ? `${item.dimensions.width} × ${item.dimensions.height} px` : dash}
+      </Field>
+
+      {/* ── 图标信息 ── */}
+      <SectionHeader title="图标信息" />
+      <Field label="图标ID">
+        {item.icon_id != null
+          ? <span style={{ fontFamily: 'ui-monospace,monospace', fontSize: 12, color: '#64748b' }}>{item.icon_id}</span>
+          : dash}
+      </Field>
+      <Field label="中文名">{item.icon_chinese_name ?? dash}</Field>
+      <Field label="英文全称">{item.icon_name ?? dash}</Field>
+      <Field label="英文名">{item.icon_english_name ?? dash}</Field>
+      <Field label="分类">{item.icon_category ?? dash}</Field>
 
       {item.raw_data && (
         <Collapse
@@ -117,14 +125,14 @@ function IconDetail({ item, open, onClose }: {
                 padding: 10, fontSize: 11, overflow: 'auto', maxHeight: 240,
                 fontFamily: 'ui-monospace,monospace', color: '#334155', margin: 0, lineHeight: 1.6,
               }}>
-                {JSON.stringify(raw, null, 2)}
+                {(() => { try { return JSON.stringify(JSON.parse(item.raw_data!), null, 2) } catch { return item.raw_data } })()}
               </pre>
             ),
           }]}
         />
       )}
 
-      {/* ── 下区：向量库映射 ── */}
+      {/* ── 向量库映射 ── */}
       <div style={{
         marginTop: 20, padding: '14px 16px', borderRadius: 10,
         background: '#f8fafc', border: '1px solid #e2e8f0',
@@ -143,10 +151,11 @@ function IconDetail({ item, open, onClose }: {
             : dash}
         </Field>
         <div style={{ borderTop: '1px dashed #e2e8f0', margin: '10px 0 6px', opacity: 0.6 }} />
-        <Field label="中文名"><span style={{ fontWeight: 600, color: '#0f172a' }}>{raw?.name ?? item.name}</span></Field>
-        <Field label="英文名"><span style={{ color: '#334155' }}>{raw?.englishName ?? dash}</span></Field>
-        <Field label="描述"><span style={{ color: '#334155' }}>{raw?.description ?? item.description ?? '—'}</span></Field>
-        <Field label="分类"><span style={{ color: '#334155' }}>{raw?.category ?? dash}</span></Field>
+        <Field label="分类"><span style={{ color: '#334155' }}>{item.icon_category ?? dash}</span></Field>
+        <Field label="中文名"><span style={{ fontWeight: 600, color: '#0f172a' }}>{item.icon_chinese_name ?? dash}</span></Field>
+        <Field label="英文全称"><span style={{ color: '#334155' }}>{item.icon_name ?? dash}</span></Field>
+        <Field label="英文名"><span style={{ color: '#334155' }}>{item.icon_english_name ?? dash}</span></Field>
+        <Field label="描述"><span style={{ color: '#334155' }}>{item.description ?? '—'}</span></Field>
       </div>
     </Drawer>
   )
@@ -246,27 +255,36 @@ export default function IconList({ type, label, extraActions, handleRef }: Props
       dataIndex: 'id',
       width: 68,
       render: (v: number) => (
-        <span style={{ color: '#94a3b8', fontSize: 12, fontFamily: 'ui-monospace,monospace' }}>#{v}</span>
+        <span style={{ color: '#94a3b8', fontSize: 12, fontFamily: 'ui-monospace,monospace' }}>{v}</span>
       ),
+    },
+    {
+      title: '图标ID',
+      width: 80,
+      render: (_: unknown, r: Resource) => r.icon_id != null
+        ? <span style={{ color: '#64748b', fontSize: 12, fontFamily: 'ui-monospace,monospace' }}>{r.icon_id}</span>
+        : <span style={{ color: '#cbd5e1' }}>—</span>,
     },
     {
       title: '中文名',
       dataIndex: 'name',
       width: 120,
-      render: (v: string) => <span style={{ fontWeight: 500, color: '#0f172a' }}>{v}</span>,
+      render: (v: string, r: Resource) => (
+        <span style={{ fontWeight: 500, color: '#0f172a' }}>{r.icon_chinese_name ?? v}</span>
+      ),
     },
     {
       title: '英文名',
       width: 140,
-      render: (_: unknown, r: Resource) => parseRaw(r.raw_data)?.englishName ?? <span style={{ color: '#cbd5e1' }}>—</span>,
+      render: (_: unknown, r: Resource) => r.icon_english_name
+        ?? <span style={{ color: '#cbd5e1' }}>—</span>,
     },
     {
       title: '分类',
       width: 110,
-      render: (_: unknown, r: Resource) => {
-        const cat = parseRaw(r.raw_data)?.category
-        return cat ? <Tag style={{ margin: 0 }}>{cat}</Tag> : <span style={{ color: '#cbd5e1' }}>—</span>
-      },
+      render: (_: unknown, r: Resource) => r.icon_category
+        ? <Tag style={{ margin: 0 }}>{r.icon_category}</Tag>
+        : <span style={{ color: '#cbd5e1' }}>—</span>,
     },
     {
       title: '描述',
