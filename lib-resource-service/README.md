@@ -219,7 +219,56 @@ POST   /api/icon/sync              同步 SVG 或插画（body: {type: "svg"|"il
 
 POST   /api/image/upload           上传图片（multipart/form-data）
 
+POST   /api/vector/search          向量搜索（支持单条/批量，见下方说明）
+
 GET    /static/{file_path}         访问上传文件
 GET    /health                     健康检查
 GET    /docs                       Swagger API 文档
 ```
+
+---
+
+## 向量搜索
+
+**POST** `/api/vector/search`
+
+统一接口，`queries` 传一个或多个查询词，`results` 始终为二维数组，顺序与 `queries` 一一对应。
+
+### 请求
+
+| 字段 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| type | string | 是 | — | `component` / `component_set` / `icon` / `svg` / `illustration` |
+| queries | array[string] | 是 | — | 查询文本列表，至少 1 条 |
+| mode | string | 否 | `hybrid` | `vector` / `text` / `hybrid` |
+| top_k | integer | 否 | `10` | 每个 query 返回条数 |
+| filters | object | 否 | — | 精确过滤条件，透传给向量服务 |
+| hybrid_weight | float | 否 | `0.7` | hybrid 模式下向量分数权重（0~1） |
+
+```json
+{
+  "type": "component",
+  "queries": ["蓝色按钮", "输入框"],
+  "mode": "hybrid",
+  "top_k": 5
+}
+```
+
+### 响应
+
+`results` 为二维数组，每项对应一个 query 的结果，结构与 `/api/resources` 列表项相同，额外附 `score` 字段。
+
+```json
+{
+  "results": [
+    [
+      { "id": 1, "name": "主按钮", "score": 0.92, ... }
+    ],
+    [
+      { "id": 5, "name": "文本输入框", "score": 0.88, ... }
+    ]
+  ]
+}
+```
+
+> **依赖**：需配置 `.env` 中的 `VECTOR_SERVICE_URL`，指向向量管理服务地址。

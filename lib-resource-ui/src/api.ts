@@ -72,10 +72,10 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: typeMap[params.type] ?? params.type,
-        query: params.query,
+        queries: [params.query],
         top_k: params.limit ?? 50,
       }),
     })
-    return data.results ?? []
+    return (data.results?.[0]) ?? []
   },
 }

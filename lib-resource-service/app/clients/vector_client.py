@@ -105,6 +105,45 @@ def search(
     return results
 
 
+def batch_search(
+    vec_type: str,
+    queries: List[str],
+    mode: str = "hybrid",
+    top_k: int = 10,
+    filters: Optional[dict] = None,
+    hybrid_weight: float = 0.7,
+) -> List[List[dict]]:
+    """
+    批量搜索，返回二维结果列表，顺序与 queries 一一对应。
+    每条：{ data_id, text, score, metadata }
+    """
+    payload: Dict[str, Any] = {
+        "type": vec_type,
+        "queries": queries,
+        "mode": mode,
+        "top_k": top_k,
+        "hybrid_weight": hybrid_weight,
+    }
+    if filters:
+        payload["filters"] = filters
+
+    logger.debug(
+        "[batch_search] 发起批量搜索: type=%s  queries=%d条  mode=%s  top_k=%d",
+        vec_type, len(queries), mode, top_k,
+    )
+
+    resp = httpx.post(
+        f"{settings.VECTOR_SERVICE_URL}/api/v1/search/batch",
+        json=payload,
+        timeout=30,
+        trust_env=False,
+    )
+    resp.raise_for_status()
+    results = resp.json().get("results", [])
+    logger.debug("[batch_search] 返回 %d 组结果", len(results))
+    return results
+
+
 def update(
     vec_type: str,
     data_id: str,
