@@ -2,7 +2,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload, noload
 from fastapi import Depends
 
 from app.clients import vector_client
@@ -58,7 +58,19 @@ def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
 
     resources_by_id: dict[int, Resource] = {}
     if resource_ids:
-        rows = db.query(Resource).filter(
+        if vec_type == "component":
+            eager = [
+                selectinload(Resource.tags),
+                selectinload(Resource.component_variant),
+                noload(Resource.icon_detail),
+            ]
+        else:
+            eager = [
+                selectinload(Resource.tags),
+                selectinload(Resource.icon_detail),
+                noload(Resource.component_variant),
+            ]
+        rows = db.query(Resource).options(*eager).filter(
             Resource.id.in_(resource_ids),
             Resource.is_deleted == 0,
         ).all()
