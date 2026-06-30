@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.enums import ResourceType
 from app.models.resource import ComponentVariant, Resource, ResourceIcon
-from app.services.resource_service import create_resource, bulk_upsert_resources
+from app.services.resource_service import create_resource
 from app.services.vector_text_builder import build_component_text, build_icon_text
 
 logger = logging.getLogger(__name__)
@@ -292,37 +292,60 @@ def import_icons(db: Session, icon_type: str, skip_vector: bool = False) -> dict
         ResourceType.svg if icon_type == "svg" else ResourceType.illustration
     )
 
-    # 第1步：收集全量 resource 数据
-    all_resource_data = []
+    logger.info("%s：共 %d 条，开始 DB 入库", icon_type, len(items))
+
+    # 第1步：按 icon_id 批量预取已有记录，构建 icon_id → (ResourceIcon, Resource) 映射
+    all_icon_ids = [item["id"] for item in items if item.get("id") is not None]
+    existing_icon_map: dict = {}  # icon_id → ResourceIcon
+    if all_icon_ids:
+        for ri in db.query(ResourceIcon).filter(ResourceIcon.icon_id.in_(all_icon_ids)).all():
+            existing_icon_map[ri.icon_id] = ri
+
+    existing_resource_map: dict = {}  # resource_id → Resource
+    existing_rids = {ri.resource_id for ri in existing_icon_map.values()}
+    if existing_rids:
+        for r in db.query(Resource).filter(Resource.id.in_(existing_rids)).all():
+            existing_resource_map[r.id] = r
+
+    # 第2步：逐条 upsert resource + resource_icons
+    added = 0
+    updated = 0
+    icon_rows    = []
+    vector_items = []
+
     for item in items:
+        icon_id = item.get("id")
+        if icon_id is None:
+            logger.warning("图标缺少 id 字段，跳过：%s", item)
+            continue
         chinese_name = item.get("chineseName") or item.get("name", "未命名")
-        all_resource_data.append({
+        resource_data = {
             "resource_type": resource_type,
             "name":          chinese_name,
             "description":   item.get("description"),
             "raw_data":      json.dumps(item, ensure_ascii=False),
-        })
+        }
 
-    logger.info("%s：共 %d 条，开始 DB 入库", icon_type, len(all_resource_data))
-
-    # 第2步：批量 upsert resources
-    resource_map = bulk_upsert_resources(db, all_resource_data, resource_type)
-    added   = sum(1 for _, is_new in resource_map.values() if is_new)
-    updated = sum(1 for _, is_new in resource_map.values() if not is_new)
-    logger.info("%s DB 入库完成：新增 %d 条，更新 %d 条", icon_type, added, updated)
-
-    # 第3步：组装 icon 详情数据
-    icon_rows    = []
-    vector_items = []
-    for item in items:
-        chinese_name = item.get("chineseName") or item.get("name", "未命名")
-        resource_row, _ = resource_map.get(chinese_name, (None, None))
-        if resource_row is None:
-            continue
+        existing_ri = existing_icon_map.get(icon_id)
+        if existing_ri:
+            resource_row = existing_resource_map.get(existing_ri.resource_id)
+            if resource_row is None:
+                resource_row = Resource(**resource_data)
+                db.add(resource_row)
+            else:
+                for k, v in resource_data.items():
+                    if hasattr(resource_row, k) and v is not None:
+                        setattr(resource_row, k, v)
+            updated += 1
+        else:
+            resource_row = Resource(**resource_data)
+            db.add(resource_row)
+            added += 1
 
         icon_rows.append({
-            "resource_id":  resource_row.id,
-            "icon_id":      item.get("id"),
+            "_res":         resource_row,
+            "_existing_ri": existing_ri,
+            "icon_id":      icon_id,
             "chinese_name": item.get("chineseName"),
             "name":         item.get("name"),
             "english_name": item.get("englishName"),
@@ -331,24 +354,26 @@ def import_icons(db: Session, icon_type: str, skip_vector: bool = False) -> dict
 
         if icon_type == "svg":
             vector_items.append({
-                "data_id": str(resource_row.id),
-                "text": build_icon_text(
-                    item.get("category", ""),
-                    chinese_name,
-                    item.get("name", ""),
-                    item.get("englishName", ""),
-                    item.get("description", ""),
-                ),
-                "metadata": {
-                    "name":         resource_row.name,
-                    "description":  item.get("description", ""),
-                    "english_name": item.get("englishName", ""),
-                    "category":     item.get("category", ""),
-                },
+                "_res": resource_row,
+                "item": item,
+                "chinese_name": chinese_name,
             })
 
-    # 第4步：批量 upsert resource_icons
-    _bulk_upsert_resource_icons(db, icon_rows)
+    # 第3步：flush 使新增 resource 拿到 id
+    db.flush()
+    logger.info("%s DB 入库完成：新增 %d 条，更新 %d 条", icon_type, added, updated)
+
+    # 第4步：upsert resource_icons
+    ICON_FIELDS = ["icon_id", "chinese_name", "name", "english_name", "category"]
+    for row in icon_rows:
+        existing_ri = row.pop("_existing_ri")
+        resource_id = row.pop("_res").id
+        if existing_ri:
+            for f in ICON_FIELDS:
+                if row.get(f) is not None:
+                    setattr(existing_ri, f, row[f])
+        else:
+            db.add(ResourceIcon(resource_id=resource_id, **{f: row.get(f) for f in ICON_FIELDS}))
 
     # 第5步：统一提交
     db.commit()
@@ -358,7 +383,26 @@ def import_icons(db: Session, icon_type: str, skip_vector: bool = False) -> dict
         logger.info("%s：开始向量入库，共 %d 条", icon_type, len(vector_items))
         try:
             from app.clients import vector_client
-            result = vector_client.ingest("icon", vector_items)
+            ingest_items = [
+                {
+                    "data_id": str(m["_res"].id),
+                    "text": build_icon_text(
+                        m["item"].get("category", ""),
+                        m["chinese_name"],
+                        m["item"].get("name", ""),
+                        m["item"].get("englishName", ""),
+                        m["item"].get("description", ""),
+                    ),
+                    "metadata": {
+                        "name":         m["_res"].name,
+                        "description":  m["item"].get("description", ""),
+                        "english_name": m["item"].get("englishName", ""),
+                        "category":     m["item"].get("category", ""),
+                    },
+                }
+                for m in vector_items
+            ]
+            result = vector_client.ingest("icon", ingest_items)
             logger.info("图标向量入库完成：成功 %d 条，失败 %d 条", len(result["succeeded"]), len(result["failed"]))
         except Exception as e:
             logger.warning("图标向量入库异常（不影响 DB 结果）: %s", e)
