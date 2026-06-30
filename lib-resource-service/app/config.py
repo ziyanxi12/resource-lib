@@ -46,8 +46,9 @@ class Settings:
     )
 
     # ── 向量服务 ──────────────────────────────────────────────────
-    VECTOR_SERVICE_URL: str  = os.getenv("VECTOR_SERVICE_URL", "http://localhost:8000")
+    VECTOR_SERVICE_URL: str     = os.getenv("VECTOR_SERVICE_URL", "http://localhost:8000")
     VECTOR_SERVICE_ENABLED: bool = os.getenv("VECTOR_SERVICE_ENABLED", "false").lower() == "true"
+    VECTOR_SEARCH_MODE: str     = os.getenv("VECTOR_SEARCH_MODE", "vector")
 
     # ── Mock 开关 ─────────────────────────────────────────────
     # true = 不调用真实外部 API，全部返回模拟数据，便于本地开发

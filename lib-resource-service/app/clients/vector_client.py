@@ -69,7 +69,7 @@ def ingest(vec_type: str, items: List[dict]) -> dict:
 def search(
     vec_type: str,
     query: str,
-    mode: str = "hybrid",
+    mode: Optional[str] = None,
     top_k: int = 10,
     filters: Optional[dict] = None,
     hybrid_weight: float = 0.7,
@@ -78,10 +78,11 @@ def search(
     搜索向量库，返回原始结果列表。
     每条：{ data_id, text, score, metadata }
     """
+    resolved_mode = mode or settings.VECTOR_SEARCH_MODE
     payload: Dict[str, Any] = {
         "type": vec_type,
         "query": query,
-        "mode": mode,
+        "mode": resolved_mode,
         "top_k": top_k,
         "hybrid_weight": hybrid_weight,
     }
@@ -90,7 +91,7 @@ def search(
 
     logger.debug(
         "[search] 发起搜索: type=%s  query=%r  mode=%s  top_k=%d",
-        vec_type, query, mode, top_k,
+        vec_type, query, resolved_mode, top_k,
     )
 
     resp = httpx.post(
@@ -108,7 +109,7 @@ def search(
 def batch_search(
     vec_type: str,
     queries: List[str],
-    mode: str = "hybrid",
+    mode: Optional[str] = None,
     top_k: int = 10,
     filters: Optional[dict] = None,
     hybrid_weight: float = 0.7,
@@ -117,10 +118,11 @@ def batch_search(
     批量搜索，返回二维结果列表，顺序与 queries 一一对应。
     每条：{ data_id, text, score, metadata }
     """
+    resolved_mode = mode or settings.VECTOR_SEARCH_MODE
     payload: Dict[str, Any] = {
         "type": vec_type,
         "queries": queries,
-        "mode": mode,
+        "mode": resolved_mode,
         "top_k": top_k,
         "hybrid_weight": hybrid_weight,
     }
@@ -129,7 +131,7 @@ def batch_search(
 
     logger.debug(
         "[batch_search] 发起批量搜索: type=%s  queries=%d条  mode=%s  top_k=%d",
-        vec_type, len(queries), mode, top_k,
+        vec_type, len(queries), resolved_mode, top_k,
     )
 
     resp = httpx.post(

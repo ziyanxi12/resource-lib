@@ -1,11 +1,12 @@
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, selectinload, noload
 from fastapi import Depends
 
 from app.clients import vector_client
+from app.config import settings
 from app.database import get_db
 from app.models.resource import Resource
 from app.routers.resources import _fmt
@@ -24,7 +25,7 @@ _TYPE_MAP = {
 class SearchRequest(BaseModel):
     type: str
     queries: List[str]
-    mode: str = "hybrid"
+    mode: str = Field(default_factory=lambda: settings.VECTOR_SEARCH_MODE)
     top_k: int = 10
     filters: Optional[Dict[str, Any]] = None
     hybrid_weight: float = 0.7
