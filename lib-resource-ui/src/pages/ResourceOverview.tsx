@@ -5,11 +5,11 @@ import {
 import { api } from '../api'
 
 const STATS = [
-  { key: 'component_set', label: '组件',  icon: <BlockOutlined />,    color: '#6366f1', bg: '#eef2ff' },
-  { key: 'template',      label: '模版',  icon: <FileTextOutlined />, color: '#7c3aed', bg: '#f5f3ff' },
-  { key: 'svg',           label: '图标',  icon: <FunctionOutlined />, color: '#0891b2', bg: '#ecfeff' },
-  { key: 'illustration',  label: '插画',  icon: <StarOutlined />,     color: '#d97706', bg: '#fffbeb' },
-  { key: 'image',         label: '图片',  icon: <PictureOutlined />,  color: '#059669', bg: '#ecfdf5' },
+  { key: 'component', label: '组件',  icon: <BlockOutlined />,    color: '#6366f1', bg: '#eef2ff' },
+  { key: 'template',  label: '模版',  icon: <FileTextOutlined />, color: '#7c3aed', bg: '#f5f3ff' },
+  { key: 'icon',      label: '图标',  icon: <FunctionOutlined />, color: '#0891b2', bg: '#ecfeff' },
+  { key: 'illus',     label: '插画',  icon: <StarOutlined />,     color: '#d97706', bg: '#fffbeb' },
+  { key: 'image',     label: '图片',  icon: <PictureOutlined />,  color: '#059669', bg: '#ecfdf5' },
 ]
 
 function StatCard({

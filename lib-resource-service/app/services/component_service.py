@@ -117,7 +117,7 @@ def _write_to_db(db: Session, components: List[dict], domain: str = "") -> Tuple
 
         for variant in comp.get("variants", []):
             resource_row, is_new = upsert_resource(db, {
-                "resource_type": int(ResourceType.component_set),
+                "resource_type": int(ResourceType.component),
                 "name":          f"{parent_name} / {variant.get('name', '')}",
                 "file_name":     file_name,
                 "file_path":     hex_file,

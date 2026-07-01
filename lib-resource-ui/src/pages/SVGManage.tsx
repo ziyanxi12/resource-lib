@@ -11,7 +11,7 @@ export default function SVGManage() {
   const handleSync = async () => {
     setSyncing(true)
     try {
-      const r = await api.syncIcon('svg')
+      const r = await api.syncIcon()
       message.success(`同步完成：新增 ${r.added}，更新 ${r.updated}`)
       listRef.current?.refresh()
     } catch (e) {
@@ -23,7 +23,7 @@ export default function SVGManage() {
 
   return (
     <IconList
-      type="svg"
+      type="icon"
       label="图标"
       handleRef={listRef}
       extraActions={

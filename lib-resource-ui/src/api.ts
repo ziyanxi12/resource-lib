@@ -48,12 +48,8 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  syncIcon: (type: 'svg' | 'illustration') =>
-    request('/api/icon/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type }),
-    }),
+  syncIcon: () =>
+    request('/api/icon/sync', { method: 'POST' }),
 
   uploadImage: (formData: FormData) =>
     request('/api/image/upload', {
@@ -62,16 +58,11 @@ export const api = {
     }),
 
   vectorSearch: async (params: { query: string; type: string; limit?: number }) => {
-    const typeMap: Record<string, string> = {
-      component_set: 'component',
-      svg: 'icon',
-      illustration: 'icon',
-    }
     const data = await request('/api/vector/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        type: typeMap[params.type] ?? params.type,
+        type: params.type,
         queries: [params.query],
         top_k: params.limit ?? 50,
       }),

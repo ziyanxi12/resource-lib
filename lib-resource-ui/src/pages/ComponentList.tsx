@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Table, Input, Button, message, Drawer, Tooltip, Collapse,
+  Table, Input, Button, message, Drawer, Tooltip,
 } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -97,55 +97,24 @@ function ComponentDetail({ item, open, onClose }: {
       </Field>
 
       {/* ── 向量库映射 ── */}
-      <div style={{
-        marginTop: 20, padding: '14px 16px', borderRadius: 10,
-        background: '#f8fafc', border: '1px solid #e2e8f0',
-      }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-          向量库映射
-        </div>
-        <Field label="向量文本">
-          {item.vector_text
-            ? <code style={{
-                display: 'block', background: '#f1f5f9', border: '1px solid #e2e8f0',
-                borderRadius: 5, padding: '5px 8px', fontSize: 12,
-                fontFamily: 'ui-monospace,monospace', color: '#334155',
-                wordBreak: 'break-all', lineHeight: 1.7,
-              }}>{item.vector_text}</code>
-            : dash}
-        </Field>
-        <div style={{ borderTop: '1px dashed #e2e8f0', margin: '10px 0 6px', opacity: 0.6 }} />
-        <Field label="组件名">
-          <span style={{ fontWeight: 600, color: '#0f172a', fontSize: 13 }}>{item.cv_component_name ?? dash}</span>
-        </Field>
-        <Field label="组件类别">
-          <span style={{ color: '#334155', fontSize: 13 }}>{item.cv_canvas_name ?? dash}</span>
-        </Field>
-        <Field label="变体名">
-          <span style={{ color: '#334155', fontSize: 13 }}>{item.cv_variant_name ?? dash}</span>
-        </Field>
-      </div>
+      <SectionHeader title="向量库映射" />
+      <Field label="向量文本">{item.vector_text || dash}</Field>
+      <Field label="组件名">{item.cv_component_name ?? dash}</Field>
+      <Field label="组件类别">{item.cv_canvas_name ?? dash}</Field>
+      <Field label="变体名">{item.cv_variant_name ?? dash}</Field>
+      <Field label="领域">{item.cv_domain ?? dash}</Field>
 
-      {/* ── JSON 数据展开 ── */}
+      {/* ── JSON 数据 ── */}
       {item.raw_data && (
-        <Collapse
-          ghost
-          size="small"
-          style={{ marginTop: 20 }}
-          items={[{
-            key: '1',
-            label: <span style={{ fontSize: 12, color: '#94a3b8' }}>JSON 数据展开</span>,
-            children: (
-              <pre style={{
-                background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6,
-                padding: 10, fontSize: 11, overflow: 'auto', maxHeight: 240,
-                fontFamily: 'ui-monospace,monospace', color: '#334155', margin: 0, lineHeight: 1.6,
-              }}>
-                {(() => { try { return JSON.stringify(JSON.parse(item.raw_data!), null, 2) } catch { return item.raw_data } })()}
-              </pre>
-            ),
-          }]}
-        />
+        <>
+          <SectionHeader title="原始JSON" />
+          <pre style={{
+            fontSize: 11,
+            fontFamily: 'ui-monospace,monospace', color: '#334155', margin: 0, lineHeight: 1.6,
+          }}>
+            {(() => { try { return JSON.stringify(JSON.parse(item.raw_data!), null, 2) } catch { return item.raw_data } })()}
+          </pre>
+        </>
       )}
     </Drawer>
   )
@@ -193,7 +162,7 @@ export default function ComponentList({ handleRef }: Props) {
     if (searchMode) return
     let cancelled = false
     setLoading(true)
-    api.listResources({ type: 'component_set', page, limit: PAGE_LIMIT })
+    api.listResources({ type: 'component', page, limit: PAGE_LIMIT })
       .then(data => { if (!cancelled) { setItems(data.items); setTotal(data.total) } })
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setLoading(false) })
@@ -209,7 +178,7 @@ export default function ComponentList({ handleRef }: Props) {
     setSearchMode(true)
     setLoading(true)
     try {
-      const results = await api.vectorSearch({ query: trimmed, type: 'component_set', limit: 50 })
+      const results = await api.vectorSearch({ query: trimmed, type: 'component', limit: 50 })
       setItems(results as Resource[])
       setTotal(results.length)
     } catch { message.error('搜索失败') }

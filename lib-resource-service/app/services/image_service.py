@@ -12,6 +12,7 @@ from fastapi import UploadFile
 from app.config import settings
 from app.enums import ResourceType
 from app.services.resource_service import create_resource
+from app.services.vector_text_builder import ingest_vectors
 
 try:
     from PIL import Image as PILImage
@@ -58,6 +59,7 @@ async def upload_image(
         "created_by":    created_by,
     }
     resource = create_resource(db, data)
+    ingest_vectors(ResourceType.image, [(resource, {"name": name, "description": description or ""})])
 
     return {
         "id":         resource.id,

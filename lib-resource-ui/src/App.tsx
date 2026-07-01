@@ -15,24 +15,24 @@ import SVGManage from './pages/SVGManage'
 import IllustrationManage from './pages/IllustrationManage'
 import ImageManage from './pages/ImageManage'
 
-type PageKey = 'overview' | 'component' | 'template' | 'svg' | 'illustration' | 'image'
+type PageKey = 'overview' | 'component' | 'template' | 'icon' | 'illus' | 'image'
 
 const PAGES: Record<PageKey, React.ReactNode> = {
-  overview: <ResourceOverview />,
+  overview:  <ResourceOverview />,
   component: <ComponentManage />,
-  template: <TemplateManage />,
-  svg: <SVGManage />,
-  illustration: <IllustrationManage />,
-  image: <ImageManage />,
+  template:  <TemplateManage />,
+  icon:      <SVGManage />,
+  illus:     <IllustrationManage />,
+  image:     <ImageManage />,
 }
 
 const NAV = [
-  { key: 'overview' as PageKey,      icon: <AppstoreOutlined />,  label: '数据总览' },
-  { key: 'component' as PageKey,     icon: <BlockOutlined />,     label: '组件' },
-  { key: 'template' as PageKey,      icon: <FileTextOutlined />,  label: '模版' },
-  { key: 'svg' as PageKey,           icon: <FunctionOutlined />,  label: '图标' },
-  { key: 'illustration' as PageKey,  icon: <StarOutlined />,      label: '插画' },
-  { key: 'image' as PageKey,         icon: <PictureOutlined />,   label: '图片' },
+  { key: 'overview'  as PageKey, icon: <AppstoreOutlined />,  label: '数据总览' },
+  { key: 'component' as PageKey, icon: <BlockOutlined />,     label: '组件' },
+  { key: 'template'  as PageKey, icon: <FileTextOutlined />,  label: '模版' },
+  { key: 'icon'      as PageKey, icon: <FunctionOutlined />,  label: '图标' },
+  { key: 'illus'     as PageKey, icon: <StarOutlined />,      label: '插画' },
+  { key: 'image'     as PageKey, icon: <PictureOutlined />,   label: '图片' },
 ]
 
 const HEADER_H = 56

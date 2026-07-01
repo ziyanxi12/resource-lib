@@ -15,19 +15,14 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.enums import ResourceType
-from app.models.resource import Resource, ComponentVariant, ResourceIcon
+from app.models.resource import Resource
 from app.services import resource_service
 from app.schemas.resource import ResourceUpdateRequest
-from app.services.vector_text_builder import build_component_text, build_icon_text
+from app.services.vector_text_builder import get_registry, ingest_vectors
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/resources", tags=["资源管理"])
-
-_VECTOR_TYPES = {
-    int(ResourceType.component_set): "component",
-    int(ResourceType.svg):           "icon",
-}
 
 
 @router.get("/categories")
@@ -38,7 +33,7 @@ def get_categories(db: Session = Depends(get_db)):
 
 @router.get("/all")
 def get_all_by_category(
-    type_id: int = Query(..., description="资源类型 ID：1=组件集 2=模版 3=SVG 4=插画 5=图片"),
+    type_id: int = Query(..., description="资源类型 ID：1=component 2=template 3=icon 4=illus 5=image"),
     db: Session = Depends(get_db),
 ):
     """返回指定类别的全量数据（不分页）"""
@@ -59,7 +54,7 @@ def get_all_by_category(
 
 @router.get("")
 def list_resources(
-    type:   Optional[str] = Query(None, description="资源类型名，如 component_set"),
+    type:   Optional[str] = Query(None, description="资源类型名，如 component、icon、illus"),
     page:   int           = Query(1,    ge=1),
     limit:  int           = Query(20,   ge=1, le=100),
     search: Optional[str] = Query(None, description="关键词，匹配名称/英文名/描述"),
@@ -98,7 +93,7 @@ def update_resource(
     body: ResourceUpdateRequest,
     db: Session = Depends(get_db),
 ):
-    """更新资源元数据（名称、描述、排序等），组件/图标同步更新向量库"""
+    """更新资源元数据（名称、描述、排序等），同步更新向量库"""
     update_data = body.model_dump(exclude_none=True)
     tags = update_data.pop("tags", None)
 
@@ -109,7 +104,7 @@ def update_resource(
     if tags is not None:
         resource_service.update_tags(db, resource_id, tags)
 
-    if settings.VECTOR_SERVICE_ENABLED and resource.resource_type in _VECTOR_TYPES:
+    if settings.VECTOR_SERVICE_ENABLED:
         _sync_to_vector(db, resource)
 
     return {"message": "更新成功", "id": resource_id}
@@ -117,7 +112,7 @@ def update_resource(
 
 @router.delete("/{resource_id}")
 def delete_resource(resource_id: int, db: Session = Depends(get_db)):
-    """软删除资源，组件/图标同步从向量库删除"""
+    """软删除资源，同步从向量库删除"""
     resource = resource_service.get_resource_by_id(db, resource_id)
     if not resource:
         raise HTTPException(status_code=404, detail="资源不存在")
@@ -129,13 +124,14 @@ def delete_resource(resource_id: int, db: Session = Depends(get_db)):
     if not ok:
         raise HTTPException(status_code=404, detail="资源不存在")
 
-    if settings.VECTOR_SERVICE_ENABLED and resource_type in _VECTOR_TYPES:
-        vec_type = _VECTOR_TYPES[resource_type]
-        try:
-            from app.clients import vector_client
-            vector_client.delete(vec_type, str(rid))
-        except Exception as e:
-            logger.warning("向量删除异常 (resource_id=%s): %s", rid, e)
+    if settings.VECTOR_SERVICE_ENABLED:
+        spec = get_registry().get(ResourceType(resource_type))
+        if spec:
+            try:
+                from app.clients import vector_client
+                vector_client.delete(spec.vec_type, str(rid))
+            except Exception as e:
+                logger.warning("向量删除异常 (resource_id=%s): %s", rid, e)
 
     return {"message": "删除成功", "id": resource_id}
 
@@ -146,49 +142,14 @@ def delete_resource(resource_id: int, db: Session = Depends(get_db)):
 
 def _sync_to_vector(db: Session, resource: Resource) -> None:
     """将单条资源的最新数据同步到向量库（update 接口）。"""
-    from app.clients import vector_client
-
-    vec_type = _VECTOR_TYPES[resource.resource_type]
-
-    if resource.resource_type == int(ResourceType.component_set):
-        variant = db.query(ComponentVariant).filter(
-            ComponentVariant.resource_id == resource.id
-        ).first()
-        if not variant:
-            return
-        text = build_component_text(
-            variant.component_name or "",
-            variant.canvas_name or "",
-            variant.name or "",
-        )
-        metadata = {
-            "name":           resource.name,
-            "canvas_name":    variant.canvas_name or "",
-            "component_name": variant.component_name or "",
-            "domain":         variant.domain or "",
-        }
-    else:
-        icon = db.query(ResourceIcon).filter(
-            ResourceIcon.resource_id == resource.id
-        ).first()
-        if not icon:
-            return
-        text = build_icon_text(
-            icon.category or "",
-            icon.chinese_name or resource.name,
-            icon.name or "",
-            icon.english_name or "",
-            resource.description or "",
-        )
-        metadata = {
-            "name":         resource.name,
-            "description":  resource.description or "",
-            "english_name": icon.english_name or "",
-            "category":     icon.category or "",
-        }
-
+    spec = get_registry().get(ResourceType(resource.resource_type))
+    if spec is None:
+        return
     try:
-        vector_client.update(vec_type, str(resource.id), text=text, metadata=metadata)
+        text     = spec.build_text(resource, {})
+        metadata = spec.build_metadata(resource, {})
+        from app.clients import vector_client
+        vector_client.update(spec.vec_type, str(resource.id), text=text, metadata=metadata)
     except Exception as e:
         logger.warning("向量更新异常 (resource_id=%s): %s", resource.id, e)
 
@@ -213,11 +174,18 @@ def _fmt(r) -> dict:
         "updated_at":         r.updated_at.isoformat() if r.updated_at else None,
         "tags":               [t.tag for t in r.tags],
         "vector_text":        _build_vector_text(r),
+        # icon 字段
         "icon_id":            r.icon_detail.icon_id      if r.icon_detail else None,
         "icon_chinese_name":  r.icon_detail.chinese_name if r.icon_detail else None,
         "icon_name":          r.icon_detail.name         if r.icon_detail else None,
         "icon_english_name":  r.icon_detail.english_name if r.icon_detail else None,
         "icon_category":      r.icon_detail.category     if r.icon_detail else None,
+        # illus 字段
+        "illus_id":           r.illus_detail.illus_id   if r.illus_detail else None,
+        "illus_category":     r.illus_detail.category   if r.illus_detail else None,
+        "illus_tags":         r.illus_detail.tags        if r.illus_detail else None,
+        "illus_version":      r.illus_detail.version     if r.illus_detail else None,
+        # component 字段
         "cv_domain":          r.component_variant.domain          if r.component_variant else None,
         "cv_canvas_name":     r.component_variant.canvas_name     if r.component_variant else None,
         "cv_component_name":  r.component_variant.component_name  if r.component_variant else None,
@@ -230,19 +198,11 @@ def _fmt(r) -> dict:
     }
 
 
-def _build_vector_text(r) -> str | None:
-    if r.resource_type == int(ResourceType.component_set):
-        cv = r.component_variant
-        if cv:
-            return build_component_text(cv.component_name or "", cv.canvas_name or "", cv.name or "")
-    elif r.resource_type == int(ResourceType.svg):
-        ic = r.icon_detail
-        if ic:
-            return build_icon_text(
-                ic.category or "",
-                ic.chinese_name or r.name,
-                ic.name or "",
-                ic.english_name or "",
-                r.description or "",
-            )
-    return None
+def _build_vector_text(r) -> Optional[str]:
+    spec = get_registry().get(ResourceType(r.resource_type))
+    if spec is None:
+        return None
+    try:
+        return spec.build_text(r, {})
+    except Exception:
+        return None

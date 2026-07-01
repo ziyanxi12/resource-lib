@@ -1,7 +1,7 @@
 """
 初始化数据入库服务
 
-读取 FILE_ROOT_DIR/init/ 下的预置文件，批量 UPSERT 到 resources 表及各结构化详情表。
+读取 FILE_ROOT_DIR 下的预置文件，批量 UPSERT 到 resources 表及各结构化详情表。
 不触发任何外部 API。
 
 目录结构：
@@ -9,8 +9,9 @@
   └── {任意子目录}/
       └── component_index.json  ← { "domain": "...", "componentSets": [...] }
   icon/
-  ├── icons.json                ← [{id, name, englishName, category, description}]
-  └── illus.json
+  └── icons.json                ← [{id, name, chineseName, englishName, category, description}]
+  illus/
+  └── illus.json                ← [{id, alias, description, category, tags, version}]
   template/
   └── templates.json            ← [{name, description, hex_data}]
 """
@@ -19,14 +20,21 @@ import json
 import logging
 import os
 import uuid
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.enums import ResourceType
-from app.models.resource import ComponentVariant, Resource, ResourceIcon
+from app.models.resource import ComponentVariant, Resource, ResourceIcon, ResourceIllus
 from app.services.resource_service import create_resource
-from app.services.vector_text_builder import build_component_text, build_icon_text
+from app.services.vector_text_builder import ingest_vectors
+
+try:
+    from PIL import Image as PILImage
+    _HAS_PILLOW = True
+except ImportError:
+    _HAS_PILLOW = False
 
 logger = logging.getLogger(__name__)
 
@@ -36,76 +44,32 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────
 
 def _bulk_upsert_component_variants(db: Session, rows: list) -> None:
-    """批量 upsert component_variants，优先按 variant_key，其次 guid，最后 resource_id。"""
+    """批量 upsert component_variants，按 variant_key（PK）查找，无则新增。"""
     if not rows:
         return
 
-    # 按 variant_key 批量预取
-    vk_rows    = {r["variant_key"]: r for r in rows if r.get("variant_key")}
-    guid_rows  = {r["guid"]: r       for r in rows if not r.get("variant_key") and r.get("guid")}
-    rid_rows   = {r["resource_id"]: r for r in rows if not r.get("variant_key") and not r.get("guid")}
-
-    existing_by_vk  = {}
-    existing_by_guid = {}
-    existing_by_rid  = {}
-
-    if vk_rows:
-        for cv in db.query(ComponentVariant).filter(ComponentVariant.variant_key.in_(vk_rows)).all():
-            existing_by_vk[cv.variant_key] = cv
-    if guid_rows:
-        for cv in db.query(ComponentVariant).filter(ComponentVariant.guid.in_(guid_rows)).all():
-            existing_by_guid[cv.guid] = cv
-    if rid_rows:
-        for cv in db.query(ComponentVariant).filter(ComponentVariant.resource_id.in_(rid_rows)).all():
-            existing_by_rid[cv.resource_id] = cv
-
-    FIELDS = ["resource_id", "domain", "canvas_name", "component_name",
-              "component_guid", "component_key", "name", "component_props"]
-
-    for r in rows:
-        existing = (
-            existing_by_vk.get(r.get("variant_key"))
-            or existing_by_guid.get(r.get("guid"))
-            or existing_by_rid.get(r.get("resource_id"))
-        )
-        if existing:
-            for f in FIELDS:
-                if r.get(f) is not None:
-                    setattr(existing, f, r[f])
-        else:
-            db.add(ComponentVariant(**r))
-
-    db.flush()
-
-
-# ──────────────────────────────────────────────────────────────────
-# 内部工具：upsert resource_icons
-# ──────────────────────────────────────────────────────────────────
-
-def _bulk_upsert_resource_icons(db: Session, rows: list) -> None:
-    """批量 upsert resource_icons，按 resource_id 做幂等键。"""
-    if not rows:
+    valid_rows = {r["variant_key"]: r for r in rows if r.get("variant_key")}
+    if not valid_rows:
         return
 
-    resource_ids = [r["resource_id"] for r in rows]
-    existing_map = {
-        cv.resource_id: cv
-        for cv in db.query(ResourceIcon).filter(ResourceIcon.resource_id.in_(resource_ids)).all()
+    existing = {
+        cv.variant_key: cv
+        for cv in db.query(ComponentVariant).filter(
+            ComponentVariant.variant_key.in_(valid_rows)
+        ).all()
     }
 
-    FIELDS = ["icon_id", "chinese_name", "name", "english_name", "category"]
-    seen_ids: set = set()
-    for r in rows:
-        rid = r["resource_id"]
-        existing = existing_map.get(rid)
-        if existing:
-            for f in FIELDS:
+    UPDATE_FIELDS = ["resource_id", "domain", "canvas_name", "component_name",
+                     "component_guid", "component_key", "name", "guid", "component_props"]
+
+    for vk, r in valid_rows.items():
+        cv = existing.get(vk)
+        if cv:
+            for f in UPDATE_FIELDS:
                 if r.get(f) is not None:
-                    setattr(existing, f, r[f])
-            seen_ids.add(rid)
-        elif rid not in seen_ids:
-            db.add(ResourceIcon(**r))
-            seen_ids.add(rid)
+                    setattr(cv, f, r[f])
+        else:
+            db.add(ComponentVariant(**r))
 
     db.flush()
 
@@ -120,7 +84,6 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
     if not component_map:
         return {"added": 0, "updated": 0, "error": "component_map.json 为空或不存在"}
 
-    # 第1步：遍历所有文件，收集全量 meta
     all_meta = []
     for entry in component_map:
         index_path = os.path.join(settings.FILE_ROOT_DIR, entry.get("indexPath", ""))
@@ -149,28 +112,26 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
 
     logger.info("组件集：共 %d 条 variant，开始 DB 入库", len(all_meta))
 
-    # 第2步：按 variant_key 批量查已有 component_variants → resource_id
     all_variant_keys = [
         m["variant"].get("variantKey") for m in all_meta if m["variant"].get("variantKey")
     ]
-    existing_cv_map = {}  # variant_key → ComponentVariant
+    existing_cv_map = {}
     if all_variant_keys:
         for cv in db.query(ComponentVariant).filter(
             ComponentVariant.variant_key.in_(all_variant_keys)
         ).all():
             existing_cv_map[cv.variant_key] = cv
 
-    existing_resource_map = {}  # resource_id → Resource
+    existing_resource_map = {}
     existing_rids = {cv.resource_id for cv in existing_cv_map.values()}
     if existing_rids:
         for r in db.query(Resource).filter(Resource.id.in_(existing_rids)).all():
             existing_resource_map[r.id] = r
 
-    # 第3步：逐条 upsert resource，暂存 resource 对象引用
     added = 0
     updated = 0
-    variant_rows  = []
-    vector_metas  = []
+    variant_rows = []
+    vector_pairs = []
 
     for meta in all_meta:
         comp        = meta["comp"]
@@ -180,7 +141,7 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
         variant_key = variant.get("variantKey")
 
         resource_data = {
-            "resource_type": int(ResourceType.component_set),
+            "resource_type": int(ResourceType.component),
             "name":      variant.get("name", ""),
             "file_name": meta["file_name"],
             "file_path": meta["hex_file"],
@@ -216,102 +177,69 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
             added += 1
 
         variant_rows.append({
-            "_res":          resource_row,
-            "domain":          domain,
-            "canvas_name":     comp.get("canvasName"),
-            "component_name":  comp.get("name"),
-            "component_guid":  comp.get("guid"),
-            "component_key":   variant.get("parentKey") or comp.get("componentKey"),
-            "name":            variant.get("name", ""),
-            "guid":            variant.get("guid"),
-            "variant_key":     variant_key,
+            "_res":           resource_row,
+            "domain":         domain,
+            "canvas_name":    comp.get("canvasName"),
+            "component_name": comp.get("name"),
+            "component_guid": comp.get("guid"),
+            "component_key":  variant.get("parentKey") or comp.get("componentKey"),
+            "name":           variant.get("name", ""),
+            "guid":           variant.get("guid"),
+            "variant_key":    variant_key,
             "component_props": variant.get("componentProps"),
         })
-        vector_metas.append({
-            "_res":        resource_row,
-            "parent_name": parent_name,
-            "canvas_name": comp.get("canvasName", ""),
+        vector_pairs.append((resource_row, {
+            "parent_name":  parent_name,
+            "canvas_name":  comp.get("canvasName", ""),
             "variant_name": variant.get("name", ""),
-            "domain":      domain or "",
-        })
+            "domain":       domain or "",
+        }))
 
-    # 第4步：flush 使新增 resource 拿到 id
     db.flush()
     logger.info("组件集 DB 入库完成：新增 %d 条，更新 %d 条", added, updated)
 
-    # 第5步：填充 resource_id，批量 upsert component_variants
     for row in variant_rows:
         row["resource_id"] = row.pop("_res").id
     _bulk_upsert_component_variants(db, variant_rows)
 
-    # 第6步：统一提交
     db.commit()
     logger.info("组件集：DB 全部提交完成")
 
-    if not skip_vector and settings.VECTOR_SERVICE_ENABLED and vector_metas:
-        logger.info("组件集：开始向量入库，共 %d 条", len(vector_metas))
-        try:
-            from app.clients import vector_client
-            vector_items = [
-                {
-                    "data_id": str(m["_res"].id),
-                    "text": build_component_text(m["parent_name"], m["canvas_name"], m["variant_name"]),
-                    "metadata": {
-                        "name":           m["_res"].name,
-                        "canvas_name":    m["canvas_name"],
-                        "component_name": m["parent_name"],
-                        "domain":         m["domain"],
-                    },
-                }
-                for m in vector_metas
-            ]
-            result = vector_client.ingest("component", vector_items)
-            logger.info("组件向量入库完成：成功 %d 条，失败 %d 条", len(result["succeeded"]), len(result["failed"]))
-        except Exception as e:
-            logger.warning("组件向量入库异常（不影响 DB 结果）: %s", e)
+    ingest_vectors(ResourceType.component, vector_pairs, skip_vector=skip_vector)
 
     return {"added": added, "updated": updated}
 
 
 # ──────────────────────────────────────────────────────────────────
-# SVG / 插画
+# SVG 图标
 # ──────────────────────────────────────────────────────────────────
 
-def import_icons(db: Session, icon_type: str, skip_vector: bool = False) -> dict:
-    if icon_type == "svg":
-        file_path = os.path.join(settings.FILE_ROOT_DIR, "icon", "icons.json")
-    else:
-        file_path = os.path.join(settings.FILE_ROOT_DIR, "illus", "illus.json")
+def import_icons(db: Session, skip_vector: bool = False) -> dict:
+    file_path = os.path.join(settings.FILE_ROOT_DIR, "icon", "icons.json")
     if not os.path.exists(file_path):
         return {"added": 0, "updated": 0, "error": f"文件不存在：{file_path}"}
 
     with open(file_path, "r", encoding="utf-8") as f:
         items = json.load(f)
 
-    resource_type = int(
-        ResourceType.svg if icon_type == "svg" else ResourceType.illustration
-    )
+    logger.info("icon：共 %d 条，开始 DB 入库", len(items))
 
-    logger.info("%s：共 %d 条，开始 DB 入库", icon_type, len(items))
-
-    # 第1步：按 icon_id 批量预取已有记录，构建 icon_id → (ResourceIcon, Resource) 映射
     all_icon_ids = [item["id"] for item in items if item.get("id") is not None]
-    existing_icon_map: dict = {}  # icon_id → ResourceIcon
+    existing_icon_map: dict = {}
     if all_icon_ids:
         for ri in db.query(ResourceIcon).filter(ResourceIcon.icon_id.in_(all_icon_ids)).all():
             existing_icon_map[ri.icon_id] = ri
 
-    existing_resource_map: dict = {}  # resource_id → Resource
+    existing_resource_map: dict = {}
     existing_rids = {ri.resource_id for ri in existing_icon_map.values()}
     if existing_rids:
         for r in db.query(Resource).filter(Resource.id.in_(existing_rids)).all():
             existing_resource_map[r.id] = r
 
-    # 第2步：逐条 upsert resource + resource_icons
     added = 0
     updated = 0
     icon_rows    = []
-    vector_items = []
+    vector_pairs = []
 
     for item in items:
         icon_id = item.get("id")
@@ -320,7 +248,7 @@ def import_icons(db: Session, icon_type: str, skip_vector: bool = False) -> dict
             continue
         chinese_name = item.get("chineseName") or item.get("name", "未命名")
         resource_data = {
-            "resource_type": resource_type,
+            "resource_type": int(ResourceType.icon),
             "name":          chinese_name,
             "description":   item.get("description"),
             "raw_data":      json.dumps(item, ensure_ascii=False),
@@ -351,61 +279,127 @@ def import_icons(db: Session, icon_type: str, skip_vector: bool = False) -> dict
             "english_name": item.get("englishName"),
             "category":     item.get("category"),
         })
+        vector_pairs.append((resource_row, item))
 
-        if icon_type == "svg":
-            vector_items.append({
-                "_res": resource_row,
-                "item": item,
-                "chinese_name": chinese_name,
-            })
-
-    # 第3步：flush 使新增 resource 拿到 id
     db.flush()
-    logger.info("%s DB 入库完成：新增 %d 条，更新 %d 条", icon_type, added, updated)
+    logger.info("icon DB 入库完成：新增 %d 条，更新 %d 条", added, updated)
 
-    # 第4步：upsert resource_icons
-    ICON_FIELDS = ["icon_id", "chinese_name", "name", "english_name", "category"]
+    ICON_INSERT_FIELDS  = ["icon_id", "chinese_name", "name", "english_name", "category"]
+    ICON_UPDATE_FIELDS  = ["chinese_name", "name", "english_name", "category"]
     for row in icon_rows:
         existing_ri = row.pop("_existing_ri")
         resource_id = row.pop("_res").id
         if existing_ri:
-            for f in ICON_FIELDS:
+            for f in ICON_UPDATE_FIELDS:
                 if row.get(f) is not None:
                     setattr(existing_ri, f, row[f])
         else:
-            db.add(ResourceIcon(resource_id=resource_id, **{f: row.get(f) for f in ICON_FIELDS}))
+            db.add(ResourceIcon(resource_id=resource_id, **{f: row.get(f) for f in ICON_INSERT_FIELDS}))
 
-    # 第5步：统一提交
     db.commit()
-    logger.info("%s：DB 全部提交完成", icon_type)
+    logger.info("icon：DB 全部提交完成")
 
-    if not skip_vector and settings.VECTOR_SERVICE_ENABLED and vector_items:
-        logger.info("%s：开始向量入库，共 %d 条", icon_type, len(vector_items))
-        try:
-            from app.clients import vector_client
-            ingest_items = [
-                {
-                    "data_id": str(m["_res"].id),
-                    "text": build_icon_text(
-                        m["item"].get("category", ""),
-                        m["chinese_name"],
-                        m["item"].get("name", ""),
-                        m["item"].get("englishName", ""),
-                        m["item"].get("description", ""),
-                    ),
-                    "metadata": {
-                        "name":         m["_res"].name,
-                        "description":  m["item"].get("description", ""),
-                        "english_name": m["item"].get("englishName", ""),
-                        "category":     m["item"].get("category", ""),
-                    },
-                }
-                for m in vector_items
-            ]
-            result = vector_client.ingest("icon", ingest_items)
-            logger.info("图标向量入库完成：成功 %d 条，失败 %d 条", len(result["succeeded"]), len(result["failed"]))
-        except Exception as e:
-            logger.warning("图标向量入库异常（不影响 DB 结果）: %s", e)
+    ingest_vectors(ResourceType.icon, vector_pairs, skip_vector=skip_vector)
+
+    return {"added": added, "updated": updated}
+
+
+# ──────────────────────────────────────────────────────────────────
+# 插画
+# ──────────────────────────────────────────────────────────────────
+
+def import_illus(db: Session, skip_vector: bool = False) -> dict:
+    file_path = os.path.join(settings.FILE_ROOT_DIR, "illus", "illus.json")
+    if not os.path.exists(file_path):
+        return {"added": 0, "updated": 0, "error": f"文件不存在：{file_path}"}
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        items = json.load(f)
+
+    logger.info("illus：共 %d 条，开始 DB 入库", len(items))
+
+    all_illus_ids = [item["id"] for item in items if item.get("id") is not None]
+    existing_illus_map: dict = {}
+    if all_illus_ids:
+        for ri in db.query(ResourceIllus).filter(ResourceIllus.illus_id.in_(all_illus_ids)).all():
+            existing_illus_map[ri.illus_id] = ri
+
+    existing_resource_map: dict = {}
+    existing_rids = {ri.resource_id for ri in existing_illus_map.values()}
+    if existing_rids:
+        for r in db.query(Resource).filter(Resource.id.in_(existing_rids)).all():
+            existing_resource_map[r.id] = r
+
+    added = 0
+    updated = 0
+    illus_rows   = []
+    vector_pairs = []
+
+    for item in items:
+        illus_id = item.get("id")
+        if illus_id is None:
+            logger.warning("插画缺少 id 字段，跳过：%s", item)
+            continue
+        resource_data = {
+            "resource_type": int(ResourceType.illus),
+            "name":          item.get("alias", "未命名插画"),
+            "description":   item.get("description"),
+            "raw_data":      json.dumps(item, ensure_ascii=False),
+        }
+
+        existing_ri = existing_illus_map.get(illus_id)
+        if existing_ri:
+            resource_row = existing_resource_map.get(existing_ri.resource_id)
+            if resource_row is None:
+                resource_row = Resource(**resource_data)
+                db.add(resource_row)
+            else:
+                for k, v in resource_data.items():
+                    if hasattr(resource_row, k) and v is not None:
+                        setattr(resource_row, k, v)
+            updated += 1
+        else:
+            resource_row = Resource(**resource_data)
+            db.add(resource_row)
+            added += 1
+
+        raw_tags = item.get("tags")
+        if isinstance(raw_tags, list):
+            tags_list = raw_tags
+        elif isinstance(raw_tags, str) and raw_tags.strip():
+            tags_list = [t.strip() for t in raw_tags.split(",") if t.strip()]
+        else:
+            tags_list = []
+
+        illus_rows.append({
+            "_res":         resource_row,
+            "_existing_ri": existing_ri,
+            "illus_id":     illus_id,
+            "category":     item.get("category"),
+            "tags":         tags_list,
+            "version":      item.get("version"),
+        })
+        vector_pairs.append((resource_row, item))
+
+    db.flush()
+    logger.info("illus DB 入库完成：新增 %d 条，更新 %d 条", added, updated)
+
+    ILLUS_INSERT_FIELDS = ["illus_id", "category", "tags", "version"]
+    ILLUS_UPDATE_FIELDS = ["category", "tags", "version"]
+    for row in illus_rows:
+        existing_ri = row.pop("_existing_ri")
+        resource_id = row.pop("_res").id
+        if existing_ri:
+            for f in ILLUS_UPDATE_FIELDS:
+                if row.get(f) is not None:
+                    setattr(existing_ri, f, row[f])
+        else:
+            db.add(ResourceIllus(resource_id=resource_id, **{f: row.get(f) for f in ILLUS_INSERT_FIELDS}))
+
+    db.commit()
+    logger.info("illus：DB 全部提交完成")
+
+    ingest_vectors(ResourceType.illus, vector_pairs, skip_vector=skip_vector)
 
     return {"added": added, "updated": updated}
 
@@ -414,7 +408,7 @@ def import_icons(db: Session, icon_type: str, skip_vector: bool = False) -> dict
 # 模版
 # ──────────────────────────────────────────────────────────────────
 
-def import_templates(db: Session) -> dict:
+def import_templates(db: Session, skip_vector: bool = False) -> dict:
     json_path = os.path.join(settings.FILE_ROOT_DIR, "template", "templates.json")
     if not os.path.exists(json_path):
         return {"added": 0, "updated": 0, "error": f"文件不存在：{json_path}"}
@@ -426,6 +420,7 @@ def import_templates(db: Session) -> dict:
     os.makedirs(tmpl_dir, exist_ok=True)
 
     added = 0
+    vector_pairs = []
     for item in items:
         name     = item.get("name", "未命名模版")
         hex_data = item.get("hex_data", "")
@@ -437,16 +432,119 @@ def import_templates(db: Session) -> dict:
         with open(abs_path, "w", encoding="utf-8") as f:
             f.write(hex_data)
 
-        create_resource(db, {
+        resource = create_resource(db, {
             "resource_type": int(ResourceType.template),
             "name":          name,
             "file_name":     file_name,
             "file_path":     rel_path,
             "description":   item.get("description"),
         })
+        vector_pairs.append((resource, item))
         added += 1
 
+    ingest_vectors(ResourceType.template, vector_pairs, skip_vector=skip_vector)
+
     return {"added": added, "updated": 0}
+
+
+# ──────────────────────────────────────────────────────────────────
+# 总入口
+# ──────────────────────────────────────────────────────────────────
+
+# ──────────────────────────────────────────────────────────────────
+# 图片
+# ──────────────────────────────────────────────────────────────────
+
+def import_images(db: Session, skip_vector: bool = False) -> dict:
+    image_dir = os.path.join(settings.FILE_ROOT_DIR, "image")
+    if not os.path.exists(image_dir):
+        return {"added": 0, "updated": 0, "error": f"目录不存在：{image_dir}"}
+    
+    SUPPORTED_EXTS = ["png", "jpg", "jpeg", "svg", "gif", "webp"]
+    image_files = [
+        f for f in os.listdir(image_dir)
+        if f.rsplit(".", 1)[-1].lower() in SUPPORTED_EXTS
+    ]
+    
+    if not image_files:
+        return {"added": 0, "updated": 0, "error": "目录中没有图片文件"}
+    
+    logger.info("image：共 %d 个图片文件，开始 DB 入库", len(image_files))
+    
+    rel_paths = [f"image/{f}" for f in image_files]
+    existing_map = {
+        r.file_path: r
+        for r in db.query(Resource).filter(
+            Resource.resource_type == int(ResourceType.image),
+            Resource.file_path.in_(rel_paths)
+        ).all()
+    }
+    
+    added = 0
+    updated = 0
+    vector_pairs = []
+    
+    for fname in image_files:
+        abs_path = os.path.join(image_dir, fname)
+        rel_path = f"image/{fname}"
+        file_size = os.path.getsize(abs_path)
+        mime_type = _get_mime_type(fname)
+        dimensions = _extract_dimensions_from_file(abs_path)
+        name = fname.rsplit(".", 1)[0]
+        
+        resource_data = {
+            "resource_type": int(ResourceType.image),
+            "name":          name,
+            "file_name":     fname,
+            "file_path":     rel_path,
+            "file_size":     file_size,
+            "mime_type":     mime_type,
+            "dimensions":    dimensions,
+        }
+        
+        existing = existing_map.get(rel_path)
+        if existing:
+            for k, v in resource_data.items():
+                if hasattr(existing, k) and v is not None:
+                    setattr(existing, k, v)
+            resource_row = existing
+            updated += 1
+        else:
+            resource_row = Resource(**resource_data)
+            db.add(resource_row)
+            added += 1
+        
+        vector_pairs.append((resource_row, {"name": name, "description": ""}))
+    
+    db.flush()
+    db.commit()
+    logger.info("image DB 入库完成：新增 %d 条，更新 %d 条", added, updated)
+    
+    ingest_vectors(ResourceType.image, vector_pairs, skip_vector=skip_vector)
+    
+    return {"added": added, "updated": updated}
+
+
+def _get_mime_type(filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower()
+    return {
+        "png":  "image/png",
+        "jpg":  "image/jpeg",
+        "jpeg": "image/jpeg",
+        "svg":  "image/svg+xml",
+        "gif":  "image/gif",
+        "webp": "image/webp",
+    }.get(ext, "image/octet-stream")
+
+
+def _extract_dimensions_from_file(abs_path: str) -> Optional[dict]:
+    if not _HAS_PILLOW:
+        return None
+    try:
+        img = PILImage.open(abs_path)
+        return {"width": img.width, "height": img.height}
+    except Exception:
+        return None
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -456,20 +554,16 @@ def import_templates(db: Session) -> dict:
 def run_init_import(db: Session, skip_vector: bool = False) -> dict:
     results = {}
 
-    try:
-        results["component"] = import_components(db, skip_vector=skip_vector)
-    except Exception as e:
-        results["component"] = {"added": 0, "updated": 0, "error": str(e)}
-
-    for icon_type in ("svg", "illustration"):
+    for name, fn in [
+        ("component", lambda: import_components(db, skip_vector=skip_vector)),
+        ("icon",      lambda: import_icons(db, skip_vector=skip_vector)),
+        ("illus",     lambda: import_illus(db, skip_vector=skip_vector)),
+        ("template",  lambda: import_templates(db, skip_vector=skip_vector)),
+        ("image",     lambda: import_images(db, skip_vector=skip_vector)),
+    ]:
         try:
-            results[icon_type] = import_icons(db, icon_type, skip_vector=skip_vector)
+            results[name] = fn()
         except Exception as e:
-            results[icon_type] = {"added": 0, "updated": 0, "error": str(e)}
-
-    try:
-        results["template"] = import_templates(db)
-    except Exception as e:
-        results["template"] = {"added": 0, "updated": 0, "error": str(e)}
+            results[name] = {"added": 0, "updated": 0, "error": str(e)}
 
     return results

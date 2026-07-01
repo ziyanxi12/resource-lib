@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.enums import ResourceType
 from app.services.resource_service import create_resource
+from app.services.vector_text_builder import ingest_vectors
 
 
 def upload_template(
@@ -43,6 +44,7 @@ def upload_template(
         "created_by":    created_by,
     }
     resource = create_resource(db, data)
+    ingest_vectors(ResourceType.template, [(resource, {"name": name, "description": description or ""})])
 
     return {
         "id":        resource.id,

@@ -36,7 +36,7 @@ class Settings:
 
     # ── 日志 ──────────────────────────────────────────────────────
     LOG_DIR:   str = os.getenv("LOG_DIR",   "./logs")
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "DEBUG")
 
     # ── 翻译文件 ──────────────────────────────────────────────────
     # 组件属性值中文翻译表，build_component_text 使用

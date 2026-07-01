@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Table, Input, Button, message, Drawer, Tooltip, Collapse,
+  Table, Input, Button, message, Drawer, Tooltip,
 } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -88,51 +88,25 @@ function IconDetail({ item, open, onClose }: {
       <Field label="分类">{item.icon_category ?? dash}</Field>
 
       {/* ── 向量库映射 ── */}
-      <div style={{
-        marginTop: 20, padding: '14px 16px', borderRadius: 10,
-        background: '#f8fafc', border: '1px solid #e2e8f0',
-      }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-          向量库映射
-        </div>
-        <Field label="向量文本">
-          {item.vector_text
-            ? <code style={{
-                display: 'block', background: '#f1f5f9', border: '1px solid #e2e8f0',
-                borderRadius: 5, padding: '5px 8px', fontSize: 12,
-                fontFamily: 'ui-monospace,monospace', color: '#334155',
-                wordBreak: 'break-all', lineHeight: 1.7,
-              }}>{item.vector_text}</code>
-            : dash}
-        </Field>
-        <div style={{ borderTop: '1px dashed #e2e8f0', margin: '10px 0 6px', opacity: 0.6 }} />
-        <Field label="分类"><span style={{ color: '#334155' }}>{item.icon_category ?? dash}</span></Field>
-        <Field label="中文名"><span style={{ fontWeight: 600, color: '#0f172a' }}>{item.icon_chinese_name ?? dash}</span></Field>
-        <Field label="英文全称"><span style={{ color: '#334155' }}>{item.icon_name ?? dash}</span></Field>
-        <Field label="英文名"><span style={{ color: '#334155' }}>{item.icon_english_name ?? dash}</span></Field>
-        <Field label="描述"><span style={{ color: '#334155' }}>{item.description ?? '—'}</span></Field>
-      </div>
+      <SectionHeader title="向量库映射" />
+      <Field label="向量文本">{item.vector_text || dash}</Field>
+      <Field label="分类">{item.icon_category ?? dash}</Field>
+      <Field label="中文名">{item.icon_chinese_name ?? dash}</Field>
+      <Field label="英文全称">{item.icon_name ?? dash}</Field>
+      <Field label="英文名">{item.icon_english_name ?? dash}</Field>
+      <Field label="描述">{item.description ?? dash}</Field>
 
-      {/* ── JSON 数据展开 ── */}
+      {/* ── JSON 数据 ── */}
       {item.raw_data && (
-        <Collapse
-          ghost
-          size="small"
-          style={{ marginTop: 20 }}
-          items={[{
-            key: '1',
-            label: <span style={{ fontSize: 12, color: '#94a3b8' }}>JSON 数据展开</span>,
-            children: (
-              <pre style={{
-                background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6,
-                padding: 10, fontSize: 11, overflow: 'auto', maxHeight: 240,
-                fontFamily: 'ui-monospace,monospace', color: '#334155', margin: 0, lineHeight: 1.6,
-              }}>
-                {(() => { try { return JSON.stringify(JSON.parse(item.raw_data!), null, 2) } catch { return item.raw_data } })()}
-              </pre>
-            ),
-          }]}
-        />
+        <>
+          <SectionHeader title="原始JSON" />
+          <pre style={{
+            fontSize: 11,
+            fontFamily: 'ui-monospace,monospace', color: '#334155', margin: 0, lineHeight: 1.6,
+          }}>
+            {(() => { try { return JSON.stringify(JSON.parse(item.raw_data!), null, 2) } catch { return item.raw_data } })()}
+          </pre>
+        </>
       )}
     </Drawer>
   )
@@ -142,7 +116,7 @@ function IconDetail({ item, open, onClose }: {
 export interface IconListHandle { refresh: () => void }
 
 interface Props {
-  type: 'svg' | 'illustration'
+  type: 'icon' | 'illus'
   label: string
   extraActions?: React.ReactNode
   handleRef?: React.MutableRefObject<IconListHandle | null>

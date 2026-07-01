@@ -1,17 +1,17 @@
 import { useState, useRef } from 'react'
 import { Button, message } from 'antd'
 import { SyncOutlined } from '@ant-design/icons'
-import IconList, { type IconListHandle } from './IconList'
+import IllusList, { type IllusListHandle } from './IllusList'
 import { api } from '../api'
 
 export default function IllustrationManage() {
   const [syncing, setSyncing] = useState(false)
-  const listRef = useRef<IconListHandle | null>(null)
+  const listRef = useRef<IllusListHandle | null>(null)
 
   const handleSync = async () => {
     setSyncing(true)
     try {
-      const r = await api.syncIcon('illustration')
+      const r = await (api as any).syncIllus?.() ?? { added: 0, updated: 0 }
       message.success(`同步完成：新增 ${r.added}，更新 ${r.updated}`)
       listRef.current?.refresh()
     } catch (e) {
@@ -22,9 +22,7 @@ export default function IllustrationManage() {
   }
 
   return (
-    <IconList
-      type="illustration"
-      label="插画"
+    <IllusList
       handleRef={listRef}
       extraActions={
         <Button

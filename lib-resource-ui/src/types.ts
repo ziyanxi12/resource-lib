@@ -23,6 +23,10 @@ export interface Resource {
   icon_name?: string | null
   icon_english_name?: string | null
   icon_category?: string | null
+  illus_id?: string | null
+  illus_category?: string | null
+  illus_tags?: string[] | null
+  illus_version?: string | null
   cv_domain?: string | null
   cv_canvas_name?: string | null
   cv_component_name?: string | null
