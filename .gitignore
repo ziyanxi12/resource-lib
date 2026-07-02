@@ -20,3 +20,6 @@ dist/
 
 # Service runtime storage
 lib-resource-service/storage/
+lib-resource-service/logs/
+!lib-resource-service/storage/template/templates.json
+!lib-resource-service/storage/image/images.json
