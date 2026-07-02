@@ -71,6 +71,7 @@ class ResourceIcon(Base):
     name         = Column(String(255), nullable=True, comment="英文全称，如 it_home")
     english_name = Column(String(255), nullable=True, comment="英文短名，如 home")
     category     = Column(String(100), nullable=True)
+    group        = Column(String(100), nullable=True, comment="领域")
     created_at   = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at   = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -13,13 +13,14 @@
   illus/
   └── illus.json                ← [{id, alias, description, category, tags, version}]
   template/
-  └── templates.json            ← [{name, description, hex_data}]
+  └── templates.json            ← [{name, file_name, description}]
+  image/
+  └── images.json              ← [{name, file_name, description}]
 """
 
 import json
 import logging
 import os
-import uuid
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -278,14 +279,15 @@ def import_icons(db: Session, skip_vector: bool = False) -> dict:
             "name":         item.get("name"),
             "english_name": item.get("englishName"),
             "category":     item.get("category"),
+            "group":        item.get("group"),
         })
         vector_pairs.append((resource_row, item))
 
     db.flush()
     logger.info("icon DB 入库完成：新增 %d 条，更新 %d 条", added, updated)
 
-    ICON_INSERT_FIELDS  = ["icon_id", "chinese_name", "name", "english_name", "category"]
-    ICON_UPDATE_FIELDS  = ["chinese_name", "name", "english_name", "category"]
+    ICON_INSERT_FIELDS  = ["icon_id", "chinese_name", "name", "english_name", "category", "group"]
+    ICON_UPDATE_FIELDS  = ["chinese_name", "name", "english_name", "category", "group"]
     for row in icon_rows:
         existing_ri = row.pop("_existing_ri")
         resource_id = row.pop("_res").id
@@ -416,35 +418,71 @@ def import_templates(db: Session, skip_vector: bool = False) -> dict:
     with open(json_path, "r", encoding="utf-8") as f:
         items = json.load(f)
 
-    tmpl_dir = os.path.join(settings.FILE_ROOT_DIR, "template")
-    os.makedirs(tmpl_dir, exist_ok=True)
+    logger.info("template：共 %d 条，开始 DB 入库", len(items))
+
+    all_names = [item.get("name") for item in items if item.get("name")]
+    existing_map = {}
+    if all_names:
+        for r in db.query(Resource).filter(
+            Resource.resource_type == int(ResourceType.template),
+            Resource.name.in_(all_names)
+        ).all():
+            existing_map[r.name] = r
 
     added = 0
+    updated = 0
     vector_pairs = []
+
     for item in items:
-        name     = item.get("name", "未命名模版")
-        hex_data = item.get("hex_data", "")
+        name = item.get("name")
+        if not name:
+            logger.warning("模版缺少 name 字段，跳过：%s", item)
+            continue
 
-        file_name = f"{uuid.uuid4()}.txt"
-        rel_path  = f"template/{file_name}"
-        abs_path  = os.path.join(settings.FILE_ROOT_DIR, rel_path)
+        rel_path = item.get("file_name")
+        if not rel_path:
+            logger.warning("模版缺少 file_name 字段，跳过：%s", item)
+            continue
 
-        with open(abs_path, "w", encoding="utf-8") as f:
-            f.write(hex_data)
+        abs_path = os.path.join(settings.FILE_ROOT_DIR, rel_path)
+        if not os.path.exists(abs_path):
+            logger.warning("模版文件不存在，跳过：%s", abs_path)
+            continue
 
-        resource = create_resource(db, {
+        file_name = os.path.basename(rel_path)
+        file_size = os.path.getsize(abs_path)
+
+        resource_data = {
             "resource_type": int(ResourceType.template),
             "name":          name,
             "file_name":     file_name,
             "file_path":     rel_path,
+            "file_size":     file_size,
+            "mime_type":     "text/plain",
             "description":   item.get("description"),
-        })
-        vector_pairs.append((resource, item))
-        added += 1
+        }
+
+        existing = existing_map.get(name)
+        if existing:
+            for k, v in resource_data.items():
+                if hasattr(existing, k) and v is not None:
+                    setattr(existing, k, v)
+            resource_row = existing
+            updated += 1
+        else:
+            resource_row = Resource(**resource_data)
+            db.add(resource_row)
+            added += 1
+
+        vector_pairs.append((resource_row, item))
+
+    db.flush()
+    db.commit()
+    logger.info("template DB 入库完成：新增 %d 条，更新 %d 条", added, updated)
 
     ingest_vectors(ResourceType.template, vector_pairs, skip_vector=skip_vector)
 
-    return {"added": added, "updated": 0}
+    return {"added": added, "updated": updated}
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -456,53 +494,61 @@ def import_templates(db: Session, skip_vector: bool = False) -> dict:
 # ──────────────────────────────────────────────────────────────────
 
 def import_images(db: Session, skip_vector: bool = False) -> dict:
-    image_dir = os.path.join(settings.FILE_ROOT_DIR, "image")
-    if not os.path.exists(image_dir):
-        return {"added": 0, "updated": 0, "error": f"目录不存在：{image_dir}"}
-    
-    SUPPORTED_EXTS = ["png", "jpg", "jpeg", "svg", "gif", "webp"]
-    image_files = [
-        f for f in os.listdir(image_dir)
-        if f.rsplit(".", 1)[-1].lower() in SUPPORTED_EXTS
-    ]
-    
-    if not image_files:
-        return {"added": 0, "updated": 0, "error": "目录中没有图片文件"}
-    
-    logger.info("image：共 %d 个图片文件，开始 DB 入库", len(image_files))
-    
-    rel_paths = [f"image/{f}" for f in image_files]
-    existing_map = {
-        r.file_path: r
+    json_path = os.path.join(settings.FILE_ROOT_DIR, "image", "images.json")
+    if not os.path.exists(json_path):
+        return {"added": 0, "updated": 0, "error": f"文件不存在：{json_path}"}
+
+    with open(json_path, "r", encoding="utf-8") as f:
+        items = json.load(f)
+
+    logger.info("image：共 %d 条，开始 DB 入库", len(items))
+
+    all_names = [item.get("name") for item in items if item.get("name")]
+    existing_map = {}
+    if all_names:
         for r in db.query(Resource).filter(
             Resource.resource_type == int(ResourceType.image),
-            Resource.file_path.in_(rel_paths)
-        ).all()
-    }
-    
+            Resource.name.in_(all_names)
+        ).all():
+            existing_map[r.name] = r
+
     added = 0
     updated = 0
     vector_pairs = []
-    
-    for fname in image_files:
-        abs_path = os.path.join(image_dir, fname)
-        rel_path = f"image/{fname}"
+
+    for item in items:
+        name = item.get("name")
+        if not name:
+            logger.warning("图片缺少 name 字段，跳过：%s", item)
+            continue
+
+        rel_path = item.get("file_name")
+        if not rel_path:
+            logger.warning("图片缺少 file_name 字段，跳过：%s", item)
+            continue
+
+        abs_path = os.path.join(settings.FILE_ROOT_DIR, rel_path)
+        if not os.path.exists(abs_path):
+            logger.warning("图片文件不存在，跳过：%s", abs_path)
+            continue
+
+        file_name = os.path.basename(rel_path)
         file_size = os.path.getsize(abs_path)
-        mime_type = _get_mime_type(fname)
+        mime_type = _get_mime_type(file_name)
         dimensions = _extract_dimensions_from_file(abs_path)
-        name = fname.rsplit(".", 1)[0]
-        
+
         resource_data = {
             "resource_type": int(ResourceType.image),
             "name":          name,
-            "file_name":     fname,
+            "file_name":     file_name,
             "file_path":     rel_path,
             "file_size":     file_size,
             "mime_type":     mime_type,
             "dimensions":    dimensions,
+            "description":   item.get("description"),
         }
-        
-        existing = existing_map.get(rel_path)
+
+        existing = existing_map.get(name)
         if existing:
             for k, v in resource_data.items():
                 if hasattr(existing, k) and v is not None:
@@ -513,15 +559,15 @@ def import_images(db: Session, skip_vector: bool = False) -> dict:
             resource_row = Resource(**resource_data)
             db.add(resource_row)
             added += 1
-        
-        vector_pairs.append((resource_row, {"name": name, "description": ""}))
-    
+
+        vector_pairs.append((resource_row, item))
+
     db.flush()
     db.commit()
     logger.info("image DB 入库完成：新增 %d 条，更新 %d 条", added, updated)
-    
+
     ingest_vectors(ResourceType.image, vector_pairs, skip_vector=skip_vector)
-    
+
     return {"added": added, "updated": updated}
 
 

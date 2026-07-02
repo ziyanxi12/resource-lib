@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Table, Input, Button, message, Drawer, Tooltip } from 'antd'
+import { Table, Input, Button, message, Drawer, Tooltip, Image } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api } from '../api'
@@ -130,6 +130,7 @@ export default function IllusList({ handleRef, extraActions }: Props) {
 
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [isPreviewing, setIsPreviewing] = useState(false)
 
   const tableWrapRef = useRef<HTMLDivElement>(null)
   const [tableScrollY, setTableScrollY] = useState(400)
@@ -202,8 +203,27 @@ export default function IllusList({ handleRef, extraActions }: Props) {
       width: 68,
     },
     {
+      title: '缩略图',
+      width: 80,
+      render: (_: unknown, r: Resource) => {
+        if (!r.thumbnail_path) return '—'
+        return (
+          <Image
+            src={`/static/${r.thumbnail_path}`}
+            width={48}
+            height={48}
+            style={{ borderRadius: 6, objectFit: 'cover' }}
+            onClick={(e) => e.stopPropagation()}
+            preview={{
+              onVisibleChange: (visible: boolean) => setIsPreviewing(visible)
+            }}
+          />
+        )
+      }
+    },
+    {
       title: '插画ID',
-      width: 110,
+      width: 140,
       render: (_: unknown, r: Resource) => r.illus_id ?? '—',
     },
     {
@@ -296,7 +316,7 @@ export default function IllusList({ handleRef, extraActions }: Props) {
           size="middle"
           style={{ borderRadius: 0 }}
           scroll={{ y: tableScrollY }}
-          onRow={record => ({ onClick: () => { setDetailItem(record); setDetailOpen(true) }, style: { cursor: 'pointer' } })}
+          onRow={record => ({ onClick: () => { if (!isPreviewing) { setDetailItem(record); setDetailOpen(true) } }, style: { cursor: 'pointer' } })}
           pagination={searchMode ? false : {
             current: page,
             pageSize: PAGE_LIMIT,

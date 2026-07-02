@@ -180,6 +180,7 @@ def _fmt(r) -> dict:
         "icon_name":          r.icon_detail.name         if r.icon_detail else None,
         "icon_english_name":  r.icon_detail.english_name if r.icon_detail else None,
         "icon_category":      r.icon_detail.category     if r.icon_detail else None,
+        "icon_group":         r.icon_detail.group        if r.icon_detail else None,
         # illus 字段
         "illus_id":           r.illus_detail.illus_id   if r.illus_detail else None,
         "illus_category":     r.illus_detail.category   if r.illus_detail else None,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Table, Input, Button, message, Drawer, Tooltip,
+  Table, Input, Button, message, Drawer, Tooltip, Image,
 } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -140,6 +140,7 @@ export default function ComponentList({ handleRef }: Props) {
 
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [isPreviewing, setIsPreviewing] = useState(false)
 
   const tableWrapRef = useRef<HTMLDivElement>(null)
   const [tableScrollY, setTableScrollY] = useState(400)
@@ -196,6 +197,25 @@ export default function ComponentList({ handleRef }: Props) {
     {
       title: 'ID', dataIndex: 'id', width: 68,
       render: (v: number) => v,
+    },
+    {
+      title: '缩略图',
+      width: 80,
+      render: (_: unknown, r: Resource) => {
+        if (!r.thumbnail_path) return '—'
+        return (
+          <Image
+            src={`/static/${r.thumbnail_path}`}
+            width={48}
+            height={48}
+            style={{ borderRadius: 6, objectFit: 'cover' }}
+            onClick={(e) => e.stopPropagation()}
+            preview={{
+              onVisibleChange: (visible: boolean) => setIsPreviewing(visible)
+            }}
+          />
+        )
+      }
     },
     {
       title: '领域', width: 90,
@@ -269,7 +289,7 @@ export default function ComponentList({ handleRef }: Props) {
           size="middle"
           style={{ borderRadius: 0 }}
           scroll={{ y: tableScrollY }}
-          onRow={record => ({ onClick: () => { setDetailItem(record); setDetailOpen(true) }, style: { cursor: 'pointer' } })}
+          onRow={record => ({ onClick: () => { if (!isPreviewing) { setDetailItem(record); setDetailOpen(true) } }, style: { cursor: 'pointer' } })}
           pagination={searchMode ? false : {
             current: page, pageSize: PAGE_LIMIT, total, onChange: setPage,
             showSizeChanger: false, showTotal: t => `共 ${t} 条`,

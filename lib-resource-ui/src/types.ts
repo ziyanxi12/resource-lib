@@ -23,6 +23,7 @@ export interface Resource {
   icon_name?: string | null
   icon_english_name?: string | null
   icon_category?: string | null
+  icon_group?: string | null
   illus_id?: string | null
   illus_category?: string | null
   illus_tags?: string[] | null

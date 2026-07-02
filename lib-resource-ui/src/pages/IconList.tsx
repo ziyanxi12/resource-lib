@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Table, Input, Button, message, Drawer, Tooltip,
+  Table, Input, Button, message, Drawer, Tooltip, Image,
 } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -86,6 +86,7 @@ function IconDetail({ item, open, onClose }: {
       <Field label="英文全称">{item.icon_name ?? dash}</Field>
       <Field label="英文名">{item.icon_english_name ?? dash}</Field>
       <Field label="分类">{item.icon_category ?? dash}</Field>
+      <Field label="领域">{item.icon_group ?? dash}</Field>
 
       {/* ── 向量库映射 ── */}
       <SectionHeader title="向量库映射" />
@@ -134,6 +135,7 @@ export default function IconList({ type, label, handleRef }: Props) {
 
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [isPreviewing, setIsPreviewing] = useState(false)
 
   const tableWrapRef = useRef<HTMLDivElement>(null)
   const [tableScrollY, setTableScrollY] = useState(400)
@@ -208,6 +210,25 @@ export default function IconList({ type, label, handleRef }: Props) {
       render: (v: number) => v,
     },
     {
+      title: '缩略图',
+      width: 80,
+      render: (_: unknown, r: Resource) => {
+        if (!r.thumbnail_path) return '—'
+        return (
+          <Image
+            src={`/static/${r.thumbnail_path}`}
+            width={48}
+            height={48}
+            style={{ borderRadius: 6, objectFit: 'cover' }}
+            onClick={(e) => e.stopPropagation()}
+            preview={{
+              onVisibleChange: (visible: boolean) => setIsPreviewing(visible)
+            }}
+          />
+        )
+      }
+    },
+    {
       title: '图标ID',
       width: 80,
       render: (_: unknown, r: Resource) => r.icon_id != null ? r.icon_id : '—',
@@ -215,18 +236,23 @@ export default function IconList({ type, label, handleRef }: Props) {
     {
       title: '中文名',
       dataIndex: 'name',
-      width: 120,
+      width: 160,
       render: (v: string, r: Resource) => r.icon_chinese_name ?? v,
     },
     {
       title: '英文名',
-      width: 140,
+      width: 180,
       render: (_: unknown, r: Resource) => r.icon_english_name ?? '—',
     },
     {
       title: '分类',
       width: 110,
       render: (_: unknown, r: Resource) => r.icon_category ?? '—',
+    },
+    {
+      title: '领域',
+      width: 110,
+      render: (_: unknown, r: Resource) => r.icon_group ?? '—',
     },
     {
       title: '描述',
@@ -305,7 +331,7 @@ export default function IconList({ type, label, handleRef }: Props) {
           size="middle"
           style={{ borderRadius: 0 }}
           scroll={{ y: tableScrollY }}
-          onRow={record => ({ onClick: () => { setDetailItem(record); setDetailOpen(true) }, style: { cursor: 'pointer' } })}
+          onRow={record => ({ onClick: () => { if (!isPreviewing) { setDetailItem(record); setDetailOpen(true) } }, style: { cursor: 'pointer' } })}
           pagination={searchMode ? false : {
             current: page,
             pageSize: PAGE_LIMIT,

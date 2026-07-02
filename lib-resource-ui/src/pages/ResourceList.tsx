@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table, Input, message,
-  Drawer, Tooltip,
+  Drawer, Tooltip, Image,
 } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -119,6 +119,7 @@ export default function ResourceList({ type, label, handleRef }: Props) {
 
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
+  const [isPreviewing, setIsPreviewing] = useState(false)
 
   const [tPage, setTPage] = useState(1)
   const [tTotal, setTTotal] = useState(0)
@@ -171,6 +172,25 @@ export default function ResourceList({ type, label, handleRef }: Props) {
       dataIndex: 'id',
       width: 72,
       render: (v: number) => v,
+    },
+    {
+      title: '缩略图',
+      width: 80,
+      render: (_: unknown, r: Resource) => {
+        if (!r.thumbnail_path) return '—'
+        return (
+          <Image
+            src={`/static/${r.thumbnail_path}`}
+            width={48}
+            height={48}
+            style={{ borderRadius: 6, objectFit: 'cover' }}
+            onClick={(e) => e.stopPropagation()}
+            preview={{
+              onVisibleChange: (visible: boolean) => setIsPreviewing(visible)
+            }}
+          />
+        )
+      }
     },
     {
       title: '名称',
@@ -230,7 +250,7 @@ export default function ResourceList({ type, label, handleRef }: Props) {
           style={{ borderRadius: 0 }}
           scroll={{ y: tableScrollY }}
           onRow={record => ({
-            onClick: () => { setDetailItem(record); setDetailOpen(true) },
+            onClick: () => { if (!isPreviewing) { setDetailItem(record); setDetailOpen(true) } },
             style: { cursor: 'pointer' },
           })}
           pagination={{
