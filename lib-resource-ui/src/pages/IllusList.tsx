@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Table, Input, Button, message, Drawer, Tooltip, Image } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import { api } from '../api'
+import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
 
 const PAGE_LIMIT = 20
@@ -209,7 +209,7 @@ export default function IllusList({ handleRef, extraActions }: Props) {
         if (!r.thumbnail_path) return '—'
         return (
           <Image
-            src={`/static/${r.thumbnail_path}`}
+            src={staticUrl(r.thumbnail_path)}
             width={48}
             height={48}
             style={{ borderRadius: 6, objectFit: 'cover' }}

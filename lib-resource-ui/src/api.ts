@@ -1,5 +1,9 @@
+const BASE = import.meta.env.VITE_API_BASE ?? ''
+
+export const staticUrl = (path: string) => `${BASE}/static/${path}`
+
 async function request(url: string, options?: RequestInit) {
-  const res = await fetch(url, options)
+  const res = await fetch(`${BASE}${url}`, options)
   if (!res.ok) {
     const text = await res.text()
     throw new Error(text || `HTTP ${res.status}`)
