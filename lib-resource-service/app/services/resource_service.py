@@ -130,3 +130,37 @@ def update_tags(db: Session, resource_id: int, tags: List[str]) -> None:
     for tag in tags:
         db.add(ResourceTag(resource_id=resource_id, tag=tag.strip()))
     db.commit()
+
+
+def get_all_data_ids(db: Session, resource_type: ResourceType) -> List[str]:
+    """
+    从数据库获取指定类型的所有 data_id
+    
+    返回格式：
+    - component: [variant_key1, variant_key2, ...]
+    - icon: [str(icon_id1), str(icon_id2), ...]
+    - illus: [str(illus_id1), str(illus_id2), ...]
+    - template/image: [str(resource.id1), str(resource.id2), ...]
+    """
+    from app.models.resource import ComponentVariant, ResourceIcon, ResourceIllus
+    
+    resources = db.query(Resource).filter(
+        Resource.resource_type == resource_type,
+        Resource.is_deleted == 0
+    ).all()
+    
+    data_ids = []
+    for r in resources:
+        if resource_type == ResourceType.component:
+            if r.component_variant:
+                data_ids.append(r.component_variant.variant_key)
+        elif resource_type == ResourceType.icon:
+            if r.icon_detail:
+                data_ids.append(str(r.icon_detail.icon_id))
+        elif resource_type == ResourceType.illus:
+            if r.illus_detail:
+                data_ids.append(str(r.illus_detail.illus_id))
+        else:  # template, image
+            data_ids.append(str(r.id))
+    
+    return data_ids

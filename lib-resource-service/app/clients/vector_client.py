@@ -177,3 +177,73 @@ def delete(vec_type: str, data_id: str) -> None:
         trust_env=False,
     )
     resp.raise_for_status()
+
+
+# ──────────────────────────────────────────────────────────────────
+# 向量库 ID 查询（精准补录用）
+# ──────────────────────────────────────────────────────────────────
+
+def get_ids(vec_type: str, limit: int = 1000, offset: int = 0) -> dict:
+    """
+    获取向量库所有 data_id（分页）
+    
+    返回：{"total": 4523, "ids": [...], "has_more": true}
+    """
+    logger.debug("[get_ids] 查询向量库 ID: type=%s limit=%d offset=%d", vec_type, limit, offset)
+    resp = httpx.get(
+        f"{settings.VECTOR_SERVICE_URL}/api/v1/ids",
+        params={"type": vec_type, "limit": limit, "offset": offset},
+        timeout=10,
+        trust_env=False,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    logger.debug("[get_ids] 返回 %d 条 ID", len(data.get("ids", [])))
+    return data
+
+
+def get_all_ids(vec_type: str, batch_size: int = 1000) -> List[str]:
+    """
+    自动分页获取向量库所有 data_id
+    
+    适用场景：向量库有 4000+ 条数据，自动分批获取
+    """
+    logger.info("[get_all_ids] 开始获取全部 ID: type=%s", vec_type)
+    all_ids = []
+    offset = 0
+    
+    while True:
+        result = get_ids(vec_type, limit=batch_size, offset=offset)
+        ids = result.get("ids", [])
+        all_ids.extend(ids)
+        
+        if not result.get("has_more", False):
+            break
+        
+        offset += batch_size
+    
+    logger.info("[get_all_ids] 获取完成: type=%s total=%d", vec_type, len(all_ids))
+    return all_ids
+
+
+def check_ids_missing(vec_type: str, ids: List[str]) -> List[str]:
+    """
+    批量检查缺失的 data_id
+    
+    返回：缺失的 ID 列表
+    """
+    if not ids:
+        return []
+    
+    logger.debug("[check_ids_missing] 批量检查: type=%s count=%d", vec_type, len(ids))
+    resp = httpx.post(
+        f"{settings.VECTOR_SERVICE_URL}/api/v1/ids/check",
+        json={"type": vec_type, "ids": ids},
+        timeout=30,
+        trust_env=False,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    missing = data.get("missing", [])
+    logger.debug("[check_ids_missing] 缺失 %d 条", len(missing))
+    return missing
