@@ -1,0 +1,12 @@
+[
+  {
+    "name": "登录页面模版",
+    "file_name": "template/login.txt",
+    "description": "适用于移动端登录页面，包含账号密码输入框和登录按钮"
+  },
+  {
+    "name": "表单布局模版",
+    "file_name": "template/form.txt",
+    "description": "通用表单布局，适用于各种表单场景"
+  }
+]
