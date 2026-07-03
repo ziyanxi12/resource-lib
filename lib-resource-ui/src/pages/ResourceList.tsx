@@ -147,7 +147,10 @@ export default function ResourceList({ type, label, handleRef }: Props) {
   useEffect(() => {
     let cancelled = false
     setTLoading(true)
-    api.listResources({ type, page: tPage, limit: PAGE_LIMIT, search: search || undefined })
+    const req = search
+      ? api.vectorSearch({ query: search, type, limit: 50 }).then(results => ({ items: results as Resource[], total: results.length }))
+      : api.listResources({ type, page: tPage, limit: PAGE_LIMIT })
+    req
       .then(data => {
         if (cancelled) return
         setTItems(data.items)
@@ -165,6 +168,13 @@ export default function ResourceList({ type, label, handleRef }: Props) {
   useEffect(() => {
     if (handleRef) handleRef.current = { refresh }
   })
+
+  const scoreColumn: ColumnsType<Resource>[number] = {
+    title: '相似度',
+    dataIndex: 'score',
+    width: 88,
+    render: (v: number) => `${(v * 100).toFixed(1)}%`,
+  }
 
   const columns: ColumnsType<Resource> = [
     {
@@ -243,7 +253,7 @@ export default function ResourceList({ type, label, handleRef }: Props) {
       >
         <Table
           rowKey="id"
-          columns={columns}
+          columns={search ? [scoreColumn, ...columns] : columns}
           dataSource={tItems}
           loading={tLoading}
           size="middle"
