@@ -130,7 +130,8 @@ def _build_illus_text_fn(resource: "Resource", raw: dict) -> str:
     tags     = raw.get("tags") or (il.tags if il else []) or []
     tag_str  = " ".join(tags) if isinstance(tags, list) else str(tags)
     version  = raw.get("version") or (il.version if il else "") or ""
-    return " ".join(p for p in [illus_id, alias, desc, category, tag_str, version] if p)
+    theme    = raw.get("theme") or (il.theme if il else "") or ""
+    return " ".join(p for p in [illus_id, alias, desc, category, tag_str, version, theme] if p)
 
 
 def _build_illus_metadata(resource: "Resource", raw: dict) -> dict:
@@ -139,6 +140,7 @@ def _build_illus_metadata(resource: "Resource", raw: dict) -> dict:
         "name":     resource.name,
         "category": raw.get("category") or (il.category if il else "") or "",
         "version":  raw.get("version") or (il.version if il else "") or "",
+        "theme":    raw.get("theme")    or (il.theme    if il else "") or "",
     }
 
 

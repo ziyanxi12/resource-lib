@@ -391,14 +391,15 @@ def import_illus(db: Session, skip_vector: bool = False) -> dict:
             "category":     item.get("category"),
             "tags":         tags_list,
             "version":      item.get("version"),
+            "theme":        item.get("theme"),
         })
         vector_pairs.append((resource_row, item))
 
     db.flush()
     logger.info("illus DB 入库完成：新增 %d 条，更新 %d 条", added, updated)
 
-    ILLUS_INSERT_FIELDS = ["illus_id", "category", "tags", "version"]
-    ILLUS_UPDATE_FIELDS = ["category", "tags", "version"]
+    ILLUS_INSERT_FIELDS = ["illus_id", "category", "tags", "version", "theme"]
+    ILLUS_UPDATE_FIELDS = ["category", "tags", "version", "theme"]
     for row in illus_rows:
         existing_ri = row.pop("_existing_ri")
         resource_id = row.pop("_res").id

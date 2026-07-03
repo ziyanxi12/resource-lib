@@ -87,6 +87,7 @@ class ResourceIllus(Base):
     category    = Column(String(100), nullable=True)
     tags        = Column(JSON, nullable=True, comment="标签列表，如 [\"空状态\", \"反馈\"]")
     version     = Column(String(50), nullable=True)
+    theme       = Column(String(100), nullable=True)
     created_at  = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at  = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -186,6 +186,7 @@ def _fmt(r) -> dict:
         "illus_category":     r.illus_detail.category   if r.illus_detail else None,
         "illus_tags":         r.illus_detail.tags        if r.illus_detail else None,
         "illus_version":      r.illus_detail.version     if r.illus_detail else None,
+        "illus_theme":        r.illus_detail.theme       if r.illus_detail else None,
         # component 字段
         "cv_domain":          r.component_variant.domain          if r.component_variant else None,
         "cv_canvas_name":     r.component_variant.canvas_name     if r.component_variant else None,

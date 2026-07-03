@@ -83,6 +83,7 @@ function IllusDetail({ item, open, onClose }: {
       <Field label="分类">{item.illus_category ?? dash}</Field>
       <Field label="插画标签">{tags !== '—' ? tags : dash}</Field>
       <Field label="版本">{item.illus_version ?? dash}</Field>
+      <Field label="主题">{item.illus_theme ?? dash}</Field>
 
       {/* ── 向量库映射 ── */}
       <SectionHeader title="向量库映射" />
@@ -93,6 +94,7 @@ function IllusDetail({ item, open, onClose }: {
       <Field label="分类">{item.illus_category ?? dash}</Field>
       <Field label="标签">{item.illus_tags?.join?.(', ') ?? item.illus_tags ?? dash}</Field>
       <Field label="版本">{item.illus_version ?? dash}</Field>
+      <Field label="主题">{item.illus_theme ?? dash}</Field>
 
       {/* ── JSON 数据 ── */}
       {item.raw_data && (
@@ -263,6 +265,15 @@ export default function IllusList({ handleRef, extraActions }: Props) {
       render: (_: unknown, r: Resource) => {
         const text = r.illus_version ?? '—'
         return <Tooltip title={r.illus_version ?? undefined} placement="topLeft">{text}</Tooltip>
+      },
+    },
+    {
+      title: '主题',
+      width: 90,
+      ellipsis: { showTitle: false },
+      render: (_: unknown, r: Resource) => {
+        const text = r.illus_theme ?? '—'
+        return <Tooltip title={r.illus_theme ?? undefined} placement="topLeft">{text}</Tooltip>
       },
     },
     {

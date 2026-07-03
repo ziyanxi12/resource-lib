@@ -28,6 +28,7 @@ export interface Resource {
   illus_category?: string | null
   illus_tags?: string[] | null
   illus_version?: string | null
+  illus_theme?: string | null
   cv_domain?: string | null
   cv_canvas_name?: string | null
   cv_component_name?: string | null
