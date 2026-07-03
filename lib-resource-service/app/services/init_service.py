@@ -107,6 +107,24 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
                     "file_name":   file_name,
                     "hex_file":    hex_file,
                 })
+        standalone = data.get("standaloneComponents", []) if isinstance(data, dict) else []
+        for comp in standalone:
+            component_key = comp.get("componentKey")
+            hex_file      = comp.get("hexFile")
+            all_meta.append({
+                "comp":        comp,
+                "variant": {
+                    "name":           comp.get("name", ""),
+                    "guid":           comp.get("guid"),
+                    "variantKey":     component_key,
+                    "parentKey":      component_key,
+                    "componentProps": comp.get("componentProps", []),
+                },
+                "domain":      domain,
+                "parent_name": comp.get("name", "未命名组件"),
+                "file_name":   os.path.basename(hex_file) if hex_file else None,
+                "hex_file":    hex_file,
+            })
 
     if not all_meta:
         return {"added": 0, "updated": 0}
@@ -163,19 +181,12 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
 
         existing_cv = existing_cv_map.get(variant_key) if variant_key else None
         if existing_cv:
-            resource_row = existing_resource_map.get(existing_cv.resource_id)
-            if resource_row is None:
-                resource_row = Resource(**resource_data)
-                db.add(resource_row)
-            else:
-                for k, v in resource_data.items():
-                    if hasattr(resource_row, k) and v is not None:
-                        setattr(resource_row, k, v)
             updated += 1
-        else:
-            resource_row = Resource(**resource_data)
-            db.add(resource_row)
-            added += 1
+            continue  # 已入库的数据跳过，不重复更新也不重复入向量
+
+        resource_row = Resource(**resource_data)
+        db.add(resource_row)
+        added += 1
 
         variant_rows.append({
             "_res":           resource_row,
