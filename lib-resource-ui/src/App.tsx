@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ConfigProvider } from 'antd'
+import zhCN from 'antd/locale/zh_CN'
 import {
   AppstoreOutlined,
   BlockOutlined,
@@ -85,6 +86,7 @@ export default function App() {
 
   return (
     <ConfigProvider
+      locale={zhCN}
       theme={{
         token: {
           colorPrimary: '#6366f1',

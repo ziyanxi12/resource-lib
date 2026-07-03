@@ -7,7 +7,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
 
-const PAGE_LIMIT = 20
+const DEFAULT_PAGE_SIZE = 20
 
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`
@@ -132,6 +132,7 @@ export default function ComponentList({ handleRef }: Props) {
   const [items, setItems] = useState<Resource[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [loading, setLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -163,12 +164,12 @@ export default function ComponentList({ handleRef }: Props) {
     if (searchMode) return
     let cancelled = false
     setLoading(true)
-    api.listResources({ type: 'component', page, limit: PAGE_LIMIT })
+    api.listResources({ type: 'component', page, limit: pageSize })
       .then(data => { if (!cancelled) { setItems(data.items); setTotal(data.total) } })
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [page, searchMode, refreshKey])
+  }, [page, pageSize, searchMode, refreshKey])
 
   const handleSearch = useCallback(async (q: string) => {
     const trimmed = q.trim()
@@ -219,23 +220,43 @@ export default function ComponentList({ handleRef }: Props) {
     },
     {
       title: '领域', width: 90,
-      render: (_: unknown, r: Resource) => r.cv_domain ?? '—',
+      ellipsis: { showTitle: false },
+      render: (_: unknown, r: Resource) => {
+        const text = r.cv_domain ?? '—'
+        return <Tooltip title={r.cv_domain ?? undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
     {
       title: '组件类别', width: 120,
-      render: (_: unknown, r: Resource) => r.cv_canvas_name ?? '—',
+      ellipsis: { showTitle: false },
+      render: (_: unknown, r: Resource) => {
+        const text = r.cv_canvas_name ?? '—'
+        return <Tooltip title={r.cv_canvas_name ?? undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
     {
       title: '组件名', width: 150,
-      render: (_: unknown, r: Resource) => r.cv_component_name ?? '—',
+      ellipsis: { showTitle: false },
+      render: (_: unknown, r: Resource) => {
+        const text = r.cv_component_name ?? '—'
+        return <Tooltip title={r.cv_component_name ?? undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
     {
-      title: '变体名', ellipsis: true,
-      render: (_: unknown, r: Resource) => r.cv_variant_name ?? '—',
+      title: '变体名',
+      ellipsis: { showTitle: false },
+      render: (_: unknown, r: Resource) => {
+        const text = r.cv_variant_name ?? '—'
+        return <Tooltip title={r.cv_variant_name ?? undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
     {
       title: '标签', dataIndex: 'tags', width: 160,
-      render: (tags: string[]) => tags.length ? tags.join('、') : '—',
+      ellipsis: { showTitle: false },
+      render: (tags: string[]) => {
+        const text = tags.length ? tags.join('、') : '—'
+        return <Tooltip title={tags.length ? text : undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
   ]
 
@@ -291,8 +312,11 @@ export default function ComponentList({ handleRef }: Props) {
           scroll={{ y: tableScrollY }}
           onRow={record => ({ onClick: () => { if (!isPreviewing) { setDetailItem(record); setDetailOpen(true) } }, style: { cursor: 'pointer' } })}
           pagination={searchMode ? false : {
-            current: page, pageSize: PAGE_LIMIT, total, onChange: setPage,
-            showSizeChanger: false, showTotal: t => `共 ${t} 条`,
+            current: page, pageSize, total, onChange: setPage,
+            showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'],
+            onShowSizeChange: (_: number, size: number) => { setPage(1); setPageSize(size) },
+            showQuickJumper: true,
+            showTotal: t => `共 ${t} 条`,
             style: { padding: '12px 20px' },
           }}
           locale={{ emptyText: <div style={{ padding: '40px 0', color: '#cbd5e1' }}>暂无数据</div> }}

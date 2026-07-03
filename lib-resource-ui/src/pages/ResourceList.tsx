@@ -8,7 +8,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
 
-const PAGE_LIMIT = 20
+const DEFAULT_PAGE_SIZE = 20
 
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`
@@ -122,6 +122,7 @@ export default function ResourceList({ type, label, handleRef }: Props) {
   const [isPreviewing, setIsPreviewing] = useState(false)
 
   const [tPage, setTPage] = useState(1)
+  const [tPageSize, setTPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [tTotal, setTTotal] = useState(0)
   const [tItems, setTItems] = useState<Resource[]>([])
   const [tLoading, setTLoading] = useState(false)
@@ -149,7 +150,7 @@ export default function ResourceList({ type, label, handleRef }: Props) {
     setTLoading(true)
     const req = search
       ? api.vectorSearch({ query: search, type, limit: 50 }).then(results => ({ items: results as Resource[], total: results.length }))
-      : api.listResources({ type, page: tPage, limit: PAGE_LIMIT })
+      : api.listResources({ type, page: tPage, limit: tPageSize })
     req
       .then(data => {
         if (cancelled) return
@@ -159,7 +160,7 @@ export default function ResourceList({ type, label, handleRef }: Props) {
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setTLoading(false) })
     return () => { cancelled = true }
-  }, [type, tPage, search, refreshKey])
+  }, [type, tPage, tPageSize, search, refreshKey])
 
   const refresh = useCallback(() => {
     setRefreshKey(k => k + 1)
@@ -205,19 +206,27 @@ export default function ResourceList({ type, label, handleRef }: Props) {
     {
       title: '名称',
       dataIndex: 'name',
-      render: (name: string) => name,
+      ellipsis: { showTitle: false },
+      render: (name: string) => <Tooltip title={name} placement="topLeft">{name}</Tooltip>,
     },
     {
       title: '描述',
       dataIndex: 'description',
-      ellipsis: true,
-      render: (v: string | null) => v ?? '—',
+      ellipsis: { showTitle: false },
+      render: (v: string | null) => {
+        const text = v ?? '—'
+        return <Tooltip title={v ?? undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
     {
       title: '标签',
       dataIndex: 'tags',
       width: 200,
-      render: (tags: string[]) => tags.length ? tags.join('、') : '—',
+      ellipsis: { showTitle: false },
+      render: (tags: string[]) => {
+        const text = tags.length ? tags.join('、') : '—'
+        return <Tooltip title={tags.length ? text : undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
   ]
 
@@ -265,10 +274,13 @@ export default function ResourceList({ type, label, handleRef }: Props) {
           })}
           pagination={{
             current: tPage,
-            pageSize: PAGE_LIMIT,
+            pageSize: tPageSize,
             total: tTotal,
             onChange: setTPage,
-            showSizeChanger: false,
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '50', '100'],
+            onShowSizeChange: (_: number, size: number) => { setTPage(1); setTPageSize(size) },
+            showQuickJumper: true,
             showTotal: t => `共 ${t} 条`,
             style: { padding: '12px 20px' },
           }}

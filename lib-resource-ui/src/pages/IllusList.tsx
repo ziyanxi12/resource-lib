@@ -5,7 +5,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
 
-const PAGE_LIMIT = 20
+const DEFAULT_PAGE_SIZE = 20
 
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`
@@ -122,6 +122,7 @@ export default function IllusList({ handleRef, extraActions }: Props) {
   const [items, setItems] = useState<Resource[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [loading, setLoading] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -153,7 +154,7 @@ export default function IllusList({ handleRef, extraActions }: Props) {
     if (searchMode) return
     let cancelled = false
     setLoading(true)
-    api.listResources({ type: 'illus', page, limit: PAGE_LIMIT })
+    api.listResources({ type: 'illus', page, limit: pageSize })
       .then(data => {
         if (cancelled) return
         setItems(data.items)
@@ -162,7 +163,7 @@ export default function IllusList({ handleRef, extraActions }: Props) {
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [page, searchMode, refreshKey])
+  }, [page, pageSize, searchMode, refreshKey])
 
   const handleSearch = useCallback(async (q: string) => {
     const trimmed = q.trim()
@@ -224,34 +225,54 @@ export default function IllusList({ handleRef, extraActions }: Props) {
     {
       title: '插画ID',
       width: 140,
-      render: (_: unknown, r: Resource) => r.illus_id ?? '—',
+      ellipsis: { showTitle: false },
+      render: (_: unknown, r: Resource) => {
+        const text = r.illus_id ?? '—'
+        return <Tooltip title={r.illus_id ?? undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
     {
       title: '名称',
       dataIndex: 'name',
       width: 130,
+      ellipsis: { showTitle: false },
+      render: (v: string) => <Tooltip title={v} placement="topLeft">{v}</Tooltip>,
     },
     {
       title: '分类',
       width: 110,
-      render: (_: unknown, r: Resource) => r.illus_category ?? '—',
+      ellipsis: { showTitle: false },
+      render: (_: unknown, r: Resource) => {
+        const text = r.illus_category ?? '—'
+        return <Tooltip title={r.illus_category ?? undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
     {
       title: '标签',
       width: 160,
-      render: (_: unknown, r: Resource) =>
-        r.illus_tags?.length ? r.illus_tags.join('、') : '—',
+      ellipsis: { showTitle: false },
+      render: (_: unknown, r: Resource) => {
+        const text = r.illus_tags?.length ? r.illus_tags.join('、') : '—'
+        return <Tooltip title={r.illus_tags?.length ? text : undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
     {
       title: '版本',
       width: 80,
-      render: (_: unknown, r: Resource) => r.illus_version ?? '—',
+      ellipsis: { showTitle: false },
+      render: (_: unknown, r: Resource) => {
+        const text = r.illus_version ?? '—'
+        return <Tooltip title={r.illus_version ?? undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
     {
       title: '描述',
       dataIndex: 'description',
-      ellipsis: true,
-      render: (v: string | null) => v ?? '—',
+      ellipsis: { showTitle: false },
+      render: (v: string | null) => {
+        const text = v ?? '—'
+        return <Tooltip title={v ?? undefined} placement="topLeft">{text}</Tooltip>
+      },
     },
   ]
 
@@ -319,10 +340,13 @@ export default function IllusList({ handleRef, extraActions }: Props) {
           onRow={record => ({ onClick: () => { if (!isPreviewing) { setDetailItem(record); setDetailOpen(true) } }, style: { cursor: 'pointer' } })}
           pagination={searchMode ? false : {
             current: page,
-            pageSize: PAGE_LIMIT,
+            pageSize,
             total,
             onChange: setPage,
-            showSizeChanger: false,
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '50', '100'],
+            onShowSizeChange: (_: number, size: number) => { setPage(1); setPageSize(size) },
+            showQuickJumper: true,
             showTotal: t => `共 ${t} 条`,
             style: { padding: '12px 20px' },
           }}
