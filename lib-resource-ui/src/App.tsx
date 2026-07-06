@@ -191,7 +191,7 @@ export default function App() {
               color: '#334155',
             }}
           >
-            v0.1.0
+            v{__APP_VERSION__}
           </div>
         </aside>
 

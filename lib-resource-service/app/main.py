@@ -3,6 +3,7 @@ lib-resource-service 入口
 启动后访问 http://localhost:8009/docs 查看自动生成的 API 文档
 """
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -12,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import engine, Base
 from app.logger import setup_logging
+from app.version import __version__
 
 # 导入所有 ORM 模型，确保 create_all 能扫描到表定义
 from app.models import resource  # noqa: F401
@@ -20,10 +22,14 @@ from app.routers import resources, component, template, icon, image
 from app.routers import init_router, vector_router
 
 
+logger = logging.getLogger(__name__)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用启动时：初始化日志 + 自动建表 + 创建文件存储子目录"""
     setup_logging(settings.LOG_DIR, settings.LOG_LEVEL)
+    logger.info("lib-resource-service v%s 启动", __version__)
     Base.metadata.create_all(bind=engine)
     for sub in ["component", "template", "icon", "illus", "image"]:
         os.makedirs(os.path.join(settings.FILE_ROOT_DIR, sub), exist_ok=True)
@@ -34,7 +40,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="资源库管理服务",
     description="统一管理五类设计资源：组件集、模版、SVG、插画、图片",
-    version="1.0.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
