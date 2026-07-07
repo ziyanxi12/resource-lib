@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Table, Input, message,
+  Table, Input, Button, Select, message,
   Drawer, Tooltip, Image,
 } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
@@ -16,6 +16,7 @@ function formatSize(bytes: number) {
 }
 
 const dash = <span style={{ color: '#cbd5e1' }}>—</span>
+const emptyCell = <span style={{ color: '#cbd5e1' }}>-</span>
 
 function SectionHeader({ title }: { title: string }) {
   return (
@@ -52,25 +53,99 @@ function HashVal({ value }: { value: string | null | undefined }) {
   )
 }
 
-function ResourceDetail({ item, open, onClose }: {
-  item: Resource | null; open: boolean; onClose: () => void
+function ResourceDetail({ item, open, onClose, onSaved }: {
+  item: Resource | null; open: boolean; onClose: () => void; onSaved?: () => void
 }) {
+  const [name, setName] = useState(item?.name ?? '')
+  const [description, setDescription] = useState(item?.description ?? '')
+  const [tags, setTags] = useState<string[]>(item?.tags ?? [])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!item) return
+    setName(item.name ?? '')
+    setDescription(item.description ?? '')
+    setTags(item.tags ?? [])
+  }, [item])
+
+  const handleSave = async () => {
+    if (!item) return
+    setSaving(true)
+    try {
+      await api.updateResource(item.id, { name, description, tags })
+      message.success('保存成功')
+      onSaved?.()
+      onClose()
+    } catch (e: unknown) {
+      message.error('保存失败：' + (e instanceof Error ? e.message : '未知错误'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (!item) return null
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      width={640}
+      width="clamp(720px, 70%, 1100px)"
       destroyOnClose
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Button onClick={onClose}>取消</Button>
+          <Button type="primary" loading={saving} onClick={handleSave}>保存</Button>
+        </div>
+      }
       styles={{ body: { padding: '12px 20px 24px', overflowY: 'auto' } }}
     >
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+      {/* ── 左侧预览图 ── */}
+      <div style={{ width: 300, flexShrink: 0, position: 'sticky' as const, top: 0 }}>
+        {item.thumbnail_path ? (
+          <Image
+            src={staticUrl(item.thumbnail_path)}
+            width="100%"
+            style={{ borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc' }}
+          />
+        ) : (
+          <div style={{
+            height: 260, borderRadius: 8, border: '1px dashed #e2e8f0',
+            background: '#f8fafc', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', color: '#cbd5e1', fontSize: 13,
+          }}>
+            暂无预览图
+          </div>
+        )}
+      </div>
+
+      {/* ── 右侧字段列表 ── */}
+      <div style={{ flex: 1, minWidth: 0 }}>
       {/* ── 基础信息 ── */}
       <SectionHeader title="基础信息" />
       <Field label="ID">{item.id}</Field>
-      <Field label="名称">{item.name}</Field>
-      <Field label="描述">{item.description ?? dash}</Field>
-      <Field label="标签">{item.tags.length > 0 ? item.tags.join('、') : dash}</Field>
+      <Field label="名称">
+        <Input value={name} onChange={e => setName(e.target.value)} size="small" />
+      </Field>
+      <Field label="描述">
+        <Input.TextArea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          autoSize={{ minRows: 2, maxRows: 5 }}
+          size="small"
+        />
+      </Field>
+      <Field label="标签">
+        <Select
+          mode="tags"
+          value={tags}
+          onChange={setTags}
+          style={{ width: '100%' }}
+          size="small"
+          placeholder="输入后回车添加"
+          tokenSeparators={[',']}
+        />
+      </Field>
       <Field label="创建时间">{item.created_at ? item.created_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="更新时间">{item.updated_at ? item.updated_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="文件名"><HashVal value={item.file_name} /></Field>
@@ -78,15 +153,15 @@ function ResourceDetail({ item, open, onClose }: {
       <Field label="缩略图路径"><HashVal value={item.thumbnail_path} /></Field>
       <Field label="文件类型">{item.mime_type ?? dash}</Field>
       <Field label="文件大小">{item.file_size != null ? formatSize(item.file_size) : dash}</Field>
-      <Field label="资源尺寸">
-        {item.dimensions ? `${item.dimensions.width} × ${item.dimensions.height} px` : dash}
-      </Field>
+      <Field label="资源宽度">{item.width != null ? `${item.width} px` : dash}</Field>
+      <Field label="资源高度">{item.height != null ? `${item.height} px` : dash}</Field>
 
       {/* ── 向量库映射 ── */}
       <SectionHeader title="向量库映射" />
       <Field label="向量文本">{item.vector_text || dash}</Field>
       <Field label="名称">{item.name ?? dash}</Field>
       <Field label="描述">{item.description ?? dash}</Field>
+      <Field label="标签">{item.tags.length > 0 ? item.tags.join('、') : dash}</Field>
 
       {/* ── JSON 数据 ── */}
       {item.raw_data && (
@@ -100,6 +175,8 @@ function ResourceDetail({ item, open, onClose }: {
           </pre>
         </>
       )}
+      </div>
+      </div>
     </Drawer>
   )
 }
@@ -188,7 +265,7 @@ export default function ResourceList({ type, label, handleRef }: Props) {
       title: '缩略图',
       width: 80,
       render: (_: unknown, r: Resource) => {
-        if (!r.thumbnail_path) return '—'
+        if (!r.thumbnail_path) return emptyCell
         return (
           <Image
             src={staticUrl(r.thumbnail_path)}
@@ -207,15 +284,15 @@ export default function ResourceList({ type, label, handleRef }: Props) {
       title: '名称',
       dataIndex: 'name',
       ellipsis: { showTitle: false },
-      render: (name: string) => <Tooltip title={name} placement="topLeft">{name}</Tooltip>,
+      render: (name: string) => name ? <Tooltip title={name} placement="topLeft">{name}</Tooltip> : emptyCell,
     },
     {
       title: '描述',
       dataIndex: 'description',
       ellipsis: { showTitle: false },
       render: (v: string | null) => {
-        const text = v ?? '—'
-        return <Tooltip title={v ?? undefined} placement="topLeft">{text}</Tooltip>
+        if (!v) return emptyCell
+        return <Tooltip title={v} placement="topLeft">{v}</Tooltip>
       },
     },
     {
@@ -224,8 +301,9 @@ export default function ResourceList({ type, label, handleRef }: Props) {
       width: 200,
       ellipsis: { showTitle: false },
       render: (tags: string[]) => {
-        const text = tags.length ? tags.join('、') : '—'
-        return <Tooltip title={tags.length ? text : undefined} placement="topLeft">{text}</Tooltip>
+        if (!tags.length) return emptyCell
+        const text = tags.join('、')
+        return <Tooltip title={text} placement="topLeft">{text}</Tooltip>
       },
     },
   ]
@@ -292,6 +370,7 @@ export default function ResourceList({ type, label, handleRef }: Props) {
         item={detailItem}
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
+        onSaved={refresh}
       />
     </div>
   )

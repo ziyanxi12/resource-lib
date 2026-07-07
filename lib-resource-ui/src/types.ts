@@ -8,7 +8,8 @@ export interface Resource {
   thumbnail_path: string | null
   file_size: number | null
   mime_type: string | null
-  dimensions: { width: number; height: number } | null
+  width: number | null
+  height: number | null
   description: string | null
   raw_data: string | null
   created_by: string | null

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Table, Input, Button, message, Drawer, Tooltip, Image } from 'antd'
+import { Table, Input, Button, Select, message, Drawer, Tooltip, Image } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api, staticUrl } from '../api'
@@ -13,6 +13,7 @@ function formatSize(bytes: number) {
 }
 
 const dash = <span style={{ color: '#cbd5e1' }}>—</span>
+const emptyCell = <span style={{ color: '#cbd5e1' }}>-</span>
 
 function SectionHeader({ title }: { title: string }) {
   return (
@@ -49,26 +50,100 @@ function HashVal({ value }: { value: string | null | undefined }) {
   )
 }
 
-function IllusDetail({ item, open, onClose }: {
-  item: Resource | null; open: boolean; onClose: () => void
+function IllusDetail({ item, open, onClose, onSaved }: {
+  item: Resource | null; open: boolean; onClose: () => void; onSaved?: () => void
 }) {
+  const [name, setName] = useState(item?.name ?? '')
+  const [description, setDescription] = useState(item?.description ?? '')
+  const [tags, setTags] = useState<string[]>(item?.tags ?? [])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!item) return
+    setName(item.name ?? '')
+    setDescription(item.description ?? '')
+    setTags(item.tags ?? [])
+  }, [item])
+
+  const handleSave = async () => {
+    if (!item) return
+    setSaving(true)
+    try {
+      await api.updateResource(item.id, { name, description, tags })
+      message.success('保存成功')
+      onSaved?.()
+      onClose()
+    } catch (e: unknown) {
+      message.error('保存失败：' + (e instanceof Error ? e.message : '未知错误'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (!item) return null
-  const tags = item.illus_tags?.length ? item.illus_tags.join('、') : '—'
+  const illusTags = item.illus_tags?.length ? item.illus_tags.join('、') : '—'
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      width={640}
+      width="clamp(720px, 70%, 1100px)"
       destroyOnClose
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Button onClick={onClose}>取消</Button>
+          <Button type="primary" loading={saving} onClick={handleSave}>保存</Button>
+        </div>
+      }
       styles={{ body: { padding: '12px 20px 24px', overflowY: 'auto' } }}
     >
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+      {/* ── 左侧预览图 ── */}
+      <div style={{ width: 300, flexShrink: 0, position: 'sticky' as const, top: 0 }}>
+        {item.thumbnail_path ? (
+          <Image
+            src={staticUrl(item.thumbnail_path)}
+            width="100%"
+            style={{ borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc' }}
+          />
+        ) : (
+          <div style={{
+            height: 260, borderRadius: 8, border: '1px dashed #e2e8f0',
+            background: '#f8fafc', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', color: '#cbd5e1', fontSize: 13,
+          }}>
+            暂无预览图
+          </div>
+        )}
+      </div>
+
+      {/* ── 右侧字段列表 ── */}
+      <div style={{ flex: 1, minWidth: 0 }}>
       {/* ── 基础信息 ── */}
       <SectionHeader title="基础信息" />
       <Field label="ID">{item.id}</Field>
-      <Field label="名称">{item.name}</Field>
-      <Field label="描述">{item.description ?? dash}</Field>
-      <Field label="标签">{item.tags.length > 0 ? item.tags.join('、') : dash}</Field>
+      <Field label="名称">
+        <Input value={name} onChange={e => setName(e.target.value)} size="small" />
+      </Field>
+      <Field label="描述">
+        <Input.TextArea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          autoSize={{ minRows: 2, maxRows: 5 }}
+          size="small"
+        />
+      </Field>
+      <Field label="标签">
+        <Select
+          mode="tags"
+          value={tags}
+          onChange={setTags}
+          style={{ width: '100%' }}
+          size="small"
+          placeholder="输入后回车添加"
+          tokenSeparators={[',']}
+        />
+      </Field>
       <Field label="创建时间">{item.created_at ? item.created_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="更新时间">{item.updated_at ? item.updated_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="文件名"><HashVal value={item.file_name} /></Field>
@@ -76,12 +151,11 @@ function IllusDetail({ item, open, onClose }: {
       <Field label="缩略图路径"><HashVal value={item.thumbnail_path} /></Field>
       <Field label="文件类型">{item.mime_type ?? dash}</Field>
       <Field label="文件大小">{item.file_size != null ? formatSize(item.file_size) : dash}</Field>
-      <Field label="资源尺寸">
-        {item.dimensions ? `${item.dimensions.width} × ${item.dimensions.height} px` : dash}
-      </Field>
+      <Field label="资源宽度">{item.width != null ? `${item.width} px` : dash}</Field>
+      <Field label="资源高度">{item.height != null ? `${item.height} px` : dash}</Field>
       <Field label="插画ID"><HashVal value={item.illus_id} /></Field>
       <Field label="分类">{item.illus_category ?? dash}</Field>
-      <Field label="插画标签">{tags !== '—' ? tags : dash}</Field>
+      <Field label="插画标签">{illusTags !== '—' ? illusTags : dash}</Field>
       <Field label="版本">{item.illus_version ?? dash}</Field>
       <Field label="主题">{item.illus_theme ?? dash}</Field>
 
@@ -95,6 +169,7 @@ function IllusDetail({ item, open, onClose }: {
       <Field label="标签">{item.illus_tags?.join?.(', ') ?? item.illus_tags ?? dash}</Field>
       <Field label="版本">{item.illus_version ?? dash}</Field>
       <Field label="主题">{item.illus_theme ?? dash}</Field>
+      <Field label="主库标签">{item.tags.length > 0 ? item.tags.join('、') : dash}</Field>
 
       {/* ── JSON 数据 ── */}
       {item.raw_data && (
@@ -108,6 +183,8 @@ function IllusDetail({ item, open, onClose }: {
           </pre>
         </>
       )}
+      </div>
+      </div>
     </Drawer>
   )
 }
@@ -131,6 +208,9 @@ export default function IllusList({ handleRef, extraActions }: Props) {
   const [query, setQuery] = useState('')
   const [searchMode, setSearchMode] = useState(false)
 
+  const [filters, setFilters] = useState<Record<string, string[] | null>>({})
+  const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({})
+
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
@@ -153,10 +233,16 @@ export default function IllusList({ handleRef, extraActions }: Props) {
   }, [])
 
   useEffect(() => {
+    api.getFilterOptions('illus')
+      .then(data => setFilterOptions(data.options))
+      .catch(() => {})
+  }, [refreshKey])
+
+  useEffect(() => {
     if (searchMode) return
     let cancelled = false
     setLoading(true)
-    api.listResources({ type: 'illus', page, limit: pageSize })
+    api.listResources({ type: 'illus', page, limit: pageSize, filters })
       .then(data => {
         if (cancelled) return
         setItems(data.items)
@@ -165,7 +251,7 @@ export default function IllusList({ handleRef, extraActions }: Props) {
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [page, pageSize, searchMode, refreshKey])
+  }, [page, pageSize, searchMode, refreshKey, filters])
 
   const handleSearch = useCallback(async (q: string) => {
     const trimmed = q.trim()
@@ -199,6 +285,13 @@ export default function IllusList({ handleRef, extraActions }: Props) {
     if (handleRef) handleRef.current = { refresh }
   })
 
+  const filterProps = (field: string) => searchMode ? {} : {
+    key: field,
+    filters: (filterOptions[field] ?? []).map(v => ({ text: v, value: v })),
+    filteredValue: filters[field] ?? null,
+    filterSearch: true,
+  }
+
   const baseColumns: ColumnsType<Resource> = [
     {
       title: 'ID',
@@ -209,7 +302,7 @@ export default function IllusList({ handleRef, extraActions }: Props) {
       title: '缩略图',
       width: 80,
       render: (_: unknown, r: Resource) => {
-        if (!r.thumbnail_path) return '—'
+        if (!r.thumbnail_path) return emptyCell
         return (
           <Image
             src={staticUrl(r.thumbnail_path)}
@@ -229,8 +322,8 @@ export default function IllusList({ handleRef, extraActions }: Props) {
       width: 140,
       ellipsis: { showTitle: false },
       render: (_: unknown, r: Resource) => {
-        const text = r.illus_id ?? '—'
-        return <Tooltip title={r.illus_id ?? undefined} placement="topLeft">{text}</Tooltip>
+        if (!r.illus_id) return emptyCell
+        return <Tooltip title={r.illus_id} placement="topLeft">{r.illus_id}</Tooltip>
       },
     },
     {
@@ -238,15 +331,16 @@ export default function IllusList({ handleRef, extraActions }: Props) {
       dataIndex: 'name',
       width: 130,
       ellipsis: { showTitle: false },
-      render: (v: string) => <Tooltip title={v} placement="topLeft">{v}</Tooltip>,
+      render: (v: string) => v ? <Tooltip title={v} placement="topLeft">{v}</Tooltip> : emptyCell,
     },
     {
       title: '分类',
       width: 110,
       ellipsis: { showTitle: false },
+      ...filterProps('illus_category'),
       render: (_: unknown, r: Resource) => {
-        const text = r.illus_category ?? '—'
-        return <Tooltip title={r.illus_category ?? undefined} placement="topLeft">{text}</Tooltip>
+        if (!r.illus_category) return emptyCell
+        return <Tooltip title={r.illus_category} placement="topLeft">{r.illus_category}</Tooltip>
       },
     },
     {
@@ -254,26 +348,29 @@ export default function IllusList({ handleRef, extraActions }: Props) {
       width: 160,
       ellipsis: { showTitle: false },
       render: (_: unknown, r: Resource) => {
-        const text = r.illus_tags?.length ? r.illus_tags.join('、') : '—'
-        return <Tooltip title={r.illus_tags?.length ? text : undefined} placement="topLeft">{text}</Tooltip>
+        if (!r.illus_tags?.length) return emptyCell
+        const text = r.illus_tags.join('、')
+        return <Tooltip title={text} placement="topLeft">{text}</Tooltip>
       },
     },
     {
       title: '版本',
       width: 80,
       ellipsis: { showTitle: false },
+      ...filterProps('illus_version'),
       render: (_: unknown, r: Resource) => {
-        const text = r.illus_version ?? '—'
-        return <Tooltip title={r.illus_version ?? undefined} placement="topLeft">{text}</Tooltip>
+        if (!r.illus_version) return emptyCell
+        return <Tooltip title={r.illus_version} placement="topLeft">{r.illus_version}</Tooltip>
       },
     },
     {
       title: '主题',
       width: 90,
       ellipsis: { showTitle: false },
+      ...filterProps('illus_theme'),
       render: (_: unknown, r: Resource) => {
-        const text = r.illus_theme ?? '—'
-        return <Tooltip title={r.illus_theme ?? undefined} placement="topLeft">{text}</Tooltip>
+        if (!r.illus_theme) return emptyCell
+        return <Tooltip title={r.illus_theme} placement="topLeft">{r.illus_theme}</Tooltip>
       },
     },
     {
@@ -281,8 +378,8 @@ export default function IllusList({ handleRef, extraActions }: Props) {
       dataIndex: 'description',
       ellipsis: { showTitle: false },
       render: (v: string | null) => {
-        const text = v ?? '—'
-        return <Tooltip title={v ?? undefined} placement="topLeft">{text}</Tooltip>
+        if (!v) return emptyCell
+        return <Tooltip title={v} placement="topLeft">{v}</Tooltip>
       },
     },
   ]
@@ -349,6 +446,12 @@ export default function IllusList({ handleRef, extraActions }: Props) {
           style={{ borderRadius: 0 }}
           scroll={{ y: tableScrollY }}
           onRow={record => ({ onClick: () => { if (!isPreviewing) { setDetailItem(record); setDetailOpen(true) } }, style: { cursor: 'pointer' } })}
+          onChange={(_, tableFilters, __, extra) => {
+            if (extra.action === 'filter') {
+              setPage(1)
+              setFilters(tableFilters as Record<string, string[] | null>)
+            }
+          }}
           pagination={searchMode ? false : {
             current: page,
             pageSize,
@@ -369,6 +472,7 @@ export default function IllusList({ handleRef, extraActions }: Props) {
         item={detailItem}
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
+        onSaved={refresh}
       />
     </div>
   )

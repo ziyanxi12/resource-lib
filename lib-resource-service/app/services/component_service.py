@@ -19,7 +19,7 @@ component_index.json 真实格式：
 import json
 import logging
 import os
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -28,7 +28,7 @@ from app.enums import ResourceType
 from app.clients import external
 from app.models.resource import ComponentVariant
 from app.services.resource_service import upsert_resource
-from app.services.vector_text_builder import build_component_text
+from app.services.vector_text_builder import build_component_text, main_tag_text
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,16 @@ async def sync_component(db: Session, file_key: str) -> dict:
 
 # ──────────────────────────────────────────────────────────────────
 
+def _get_hex_file_size(hex_file: Optional[str]) -> Optional[int]:
+    """hex_file 为相对 FILE_ROOT_DIR 的路径，文件不存在时返回 None（upsert 时不覆盖已有值）。"""
+    if not hex_file:
+        return None
+    abs_path = os.path.join(settings.FILE_ROOT_DIR, hex_file)
+    if not os.path.exists(abs_path):
+        return None
+    return os.path.getsize(abs_path)
+
+
 def _parse_index(index_path: str) -> Tuple[str, List[dict]]:
     with open(index_path, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -113,6 +123,7 @@ def _write_to_db(db: Session, components: List[dict], domain: str = "") -> Tuple
     for comp in components:
         hex_file    = comp.get("hexFile")
         file_name   = os.path.basename(hex_file) if hex_file else None
+        file_size   = _get_hex_file_size(hex_file)
         parent_name = comp.get("name", "未命名组件集")
 
         for variant in comp.get("variants", []):
@@ -121,6 +132,7 @@ def _write_to_db(db: Session, components: List[dict], domain: str = "") -> Tuple
                 "name":          f"{parent_name} / {variant.get('name', '')}",
                 "file_name":     file_name,
                 "file_path":     hex_file,
+                "file_size":     file_size,
                 "mime_type":     "text/plain",
                 "raw_data":      json.dumps({
                     "domain":          domain,
@@ -145,11 +157,14 @@ def _write_to_db(db: Session, components: List[dict], domain: str = "") -> Tuple
 
             vector_items.append({
                 "data_id": str(resource_row.id),
-                "text": build_component_text(
-                    parent_name,
-                    comp.get("canvasName", ""),
-                    variant.get("name", ""),
-                ),
+                "text": " ".join(p for p in [
+                    build_component_text(
+                        parent_name,
+                        comp.get("canvasName", ""),
+                        variant.get("name", ""),
+                    ),
+                    main_tag_text(resource_row),
+                ] if p),
                 "metadata": {
                     "name": resource_row.name,
                     "canvas_name": comp.get("canvasName", ""),

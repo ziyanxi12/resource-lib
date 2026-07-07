@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Table, Input, Button, message, Drawer, Tooltip, Image,
+  Table, Input, Button, Select, message, Drawer, Tooltip, Image,
 } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
@@ -15,6 +15,7 @@ function formatSize(bytes: number) {
 }
 
 const dash = <span style={{ color: '#cbd5e1' }}>—</span>
+const emptyCell = <span style={{ color: '#cbd5e1' }}>-</span>
 
 function SectionHeader({ title }: { title: string }) {
   return (
@@ -52,25 +53,99 @@ function HashVal({ value }: { value: string | null | undefined }) {
 }
 
 // ── Detail Drawer ────────────────────────────────────────────────
-function IconDetail({ item, open, onClose }: {
-  item: Resource | null; open: boolean; onClose: () => void
+function IconDetail({ item, open, onClose, onSaved }: {
+  item: Resource | null; open: boolean; onClose: () => void; onSaved?: () => void
 }) {
+  const [name, setName] = useState(item?.name ?? '')
+  const [description, setDescription] = useState(item?.description ?? '')
+  const [tags, setTags] = useState<string[]>(item?.tags ?? [])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!item) return
+    setName(item.name ?? '')
+    setDescription(item.description ?? '')
+    setTags(item.tags ?? [])
+  }, [item])
+
+  const handleSave = async () => {
+    if (!item) return
+    setSaving(true)
+    try {
+      await api.updateResource(item.id, { name, description, tags })
+      message.success('保存成功')
+      onSaved?.()
+      onClose()
+    } catch (e: unknown) {
+      message.error('保存失败：' + (e instanceof Error ? e.message : '未知错误'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (!item) return null
 
   return (
     <Drawer
       open={open}
       onClose={onClose}
-      width={640}
+      width="clamp(720px, 70%, 1100px)"
       destroyOnClose
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Button onClick={onClose}>取消</Button>
+          <Button type="primary" loading={saving} onClick={handleSave}>保存</Button>
+        </div>
+      }
       styles={{ body: { padding: '12px 20px 24px', overflowY: 'auto' } }}
     >
+      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+      {/* ── 左侧预览图 ── */}
+      <div style={{ width: 300, flexShrink: 0, position: 'sticky' as const, top: 0 }}>
+        {item.thumbnail_path ? (
+          <Image
+            src={staticUrl(item.thumbnail_path)}
+            width="100%"
+            style={{ borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc' }}
+          />
+        ) : (
+          <div style={{
+            height: 260, borderRadius: 8, border: '1px dashed #e2e8f0',
+            background: '#f8fafc', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', color: '#cbd5e1', fontSize: 13,
+          }}>
+            暂无预览图
+          </div>
+        )}
+      </div>
+
+      {/* ── 右侧字段列表 ── */}
+      <div style={{ flex: 1, minWidth: 0 }}>
       {/* ── 基础信息 ── */}
       <SectionHeader title="基础信息" />
       <Field label="ID">{item.id}</Field>
-      <Field label="名称">{item.name}</Field>
-      <Field label="描述">{item.description ?? dash}</Field>
-      <Field label="标签">{item.tags.length > 0 ? item.tags.join('、') : dash}</Field>
+      <Field label="名称">
+        <Input value={name} onChange={e => setName(e.target.value)} size="small" />
+      </Field>
+      <Field label="描述">
+        <Input.TextArea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          autoSize={{ minRows: 2, maxRows: 5 }}
+          size="small"
+        />
+      </Field>
+      <Field label="标签">
+        <Select
+          mode="tags"
+          value={tags}
+          onChange={setTags}
+          style={{ width: '100%' }}
+          size="small"
+          placeholder="输入后回车添加"
+          tokenSeparators={[',']}
+        />
+      </Field>
       <Field label="创建时间">{item.created_at ? item.created_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="更新时间">{item.updated_at ? item.updated_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="文件名"><HashVal value={item.file_name} /></Field>
@@ -78,9 +153,8 @@ function IconDetail({ item, open, onClose }: {
       <Field label="缩略图路径"><HashVal value={item.thumbnail_path} /></Field>
       <Field label="文件类型">{item.mime_type ?? dash}</Field>
       <Field label="文件大小">{item.file_size != null ? formatSize(item.file_size) : dash}</Field>
-      <Field label="资源尺寸">
-        {item.dimensions ? `${item.dimensions.width} × ${item.dimensions.height} px` : dash}
-      </Field>
+      <Field label="资源宽度">{item.width != null ? `${item.width} px` : dash}</Field>
+      <Field label="资源高度">{item.height != null ? `${item.height} px` : dash}</Field>
       <Field label="图标ID">{item.icon_id != null ? item.icon_id : dash}</Field>
       <Field label="中文名">{item.icon_chinese_name ?? dash}</Field>
       <Field label="英文全称">{item.icon_name ?? dash}</Field>
@@ -96,6 +170,7 @@ function IconDetail({ item, open, onClose }: {
       <Field label="英文全称">{item.icon_name ?? dash}</Field>
       <Field label="英文名">{item.icon_english_name ?? dash}</Field>
       <Field label="描述">{item.description ?? dash}</Field>
+      <Field label="标签">{item.tags.length > 0 ? item.tags.join('、') : dash}</Field>
 
       {/* ── JSON 数据 ── */}
       {item.raw_data && (
@@ -109,6 +184,8 @@ function IconDetail({ item, open, onClose }: {
           </pre>
         </>
       )}
+      </div>
+      </div>
     </Drawer>
   )
 }
@@ -134,6 +211,9 @@ export default function IconList({ type, label, handleRef }: Props) {
   const [query, setQuery] = useState('')
   const [searchMode, setSearchMode] = useState(false)
 
+  const [filters, setFilters] = useState<Record<string, string[] | null>>({})
+  const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({})
+
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
@@ -156,10 +236,16 @@ export default function IconList({ type, label, handleRef }: Props) {
   }, [])
 
   useEffect(() => {
+    api.getFilterOptions(type)
+      .then(data => setFilterOptions(data.options))
+      .catch(() => {})
+  }, [type, refreshKey])
+
+  useEffect(() => {
     if (searchMode) return
     let cancelled = false
     setLoading(true)
-    api.listResources({ type, page, limit: pageSize })
+    api.listResources({ type, page, limit: pageSize, filters })
       .then(data => {
         if (cancelled) return
         setItems(data.items)
@@ -168,7 +254,7 @@ export default function IconList({ type, label, handleRef }: Props) {
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [type, page, pageSize, searchMode, refreshKey])
+  }, [type, page, pageSize, searchMode, refreshKey, filters])
 
   const handleSearch = useCallback(async (q: string) => {
     const trimmed = q.trim()
@@ -203,6 +289,13 @@ export default function IconList({ type, label, handleRef }: Props) {
   })
 
   // ── 列定义 ───────────────────────────────────────────────────
+  const filterProps = (field: string) => searchMode ? {} : {
+    key: field,
+    filters: (filterOptions[field] ?? []).map(v => ({ text: v, value: v })),
+    filteredValue: filters[field] ?? null,
+    filterSearch: true,
+  }
+
   const baseColumns: ColumnsType<Resource> = [
     {
       title: 'ID',
@@ -214,7 +307,7 @@ export default function IconList({ type, label, handleRef }: Props) {
       title: '缩略图',
       width: 80,
       render: (_: unknown, r: Resource) => {
-        if (!r.thumbnail_path) return '—'
+        if (!r.thumbnail_path) return emptyCell
         return (
           <Image
             src={staticUrl(r.thumbnail_path)}
@@ -234,8 +327,9 @@ export default function IconList({ type, label, handleRef }: Props) {
       width: 80,
       ellipsis: { showTitle: false },
       render: (_: unknown, r: Resource) => {
-        const text = r.icon_id != null ? String(r.icon_id) : '—'
-        return <Tooltip title={r.icon_id != null ? text : undefined} placement="topLeft">{text}</Tooltip>
+        if (r.icon_id == null) return emptyCell
+        const text = String(r.icon_id)
+        return <Tooltip title={text} placement="topLeft">{text}</Tooltip>
       },
     },
     {
@@ -245,6 +339,7 @@ export default function IconList({ type, label, handleRef }: Props) {
       ellipsis: { showTitle: false },
       render: (v: string, r: Resource) => {
         const text = r.icon_chinese_name ?? v
+        if (!text) return emptyCell
         return <Tooltip title={text} placement="topLeft">{text}</Tooltip>
       },
     },
@@ -253,26 +348,28 @@ export default function IconList({ type, label, handleRef }: Props) {
       width: 180,
       ellipsis: { showTitle: false },
       render: (_: unknown, r: Resource) => {
-        const text = r.icon_english_name ?? '—'
-        return <Tooltip title={r.icon_english_name ?? undefined} placement="topLeft">{text}</Tooltip>
+        if (!r.icon_english_name) return emptyCell
+        return <Tooltip title={r.icon_english_name} placement="topLeft">{r.icon_english_name}</Tooltip>
       },
     },
     {
       title: '分类',
       width: 110,
       ellipsis: { showTitle: false },
+      ...filterProps('icon_category'),
       render: (_: unknown, r: Resource) => {
-        const text = r.icon_category ?? '—'
-        return <Tooltip title={r.icon_category ?? undefined} placement="topLeft">{text}</Tooltip>
+        if (!r.icon_category) return emptyCell
+        return <Tooltip title={r.icon_category} placement="topLeft">{r.icon_category}</Tooltip>
       },
     },
     {
       title: '领域',
       width: 110,
       ellipsis: { showTitle: false },
+      ...filterProps('icon_group'),
       render: (_: unknown, r: Resource) => {
-        const text = r.icon_group ?? '—'
-        return <Tooltip title={r.icon_group ?? undefined} placement="topLeft">{text}</Tooltip>
+        if (!r.icon_group) return emptyCell
+        return <Tooltip title={r.icon_group} placement="topLeft">{r.icon_group}</Tooltip>
       },
     },
     {
@@ -280,8 +377,8 @@ export default function IconList({ type, label, handleRef }: Props) {
       dataIndex: 'description',
       ellipsis: { showTitle: false },
       render: (v: string | null) => {
-        const text = v ?? '—'
-        return <Tooltip title={v ?? undefined} placement="topLeft">{text}</Tooltip>
+        if (!v) return emptyCell
+        return <Tooltip title={v} placement="topLeft">{v}</Tooltip>
       },
     },
     {
@@ -290,8 +387,9 @@ export default function IconList({ type, label, handleRef }: Props) {
       width: 160,
       ellipsis: { showTitle: false },
       render: (tags: string[]) => {
-        const text = tags.length ? tags.join('、') : '—'
-        return <Tooltip title={tags.length ? text : undefined} placement="topLeft">{text}</Tooltip>
+        if (!tags.length) return emptyCell
+        const text = tags.join('、')
+        return <Tooltip title={text} placement="topLeft">{text}</Tooltip>
       },
     },
   ]
@@ -360,6 +458,12 @@ export default function IconList({ type, label, handleRef }: Props) {
           style={{ borderRadius: 0 }}
           scroll={{ y: tableScrollY }}
           onRow={record => ({ onClick: () => { if (!isPreviewing) { setDetailItem(record); setDetailOpen(true) } }, style: { cursor: 'pointer' } })}
+          onChange={(_, tableFilters, __, extra) => {
+            if (extra.action === 'filter') {
+              setPage(1)
+              setFilters(tableFilters as Record<string, string[] | null>)
+            }
+          }}
           pagination={searchMode ? false : {
             current: page,
             pageSize,
@@ -380,6 +484,7 @@ export default function IconList({ type, label, handleRef }: Props) {
         item={detailItem}
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
+        onSaved={refresh}
       />
     </div>
   )

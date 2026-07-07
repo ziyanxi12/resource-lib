@@ -7,7 +7,7 @@ DELETE /api/resources/{id} 软删除，同步从向量库删除
 """
 
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -52,12 +52,33 @@ def get_all_by_category(
     }
 
 
+@router.get("/filter-options")
+def get_filter_options(
+    type: str = Query(..., description="资源类型名，如 component、icon、illus"),
+    db: Session = Depends(get_db),
+):
+    """返回指定类型各可筛选字段的去重取值，供前端表头筛选项使用"""
+    try:
+        resource_type_int = int(ResourceType.from_name(type))
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
+    return {"options": resource_service.get_filter_options(db, resource_type_int)}
+
+
 @router.get("")
 def list_resources(
     type:   Optional[str] = Query(None, description="资源类型名，如 component、icon、illus"),
     page:   int           = Query(1,    ge=1),
     limit:  int           = Query(20,   ge=1, le=100),
     search: Optional[str] = Query(None, description="关键词，匹配名称/英文名/描述"),
+    cv_domain:         Optional[List[str]] = Query(None, description="组件-领域"),
+    cv_canvas_name:    Optional[List[str]] = Query(None, description="组件-类别"),
+    cv_component_name: Optional[List[str]] = Query(None, description="组件-组件名"),
+    icon_category:     Optional[List[str]] = Query(None, description="图标-分类"),
+    icon_group:        Optional[List[str]] = Query(None, description="图标-领域"),
+    illus_category:    Optional[List[str]] = Query(None, description="插画-分类"),
+    illus_version:     Optional[List[str]] = Query(None, description="插画-版本"),
+    illus_theme:       Optional[List[str]] = Query(None, description="插画-主题"),
     db: Session = Depends(get_db),
 ):
     """获取资源列表"""
@@ -68,7 +89,20 @@ def list_resources(
         except KeyError:
             raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
 
-    items, total = resource_service.get_resources(db, resource_type_int, search, page, limit)
+    filters = {
+        k: v for k, v in {
+            "cv_domain": cv_domain,
+            "cv_canvas_name": cv_canvas_name,
+            "cv_component_name": cv_component_name,
+            "icon_category": icon_category,
+            "icon_group": icon_group,
+            "illus_category": illus_category,
+            "illus_version": illus_version,
+            "illus_theme": illus_theme,
+        }.items() if v
+    }
+
+    items, total = resource_service.get_resources(db, resource_type_int, search, page, limit, filters)
 
     return {
         "total": total,
@@ -165,7 +199,8 @@ def _fmt(r) -> dict:
         "file_size":          r.file_size,
         "mime_type":          r.mime_type,
         "thumbnail_path":     r.thumbnail_path,
-        "dimensions":         r.dimensions,
+        "width":              r.width,
+        "height":             r.height,
         "description":        r.description,
         "raw_data":           r.raw_data,
         "created_by":         r.created_by,

@@ -1,8 +1,28 @@
-from typing import Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
-from app.models.resource import Resource, ResourceTag
+from app.models.resource import Resource, ResourceTag, ComponentVariant, ResourceIcon, ResourceIllus
 from app.enums import ResourceType
+
+
+# 表头筛选字段：对外字段名（与 _fmt 输出一致）→ (关联表, 列)
+FILTER_FIELDS = {
+    "cv_domain":         (ComponentVariant, ComponentVariant.domain),
+    "cv_canvas_name":    (ComponentVariant, ComponentVariant.canvas_name),
+    "cv_component_name": (ComponentVariant, ComponentVariant.component_name),
+    "icon_category":     (ResourceIcon, ResourceIcon.category),
+    "icon_group":        (ResourceIcon, ResourceIcon.group),
+    "illus_category":    (ResourceIllus, ResourceIllus.category),
+    "illus_version":     (ResourceIllus, ResourceIllus.version),
+    "illus_theme":       (ResourceIllus, ResourceIllus.theme),
+}
+
+# 各资源类型可筛选的字段
+FILTERABLE_BY_TYPE = {
+    ResourceType.component: ["cv_domain", "cv_canvas_name", "cv_component_name"],
+    ResourceType.icon:      ["icon_category", "icon_group"],
+    ResourceType.illus:     ["illus_category", "illus_version", "illus_theme"],
+}
 
 
 def get_resources(
@@ -11,6 +31,7 @@ def get_resources(
     search: Optional[str] = None,
     page: int = 1,
     limit: int = 20,
+    filters: Optional[Dict[str, List[str]]] = None,
 ) -> Tuple[List[Resource], int]:
     query = db.query(Resource).filter(Resource.is_deleted == 0)
 
@@ -26,6 +47,17 @@ def get_resources(
             )
         )
 
+    if filters:
+        joined = set()
+        for field, values in filters.items():
+            if not values or field not in FILTER_FIELDS:
+                continue
+            model, column = FILTER_FIELDS[field]
+            if model not in joined:
+                query = query.join(model, model.resource_id == Resource.id)
+                joined.add(model)
+            query = query.filter(column.in_(values))
+
     total = query.count()
     items = (
         query.order_by(Resource.sort_order.desc(), Resource.created_at.desc())
@@ -34,6 +66,24 @@ def get_resources(
              .all()
     )
     return items, total
+
+
+def get_filter_options(db: Session, resource_type: int) -> Dict[str, List[str]]:
+    """返回指定类型各可筛选字段的去重取值，供前端表头筛选项使用"""
+    fields = FILTERABLE_BY_TYPE.get(ResourceType(resource_type), [])
+    options: Dict[str, List[str]] = {}
+    for field in fields:
+        model, column = FILTER_FIELDS[field]
+        rows = (
+            db.query(column)
+              .join(Resource, model.resource_id == Resource.id)
+              .filter(Resource.is_deleted == 0, column.isnot(None), column != "")
+              .distinct()
+              .order_by(column)
+              .all()
+        )
+        options[field] = [row[0] for row in rows]
+    return options
 
 
 def get_resource_by_id(db: Session, resource_id: int) -> Optional[Resource]:

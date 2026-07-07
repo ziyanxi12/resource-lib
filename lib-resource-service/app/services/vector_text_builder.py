@@ -35,6 +35,11 @@ def _load_translations() -> dict:
 # raw 在 init 批量入库时携带原始 JSON 字段；PUT 更新时为 {}，fallback 到 ORM 关联
 # ──────────────────────────────────────────────────────────────────
 
+def main_tag_text(resource: "Resource") -> str:
+    """主库标签（resource_tags 表）拼接为空格分隔文本"""
+    return " ".join(t.tag for t in resource.tags)
+
+
 def build_component_text(component_name: str, canvas_name: str, variant_name: str) -> str:
     translations = _load_translations()
     clean_canvas = re.sub(r"^\d+\.", "", canvas_name or "").strip()
@@ -88,7 +93,8 @@ def _build_component_text_fn(resource: "Resource", raw: dict) -> str:
     component_name = raw.get("parent_name")  or (cv.component_name if cv else "") or ""
     canvas_name    = raw.get("canvas_name")  or (cv.canvas_name    if cv else "") or ""
     variant_name   = raw.get("variant_name") or (cv.name           if cv else "") or ""
-    return build_component_text(component_name, canvas_name, variant_name)
+    text = build_component_text(component_name, canvas_name, variant_name)
+    return " ".join(p for p in [text, main_tag_text(resource)] if p)
 
 
 def _build_component_metadata(resource: "Resource", raw: dict) -> dict:
@@ -108,7 +114,8 @@ def _build_icon_text_fn(resource: "Resource", raw: dict) -> str:
     name         = raw.get("name")        or (ic.name         if ic else "") or ""
     english_name = raw.get("englishName") or (ic.english_name if ic else "") or ""
     description  = resource.description   or ""
-    return build_icon_text(category, chinese_name, name, english_name, description)
+    text = build_icon_text(category, chinese_name, name, english_name, description)
+    return " ".join(p for p in [text, main_tag_text(resource)] if p)
 
 
 def _build_icon_metadata(resource: "Resource", raw: dict) -> dict:
@@ -131,7 +138,7 @@ def _build_illus_text_fn(resource: "Resource", raw: dict) -> str:
     tag_str  = " ".join(tags) if isinstance(tags, list) else str(tags)
     version  = raw.get("version") or (il.version if il else "") or ""
     theme    = raw.get("theme") or (il.theme if il else "") or ""
-    return " ".join(p for p in [illus_id, alias, desc, category, tag_str, version, theme] if p)
+    return " ".join(p for p in [illus_id, alias, desc, category, tag_str, version, theme, main_tag_text(resource)] if p)
 
 
 def _build_illus_metadata(resource: "Resource", raw: dict) -> dict:
@@ -145,7 +152,7 @@ def _build_illus_metadata(resource: "Resource", raw: dict) -> dict:
 
 
 def _build_simple_text(resource: "Resource", raw: dict) -> str:
-    return f"{resource.name} {resource.description or ''}".strip()
+    return " ".join(p for p in [resource.name, resource.description or "", main_tag_text(resource)] if p)
 
 
 def _build_simple_metadata(resource: "Resource", raw: dict) -> dict:

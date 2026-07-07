@@ -21,7 +21,7 @@
 import json
 import logging
 import os
-from typing import Optional
+from typing import Optional, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -80,7 +80,7 @@ def _bulk_upsert_component_variants(db: Session, rows: list) -> None:
 # ──────────────────────────────────────────────────────────────────
 
 def import_components(db: Session, skip_vector: bool = False) -> dict:
-    from app.services.component_service import get_component_map
+    from app.services.component_service import get_component_map, _get_hex_file_size
     component_map = get_component_map()
     if not component_map:
         return {"added": 0, "updated": 0, "error": "component_map.json 为空或不存在"}
@@ -106,6 +106,7 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
                     "parent_name": parent_name,
                     "file_name":   file_name,
                     "hex_file":    hex_file,
+                    "file_size":   _get_hex_file_size(hex_file),
                 })
         standalone = data.get("standaloneComponents", []) if isinstance(data, dict) else []
         for comp in standalone:
@@ -124,6 +125,7 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
                 "parent_name": comp.get("name", "未命名组件"),
                 "file_name":   os.path.basename(hex_file) if hex_file else None,
                 "hex_file":    hex_file,
+                "file_size":   _get_hex_file_size(hex_file),
             })
 
     if not all_meta:
@@ -164,6 +166,7 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
             "name":      variant.get("name", ""),
             "file_name": meta["file_name"],
             "file_path": meta["hex_file"],
+            "file_size": meta["file_size"],
             "mime_type": "text/plain",
             "raw_data":  json.dumps({
                 "domain":         domain,
@@ -547,7 +550,7 @@ def import_images(db: Session, skip_vector: bool = False) -> dict:
         file_name = os.path.basename(rel_path)
         file_size = os.path.getsize(abs_path)
         mime_type = _get_mime_type(file_name)
-        dimensions = _extract_dimensions_from_file(abs_path)
+        width, height = _extract_dimensions_from_file(abs_path)
 
         resource_data = {
             "resource_type": int(ResourceType.image),
@@ -556,7 +559,8 @@ def import_images(db: Session, skip_vector: bool = False) -> dict:
             "file_path":     rel_path,
             "file_size":     file_size,
             "mime_type":     mime_type,
-            "dimensions":    dimensions,
+            "width":         width,
+            "height":        height,
             "description":   item.get("description"),
         }
 
@@ -595,14 +599,14 @@ def _get_mime_type(filename: str) -> str:
     }.get(ext, "image/octet-stream")
 
 
-def _extract_dimensions_from_file(abs_path: str) -> Optional[dict]:
+def _extract_dimensions_from_file(abs_path: str) -> Tuple[Optional[int], Optional[int]]:
     if not _HAS_PILLOW:
-        return None
+        return None, None
     try:
         img = PILImage.open(abs_path)
-        return {"width": img.width, "height": img.height}
+        return img.width, img.height
     except Exception:
-        return None
+        return None, None
 
 
 # ──────────────────────────────────────────────────────────────────

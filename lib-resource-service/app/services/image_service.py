@@ -5,7 +5,7 @@
 
 import os
 import uuid
-from typing import Optional
+from typing import Optional, Tuple
 from sqlalchemy.orm import Session
 from fastapi import UploadFile
 
@@ -43,9 +43,9 @@ async def upload_image(
     with open(abs_path, "wb") as f:
         f.write(content)
 
-    file_size  = len(content)
-    mime_type  = file.content_type or f"image/{ext}"
-    dimensions = _extract_dimensions(content)
+    file_size     = len(content)
+    mime_type     = file.content_type or f"image/{ext}"
+    width, height = _extract_dimensions(content)
 
     data = {
         "resource_type": int(ResourceType.image),
@@ -54,7 +54,8 @@ async def upload_image(
         "file_path":     relative_path,
         "file_size":     file_size,
         "mime_type":     mime_type,
-        "dimensions":    dimensions,
+        "width":         width,
+        "height":        height,
         "description":   description,
         "created_by":    created_by,
     }
@@ -62,19 +63,20 @@ async def upload_image(
     ingest_vectors(ResourceType.image, [(resource, {"name": name, "description": description or ""})])
 
     return {
-        "id":         resource.id,
-        "name":       resource.name,
-        "file_path":  relative_path,
-        "dimensions": dimensions,
-        "message":    "图片上传成功",
+        "id":        resource.id,
+        "name":      resource.name,
+        "file_path": relative_path,
+        "width":     width,
+        "height":    height,
+        "message":   "图片上传成功",
     }
 
 
-def _extract_dimensions(content: bytes) -> Optional[dict]:
+def _extract_dimensions(content: bytes) -> Tuple[Optional[int], Optional[int]]:
     if not _HAS_PILLOW:
-        return None
+        return None, None
     try:
         img = PILImage.open(BytesIO(content))
-        return {"width": img.width, "height": img.height}
+        return img.width, img.height
     except Exception:
-        return None
+        return None, None

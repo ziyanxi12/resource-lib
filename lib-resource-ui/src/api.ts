@@ -17,14 +17,23 @@ export const api = {
     page?: number
     limit?: number
     search?: string
+    filters?: Record<string, string[] | null | undefined>
   }) => {
     const q = new URLSearchParams()
     if (params.type) q.set('type', params.type)
     if (params.page) q.set('page', String(params.page))
     if (params.limit) q.set('limit', String(params.limit))
     if (params.search) q.set('search', params.search)
+    if (params.filters) {
+      for (const [key, values] of Object.entries(params.filters)) {
+        values?.forEach(v => q.append(key, v))
+      }
+    }
     return request(`/api/resources?${q}`)
   },
+
+  getFilterOptions: (type: string): Promise<{ options: Record<string, string[]> }> =>
+    request(`/api/resources/filter-options?type=${type}`),
 
   updateResource: (id: number, data: Record<string, unknown>) =>
     request(`/api/resources/${id}`, {
