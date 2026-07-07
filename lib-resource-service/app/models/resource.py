@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, SmallInteger, String, Text, JSON, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, SmallInteger, Float, String, Text, JSON, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -15,8 +15,8 @@ class Resource(Base):
     file_size      = Column(Integer, nullable=True, comment="文件大小（bytes）")
     mime_type      = Column(String(100), nullable=True)
     thumbnail_path = Column(String(500), nullable=True)
-    width          = Column(Integer, nullable=True, comment="资源宽度（px）")
-    height         = Column(Integer, nullable=True, comment="资源高度（px）")
+    width          = Column(Float, nullable=True, comment="资源宽度（px），可能为小数")
+    height         = Column(Float, nullable=True, comment="资源高度（px），可能为小数")
     description    = Column(Text, nullable=True)
     raw_data       = Column(Text, nullable=True, comment="原始数据 JSON 字符串")
     created_by     = Column(String(100), nullable=True)

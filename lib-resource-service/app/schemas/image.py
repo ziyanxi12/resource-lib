@@ -6,6 +6,6 @@ class ImageUploadResponse(BaseModel):
     id:        int
     name:      str
     file_path: str
-    width:     Optional[int]
-    height:    Optional[int]
+    width:     Optional[float]
+    height:    Optional[float]
     message:   str
