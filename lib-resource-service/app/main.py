@@ -66,6 +66,21 @@ if os.path.exists(settings.FILE_ROOT_DIR):
     app.mount("/static", StaticFiles(directory=settings.FILE_ROOT_DIR), name="static")
 
 
+class _UTF8StaticFiles(StaticFiles):
+    """txt 响应补 charset=utf-8，否则浏览器按本地编码猜，中文日志会乱码"""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        if response.headers.get("content-type", "").startswith("text/plain"):
+            response.headers["content-type"] = "text/plain; charset=utf-8"
+        return response
+
+
+# 日志文件服务：浏览器直接访问 /logs/app.txt、/logs/app-2026-07-07.txt 查看日志
+os.makedirs(settings.LOG_DIR, exist_ok=True)
+app.mount("/logs", _UTF8StaticFiles(directory=settings.LOG_DIR), name="logs")
+
+
 @app.get("/health", tags=["健康检查"])
 def health():
     return {

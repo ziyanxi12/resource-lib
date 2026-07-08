@@ -6,6 +6,7 @@ import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
+import SemanticUnderstand from '../components/SemanticUnderstand'
 
 const DEFAULT_PAGE_SIZE = 20
 
@@ -63,11 +64,11 @@ function ComponentDetail({ item, open, onClose, onSaved }: {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (!item) return
+    if (!item || !open) return
     setName(item.name ?? '')
     setDescription(item.description ?? '')
     setTags(item.tags ?? [])
-  }, [item])
+  }, [item, open])
 
   const handleSave = async () => {
     if (!item) return
@@ -118,6 +119,10 @@ function ComponentDetail({ item, open, onClose, onSaved }: {
             暂无预览图
           </div>
         )}
+        <SemanticUnderstand
+          resourceId={item.id}
+          onFill={text => setDescription(d => d ? `${d}\n${text}` : text)}
+        />
       </div>
 
       {/* ── 右侧字段列表 ── */}
@@ -156,7 +161,8 @@ function ComponentDetail({ item, open, onClose, onSaved }: {
       <Field label="文件大小">{item.file_size != null ? formatSize(item.file_size) : dash}</Field>
       <Field label="资源宽度">{item.width != null ? `${item.width} px` : dash}</Field>
       <Field label="资源高度">{item.height != null ? `${item.height} px` : dash}</Field>
-      <Field label="领域">{item.cv_domain ?? dash}</Field>
+      <Field label="组件库">{item.cv_lib_name ?? dash}</Field>
+      <Field label="组件库 fileKey"><HashVal value={item.cv_lib_file_key} /></Field>
       <Field label="组件类别">{item.cv_canvas_name ?? dash}</Field>
       <Field label="组件名">{item.cv_component_name ?? dash}</Field>
       <Field label="组件 GUID"><HashVal value={item.cv_component_guid} /></Field>
@@ -176,7 +182,7 @@ function ComponentDetail({ item, open, onClose, onSaved }: {
       <Field label="组件名">{item.cv_component_name ?? dash}</Field>
       <Field label="组件类别">{item.cv_canvas_name ?? dash}</Field>
       <Field label="变体名">{item.cv_variant_name ?? dash}</Field>
-      <Field label="领域">{item.cv_domain ?? dash}</Field>
+      <Field label="组件库">{item.cv_lib_name ?? dash}</Field>
       <Field label="标签">{item.tags.length > 0 ? item.tags.join('、') : dash}</Field>
 
       {/* ── JSON 数据 ── */}
@@ -312,12 +318,12 @@ export default function ComponentList({ handleRef }: Props) {
       }
     },
     {
-      title: '领域', width: 90,
+      title: '组件库', width: 120,
       ellipsis: { showTitle: false },
-      ...filterProps('cv_domain'),
+      ...filterProps('cv_lib_name'),
       render: (_: unknown, r: Resource) => {
-        if (!r.cv_domain) return emptyCell
-        return <Tooltip title={r.cv_domain} placement="topLeft">{r.cv_domain}</Tooltip>
+        if (!r.cv_lib_name) return emptyCell
+        return <Tooltip title={r.cv_lib_name} placement="topLeft">{r.cv_lib_name}</Tooltip>
       },
     },
     {

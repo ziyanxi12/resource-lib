@@ -60,7 +60,7 @@ def _bulk_upsert_component_variants(db: Session, rows: list) -> None:
         ).all()
     }
 
-    UPDATE_FIELDS = ["resource_id", "domain", "canvas_name", "component_name",
+    UPDATE_FIELDS = ["resource_id", "lib_file_key", "lib_name", "canvas_name", "component_name",
                      "component_guid", "component_key", "name", "guid", "component_props"]
 
     for vk, r in valid_rows.items():
@@ -92,28 +92,30 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
             continue
         with open(index_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        domain     = data.get("domain") if isinstance(data, dict) else None
-        components = data if isinstance(data, list) else data.get("componentSets", [])
+        lib_file_key = entry.get("fileKey")
+        lib_name    = entry.get("name")
+        components  = data if isinstance(data, list) else data.get("componentSets", [])
         for comp in components:
             hex_file    = comp.get("hexFile")
             file_name   = os.path.basename(hex_file) if hex_file else None
             parent_name = comp.get("name", "未命名组件集")
             for variant in comp.get("variants", []):
                 all_meta.append({
-                    "comp":        comp,
-                    "variant":     variant,
-                    "domain":      domain,
-                    "parent_name": parent_name,
-                    "file_name":   file_name,
-                    "hex_file":    hex_file,
-                    "file_size":   _get_hex_file_size(hex_file),
+                    "comp":          comp,
+                    "variant":       variant,
+                    "lib_file_key":  lib_file_key,
+                    "lib_name":      lib_name,
+                    "parent_name":   parent_name,
+                    "file_name":     file_name,
+                    "hex_file":      hex_file,
+                    "file_size":     _get_hex_file_size(hex_file),
                 })
         standalone = data.get("standaloneComponents", []) if isinstance(data, dict) else []
         for comp in standalone:
             component_key = comp.get("componentKey")
             hex_file      = comp.get("hexFile")
             all_meta.append({
-                "comp":        comp,
+                "comp":          comp,
                 "variant": {
                     "name":           comp.get("name", ""),
                     "guid":           comp.get("guid"),
@@ -121,11 +123,12 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
                     "parentKey":      component_key,
                     "componentProps": comp.get("componentProps", []),
                 },
-                "domain":      domain,
-                "parent_name": comp.get("name", "未命名组件"),
-                "file_name":   os.path.basename(hex_file) if hex_file else None,
-                "hex_file":    hex_file,
-                "file_size":   _get_hex_file_size(hex_file),
+                "lib_file_key":  lib_file_key,
+                "lib_name":      lib_name,
+                "parent_name":   comp.get("name", "未命名组件"),
+                "file_name":     os.path.basename(hex_file) if hex_file else None,
+                "hex_file":      hex_file,
+                "file_size":     _get_hex_file_size(hex_file),
             })
 
     if not all_meta:
@@ -155,11 +158,12 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
     vector_pairs = []
 
     for meta in all_meta:
-        comp        = meta["comp"]
-        variant     = meta["variant"]
-        domain      = meta["domain"]
-        parent_name = meta["parent_name"]
-        variant_key = variant.get("variantKey")
+        comp          = meta["comp"]
+        variant       = meta["variant"]
+        lib_file_key  = meta["lib_file_key"]
+        lib_name      = meta["lib_name"]
+        parent_name   = meta["parent_name"]
+        variant_key   = variant.get("variantKey")
 
         resource_data = {
             "resource_type": int(ResourceType.component),
@@ -169,7 +173,6 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
             "file_size": meta["file_size"],
             "mime_type": "text/plain",
             "raw_data":  json.dumps({
-                "domain":         domain,
                 "canvasName":     comp.get("canvasName"),
                 "componentKey":   comp.get("componentKey"),
                 "componentGuid":  comp.get("guid"),
@@ -193,7 +196,8 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
 
         variant_rows.append({
             "_res":           resource_row,
-            "domain":         domain,
+            "lib_file_key":   lib_file_key,
+            "lib_name":       lib_name,
             "canvas_name":    comp.get("canvasName"),
             "component_name": comp.get("name"),
             "component_guid": comp.get("guid"),
@@ -207,7 +211,7 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
             "parent_name":  parent_name,
             "canvas_name":  comp.get("canvasName", ""),
             "variant_name": variant.get("name", ""),
-            "domain":       domain or "",
+            "lib_name":     lib_name or "",
         }))
 
     db.flush()

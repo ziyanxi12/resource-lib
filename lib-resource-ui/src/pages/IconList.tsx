@@ -6,6 +6,7 @@ import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
+import SemanticUnderstand from '../components/SemanticUnderstand'
 
 const DEFAULT_PAGE_SIZE = 20
 
@@ -62,11 +63,11 @@ function IconDetail({ item, open, onClose, onSaved }: {
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    if (!item) return
+    if (!item || !open) return
     setName(item.name ?? '')
     setDescription(item.description ?? '')
     setTags(item.tags ?? [])
-  }, [item])
+  }, [item, open])
 
   const handleSave = async () => {
     if (!item) return
@@ -117,6 +118,10 @@ function IconDetail({ item, open, onClose, onSaved }: {
             暂无预览图
           </div>
         )}
+        <SemanticUnderstand
+          resourceId={item.id}
+          onFill={text => setDescription(d => d ? `${d}\n${text}` : text)}
+        />
       </div>
 
       {/* ── 右侧字段列表 ── */}

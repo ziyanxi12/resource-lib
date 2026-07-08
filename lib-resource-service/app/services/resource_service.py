@@ -7,7 +7,6 @@ from app.enums import ResourceType
 
 # 表头筛选字段：对外字段名（与 _fmt 输出一致）→ (关联表, 列)
 FILTER_FIELDS = {
-    "cv_domain":         (ComponentVariant, ComponentVariant.domain),
     "cv_canvas_name":    (ComponentVariant, ComponentVariant.canvas_name),
     "cv_component_name": (ComponentVariant, ComponentVariant.component_name),
     "icon_category":     (ResourceIcon, ResourceIcon.category),
@@ -19,7 +18,7 @@ FILTER_FIELDS = {
 
 # 各资源类型可筛选的字段
 FILTERABLE_BY_TYPE = {
-    ResourceType.component: ["cv_domain", "cv_canvas_name", "cv_component_name"],
+    ResourceType.component: ["cv_canvas_name", "cv_component_name"],
     ResourceType.icon:      ["icon_category", "icon_group"],
     ResourceType.illus:     ["illus_category", "illus_version", "illus_theme"],
 }
@@ -60,7 +59,7 @@ def get_resources(
 
     total = query.count()
     items = (
-        query.order_by(Resource.sort_order.desc(), Resource.created_at.desc())
+        query.order_by(Resource.created_at.desc())
              .offset((page - 1) * limit)
              .limit(limit)
              .all()
@@ -115,7 +114,7 @@ def get_all_by_type(db: Session, resource_type: int) -> Tuple[List[Resource], in
     items = (
         db.query(Resource)
           .filter(Resource.is_deleted == 0, Resource.resource_type == resource_type)
-          .order_by(Resource.sort_order.desc(), Resource.created_at.desc())
+          .order_by(Resource.created_at.desc())
           .all()
     )
     return items, len(items)

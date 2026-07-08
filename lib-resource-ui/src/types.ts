@@ -13,7 +13,6 @@ export interface Resource {
   description: string | null
   raw_data: string | null
   created_by: string | null
-  sort_order: number
   created_at: string | null
   updated_at: string | null
   tags: string[]
@@ -30,7 +29,8 @@ export interface Resource {
   illus_tags?: string[] | null
   illus_version?: string | null
   illus_theme?: string | null
-  cv_domain?: string | null
+  cv_lib_file_key?: string | null
+  cv_lib_name?: string | null
   cv_canvas_name?: string | null
   cv_component_name?: string | null
   cv_component_guid?: string | null

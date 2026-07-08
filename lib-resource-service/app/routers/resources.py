@@ -4,6 +4,7 @@ GET  /api/resources        列表（支持类型过滤、搜索、分页）
 GET  /api/resources/{id}   详情
 PUT  /api/resources/{id}   更新元数据，同步更新向量库
 DELETE /api/resources/{id} 软删除，同步从向量库删除
+POST /api/resources/{id}/understand  对资源预览图生成语义描述
 """
 
 import logging
@@ -16,7 +17,7 @@ from app.config import settings
 from app.database import get_db
 from app.enums import ResourceType
 from app.models.resource import Resource
-from app.services import resource_service
+from app.services import resource_service, image_service
 from app.schemas.resource import ResourceUpdateRequest
 from app.services.vector_text_builder import get_registry, ingest_vectors
 
@@ -71,7 +72,6 @@ def list_resources(
     page:   int           = Query(1,    ge=1),
     limit:  int           = Query(20,   ge=1, le=100),
     search: Optional[str] = Query(None, description="关键词，匹配名称/英文名/描述"),
-    cv_domain:         Optional[List[str]] = Query(None, description="组件-领域"),
     cv_canvas_name:    Optional[List[str]] = Query(None, description="组件-类别"),
     cv_component_name: Optional[List[str]] = Query(None, description="组件-组件名"),
     icon_category:     Optional[List[str]] = Query(None, description="图标-分类"),
@@ -91,7 +91,6 @@ def list_resources(
 
     filters = {
         k: v for k, v in {
-            "cv_domain": cv_domain,
             "cv_canvas_name": cv_canvas_name,
             "cv_component_name": cv_component_name,
             "icon_category": icon_category,
@@ -142,6 +141,17 @@ def update_resource(
         _sync_to_vector(db, resource)
 
     return {"message": "更新成功", "id": resource_id}
+
+
+@router.post("/{resource_id}/understand")
+def understand_resource(resource_id: int, db: Session = Depends(get_db)):
+    """
+    对资源的预览图生成语义描述（图片类型用原图，其他类型用缩略图）。
+    同步调用图片理解模块，单张耗时约 10~30 秒；
+    定义为 def（非 async）使 FastAPI 将其放入线程池，不阻塞事件循环。
+    """
+    description = image_service.understand_image(db, resource_id)
+    return {"id": resource_id, "description": description}
 
 
 @router.delete("/{resource_id}")
@@ -204,7 +214,6 @@ def _fmt(r) -> dict:
         "description":        r.description,
         "raw_data":           r.raw_data,
         "created_by":         r.created_by,
-        "sort_order":         r.sort_order,
         "created_at":         r.created_at.isoformat() if r.created_at else None,
         "updated_at":         r.updated_at.isoformat() if r.updated_at else None,
         "tags":               [t.tag for t in r.tags],
@@ -223,7 +232,8 @@ def _fmt(r) -> dict:
         "illus_version":      r.illus_detail.version     if r.illus_detail else None,
         "illus_theme":        r.illus_detail.theme       if r.illus_detail else None,
         # component 字段
-        "cv_domain":          r.component_variant.domain          if r.component_variant else None,
+        "cv_lib_file_key":    r.component_variant.lib_file_key    if r.component_variant else None,
+        "cv_lib_name":        r.component_variant.lib_name        if r.component_variant else None,
         "cv_canvas_name":     r.component_variant.canvas_name     if r.component_variant else None,
         "cv_component_name":  r.component_variant.component_name  if r.component_variant else None,
         "cv_component_guid":  r.component_variant.component_guid  if r.component_variant else None,

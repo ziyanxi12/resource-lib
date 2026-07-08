@@ -48,108 +48,38 @@ Python 3.8 的已知问题：
 
 ## 三、数据库设计
 
-### 3.1 表结构
+### 3.1 表结构总览
 
-#### 主表：`resources`
+数据库包含 **5 张表**：
 
-```sql
-CREATE TABLE resources (
-  id              INT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '自增主键，全局唯一',
-  resource_type   TINYINT UNSIGNED NOT NULL COMMENT '资源类型：1=组件集 2=模版 3=SVG 4=插画 5=图片',
-  name            VARCHAR(255) NOT NULL COMMENT '资源名称',
-  unique_key      VARCHAR(255) NOT NULL COMMENT '唯一标识，见下方说明',
-  file_path       VARCHAR(500) NULL COMMENT '文件相对路径（相对于 FILE_ROOT_DIR），svg/插画可为空',
-  thumbnail_path  VARCHAR(500) NULL COMMENT '缩略图相对路径',
-  file_size       INT UNSIGNED NULL COMMENT '文件大小，单位 bytes',
-  mime_type       VARCHAR(100) NULL COMMENT '文件 MIME 类型，如 image/png、image/svg+xml',
-  dimensions      JSON NULL COMMENT '尺寸信息，如 {"width": 1920, "height": 1080}，图片/插画/SVG 使用',
-  description     TEXT NULL COMMENT '描述，所有类型均可填写',
-  english_name    VARCHAR(255) NULL COMMENT '英文名称，svg/插画/图片使用',
-  domain          VARCHAR(100) NULL COMMENT '领域，仅组件集使用，如"电商"、"企业管理"',
-  created_by      VARCHAR(100) NULL COMMENT '创建人',
-  is_deleted      TINYINT(1) NOT NULL DEFAULT 0 COMMENT '软删除标记：0=正常 1=已删除',
-  sort_order      INT NOT NULL DEFAULT 0 COMMENT '排序权重，越大越靠前',
-  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_unique_key (unique_key),
-  INDEX idx_type (resource_type),
-  INDEX idx_deleted (is_deleted),
-  INDEX idx_sort (sort_order)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源主表';
+```
+resources (主表)
+    │
+    ├─ 1:N ── resource_tags        resource_id → resources.id
+    ├─ 1:1 ── component_variants   resource_id → resources.id (仅 resource_type=1)
+    ├─ 1:1 ── resource_icons       resource_id → resources.id (仅 resource_type=3)
+    └─ 1:1 ── resource_illus      resource_id → resources.id (仅 resource_type=4)
 ```
 
-**`resource_type` 映射（应用层定义）：**
+**详细表结构、字段清单、约束说明** 请查看：**[DATABASE.md](./DATABASE.md)**
 
-```python
-class ResourceType(IntEnum):
-    component_set = 1
-    template      = 2
-    svg           = 3
-    illustration  = 4
-    image         = 5
-```
+### 3.2 资源类型映射
 
-前端传字符串 `"component_set"`，Python 转为整数 `1` 存库；查询时再转回字符串返回给前端。
+| resource_type值 | 类型名称 | 英文名 | 详情表 |
+|----------------|---------|--------|--------|
+| 1 | 组件集 | component | component_variants |
+| 2 | 模版 | template | - |
+| 3 | SVG图标 | icon | resource_icons |
+| 4 | 插画 | illus | resource_illus |
+| 5 | 图片 | image | - |
 
-**`unique_key` 来源说明：**
+### 3.3 表设计要点
 
-| 类型 | unique_key 来源 |
-|------|----------------|
-| 组件集 | component_index.json 中的 `componentKey` |
-| SVG | 调用方传入的自有 ID |
-| 插画 | 调用方传入的自有 ID |
-| 模版 | 后端生成 UUID |
-| 图片 | 后端生成 UUID |
-
-**`file_path` 说明：**
-- 存储相对路径，如 `template/xxx.fig`、`image/xxx.png`
-- 实际绝对路径 = 配置项 `FILE_ROOT_DIR` + `file_path`
-- `FILE_ROOT_DIR` 在 `.env` 中配置，例如 `/data/resources`
-- svg 和插画的 `file_path` 可为空
-
-**`is_deleted` 说明（软删除）：**
-- 删除操作只将 `is_deleted` 置为 1，数据不物理删除
-- 所有查询默认过滤 `is_deleted = 0`
-- 若未来需要回收站功能，可直接置回 0 恢复
-
-#### 标签表：`resource_tags`
-
-```sql
-CREATE TABLE resource_tags (
-  id          INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  resource_id INT UNSIGNED NOT NULL COMMENT '关联 resources.id',
-  tag         VARCHAR(100) NOT NULL COMMENT '标签名',
-  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  INDEX idx_resource_id (resource_id),
-  INDEX idx_tag (tag),
-  CONSTRAINT fk_tag_resource FOREIGN KEY (resource_id)
-    REFERENCES resources(id) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='资源标签（多对多）';
-```
-
-### 3.2 字段与资源类型对应关系
-
-| 字段 | 组件集 | 模版 | SVG | 插画 | 图片 |
-|------|--------|------|-----|------|------|
-| name | ✓ | ✓ | ✓ | ✓ | ✓ |
-| unique_key | componentKey | UUID | 调用方传入 | 调用方传入 | UUID |
-| file_path | hex 相对路径 | 上传相对路径 | 可为空 | 可为空 | 上传相对路径 |
-| thumbnail_path | — | ✓ | ✓ | ✓ | ✓ |
-| file_size | — | ✓ | ✓ | ✓ | ✓ |
-| mime_type | — | ✓ | ✓ | ✓ | ✓ |
-| dimensions | — | — | ✓ | ✓ | ✓ |
-| description | ✓ | ✓ | ✓ | ✓ | ✓ |
-| english_name | — | — | ✓ | ✓ | ✓ |
-| created_by | ✓ | ✓ | ✓ | ✓ | ✓ |
-| domain | ✓ | — | — | — | — |
-| resource_tags | ✓ | ✓ | ✓ | ✓ | ✓ |
-
-### 3.3 表结构说明
-
-- 共 2 张表：`resources`（主表）+ `resource_tags`（标签）
-- `domain` 直接放主表，对非组件集类型为 NULL，无需单独扩展表
-- 标签独立为 `resource_tags`，支持一个资源打多个标签
-- 主表统一承载搜索、分页、过滤，结构保持稳定
+- **主表统一**：通用字段都在 `resources` 表，使用 `resource_type` 区分类型
+- **详情表分离**：每种类型有独立的详情表存储特有字段，通过 1:1 关系关联
+- **软删除**：`is_deleted` 字段标记删除状态，数据不物理删除
+- **业务主键**：详情表使用业务主键（variant_key/icon_id/illus_id），而非自增ID
+- **级联删除**：外键设置 `ondelete="CASCADE"`，删除主表记录时自动删除关联数据
 
 ---
 
@@ -157,16 +87,22 @@ CREATE TABLE resource_tags (
 
 ### 4.1 组件集
 
-**数据来源：** `component_index.json`（由 `/split` API 拆解 pix 文件后生成）
+**数据来源：**
+- `component_map.json` - 组件库映射表（包含 fileKey, name）
+- `component_index.json` - 组件集详情（由 `/split` API 拆解 pix 文件后生成）
 
-**前置条件：** 项目中维护一份 `component_map.json` 映射表，记录可选的组件库文件：
+**前置条件：** 项目中维护一份 `component_map.json` 映射表：
 
 ```json
 [
-  { "fileKey": "abc123", "name": "基础组件库" },
-  { "fileKey": "def456", "name": "业务组件库" }
+  { "fileKey": "abc123", "name": "AAA组件库", "indexPath": "component/abc123/component_index.json" },
+  { "fileKey": "def456", "name": "BBB组件库", "indexPath": "component/def456/component_index.json" }
 ]
 ```
+
+**入库时提取：**
+- `fileKey` → `component_variants.lib_file_key`
+- `name` → `component_variants.lib_name`
 
 **完整流程：**
 ```
@@ -189,14 +125,20 @@ CREATE TABLE resource_tags (
 返回同步结果（新增数、更新数）
 ```
 
-**`component_index.json` 字段映射到 `resources` 表：**
+**`component_index.json` 字段映射：**
 
-| JSON 字段 | DB 字段 |
-|-----------|---------|
-| 名称 | `name` |
-| `componentKey` | `unique_key` |
-| hex 路径 | `file_path`（相对路径） |
-| 领域 | `domain` |
+| JSON 字段 | DB 表 | DB 字段 |
+|-----------|--------|---------|
+| 名称 | resources | name |
+| `componentKey` | component_variants | component_key |
+| hex 路径 | resources | file_path |
+| `canvasName` | component_variants | canvas_name |
+| `name`（组件集） | component_variants | component_name |
+| - | component_variants | lib_file_key, lib_name（来自 component_map.json） |
+
+**关键变化：**
+- 组件库信息（`lib_file_key`, `lib_name`）来自 `component_map.json`，而非 `component_index.json`
+- 不再使用 `domain` 字段，改用 `lib_name` 表示组件库来源
 
 ---
 
@@ -243,8 +185,8 @@ CREATE TABLE resource_tags (
     ↓
 将 JSON 保存到 FILE_ROOT_DIR/icon/{type}.json
     ↓
-解析 JSON → UPSERT 写入 resources 表
-（id → unique_key，name → name，englishName → english_name，
+解析 JSON → UPSERT 写入 resources + resource_icons/resource_illus 表
+（id → icon_id/illus_id，name → name，englishName → english_name，
   description → description，file_path 为空）
     ↓
 调用 REBUILD_ICON_API → 数据向量化入库
@@ -266,7 +208,7 @@ CREATE TABLE resource_tags (
     ↓
 将图片存入 FILE_ROOT_DIR/image/{uuid}.{ext}
     ↓
-提取图片尺寸 → 填入 dimensions JSON
+提取图片尺寸 → 填入 width/height 字段
     ↓
 写入 resources 表（file_path = image/{uuid}.{ext}）
     ↓

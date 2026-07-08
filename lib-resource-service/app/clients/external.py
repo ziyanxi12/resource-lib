@@ -99,3 +99,23 @@ async def fetch_icon_list() -> list:
         return resp.json()
 
 
+# ──────────────────────────────────────────────────────────────────
+# 图片语义理解
+# ──────────────────────────────────────────────────────────────────
+
+def understand_image(image_path: str) -> str:
+    """
+    调用图片语义理解模块，生成图片的中文语义描述。
+    参数：图片文件的绝对路径。
+    真实实现是同步 py 模块（app/clients/image_understanding.py），单张耗时约 10~30 秒，
+    调用方需以同步路由（def）承载，交由 FastAPI 线程池执行。
+    """
+    if settings.USE_MOCK:
+        import time
+        time.sleep(2)
+        return "[Mock] 这是一张示例图片的语义描述：画面主体清晰，构图居中，色彩以蓝白为主，适合用于界面展示场景。"
+
+    from app.clients.image_understanding import understand_image as _understand
+    return _understand(image_path)
+
+

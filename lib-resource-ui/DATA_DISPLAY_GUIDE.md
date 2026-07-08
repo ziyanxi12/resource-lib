@@ -19,7 +19,7 @@
 | 字段 | 中文表述 | 宽度 | 数据来源 |
 |------|---------|------|---------|
 | `id` | ID | 68px | `Resource.id` |
-| `cv_domain` | 领域 | 90px | `ComponentVariant.domain` |
+| `cv_lib_name` | 组件库 | 120px | `ComponentVariant.lib_name` |
 | `cv_canvas_name` | 组件类别 | 120px | `ComponentVariant.canvas_name` |
 | `cv_component_name` | 组件名 | 150px | `ComponentVariant.component_name` |
 | `cv_variant_name` | 变体名 | 自适应 | `ComponentVariant.name` |
@@ -119,7 +119,7 @@
 | `mime_type` | 文件类型 | `Resource.mime_type` |
 | `file_size` | 文件大小 | `Resource.file_size` |
 | `dimensions` | 资源尺寸 | `Resource.dimensions` |
-| `cv_domain` | 领域 | `ComponentVariant.domain` |
+| `cv_lib_name` | 组件库 | `ComponentVariant.lib_name` |
 | `cv_canvas_name` | 组件类别 | `ComponentVariant.canvas_name` |
 | `cv_component_name` | 组件名 | `ComponentVariant.component_name` |
 | `cv_component_guid` | 组件 GUID | `ComponentVariant.component_guid` |
@@ -137,7 +137,7 @@
 | `cv_component_name` | 组件名 |
 | `cv_canvas_name` | 组件类别 |
 | `cv_variant_name` | 变体名 |
-| `cv_domain` | 领域 |
+| `cv_lib_name` | 组件库 |
 
 ---
 
@@ -246,7 +246,8 @@
 
 | 前端字段 | ORM表 | ORM字段 |
 |---------|--------|---------|
-| `cv_domain` | `component_variants` | `domain` |
+| `cv_lib_file_key` | `component_variants` | `lib_file_key` |
+| `cv_lib_name` | `component_variants` | `lib_name` |
 | `cv_canvas_name` | `component_variants` | `canvas_name` |
 | `cv_component_name` | `component_variants` | `component_name` |
 | `cv_component_guid` | `component_variants` | `component_guid` |

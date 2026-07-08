@@ -21,7 +21,6 @@ class Resource(Base):
     raw_data       = Column(Text, nullable=True, comment="原始数据 JSON 字符串")
     created_by     = Column(String(100), nullable=True)
     is_deleted     = Column(Integer, nullable=False, default=0)
-    sort_order     = Column(Integer, nullable=False, default=0)
     created_at     = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at     = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -48,7 +47,8 @@ class ComponentVariant(Base):
 
     variant_key     = Column(String(100), primary_key=True, comment="变体 key，来自 Figma，全局唯一")
     resource_id     = Column(Integer, ForeignKey("resources.id", ondelete="CASCADE"), nullable=False, unique=True)
-    domain          = Column(String(255), nullable=True,  comment="所属域，如 ICT_UI")
+    lib_file_key    = Column(String(100), nullable=True,  comment="组件库文件key")
+    lib_name        = Column(String(255), nullable=True,  comment="组件库名称")
     canvas_name     = Column(String(255), nullable=True,  comment="画布分组名，如 '1.基础类'")
     component_name  = Column(String(255), nullable=True,  comment="组件集名称")
     component_guid  = Column(String(100), nullable=True,  comment="组件集 guid")

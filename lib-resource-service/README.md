@@ -125,7 +125,8 @@ REBUILD_ICON_API_URL=http://your-service/api/rebuild/icon
 "name":       comp.get("name"),
 "unique_key": comp.get("componentKey"),
 "file_path":  comp.get("hexFile"),
-"domain":     domain,          # 来自顶层 domain 字段
+"lib_file_key": file_key,     # 来自 component_map.json 的 fileKey
+  "lib_name":    lib_name,      # 来自 component_map.json 的 name
 ```
 
 ---
@@ -157,7 +158,8 @@ REBUILD_ICON_API_URL=http://your-service/api/rebuild/icon
 按 `indexPath` 找到各组件库的索引文件 `component_index.json`：
 ```json
 {
-  "domain": "ICT_UI",
+  "lib_file_key":  "mock-key-001",
+  "lib_name":      "AAA组件库",
   "componentSets": [
     {
       "name": "文字链接",

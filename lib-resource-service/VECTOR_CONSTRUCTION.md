@@ -58,7 +58,8 @@ resources (主表)
 - `ComponentVariant.component_name` - 组件集名称
 - `ComponentVariant.canvas_name` - 画布分组名（如"1.基础类")
 - `ComponentVariant.name` - 变体属性字符串（如"size=normal, disabled=false")
-- `ComponentVariant.domain` - 所属域（如"ICT_UI")
+- `ComponentVariant.lib_file_key` - 组件库文件key
+- `ComponentVariant.lib_name` - 组件库名称
 
 #### 文本构造函数
 
@@ -119,7 +120,7 @@ def build_component_text(component_name: str, canvas_name: str, variant_name: st
   "name":           "资源名称",
   "canvas_name":    "画布分组名",
   "component_name": "组件集名称",
-  "domain":         "所属域"
+  "lib_name":       "组件库名称"
 }
 ```
 

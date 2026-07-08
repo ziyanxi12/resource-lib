@@ -4,6 +4,7 @@ import pkg from './package.json'
 
 export default defineConfig({
   plugins: [react()],
+  base:'./',
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
@@ -14,5 +15,8 @@ export default defineConfig({
       '/api': 'http://localhost:8009',
       '/static': 'http://localhost:8009',
     },
+  },
+  build: {
+    outDir: 'dist/vectorService',
   },
 })

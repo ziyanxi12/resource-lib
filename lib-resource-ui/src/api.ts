@@ -70,6 +70,9 @@ export const api = {
       body: formData,
     }),
 
+  understandImage: (id: number): Promise<{ id: number; description: string }> =>
+    request(`/api/resources/${id}/understand`, { method: 'POST' }),
+
   vectorSearch: async (params: { query: string; type: string; limit?: number }) => {
     const data = await request('/api/vector/search', {
       method: 'POST',

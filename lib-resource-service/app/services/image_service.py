@@ -7,11 +7,12 @@ import os
 import uuid
 from typing import Optional, Tuple
 from sqlalchemy.orm import Session
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 
 from app.config import settings
 from app.enums import ResourceType
-from app.services.resource_service import create_resource
+from app.clients import external
+from app.services.resource_service import create_resource, get_resource_by_id
 from app.services.vector_text_builder import ingest_vectors
 
 try:
@@ -70,6 +71,33 @@ async def upload_image(
         "height":    height,
         "message":   "图片上传成功",
     }
+
+
+def understand_image(db: Session, resource_id: int) -> str:
+    """调用图片语义理解模块，对资源的预览图生成中文语义描述。
+    图片类型优先用原图（file_path），其他类型用预览图（thumbnail_path）。
+    """
+    resource = get_resource_by_id(db, resource_id)
+    if not resource:
+        raise HTTPException(status_code=404, detail="资源不存在")
+
+    if resource.resource_type == int(ResourceType.image):
+        rel_path = resource.file_path or resource.thumbnail_path
+    else:
+        rel_path = resource.thumbnail_path
+    if not rel_path:
+        raise HTTPException(status_code=400, detail="该资源没有可用的预览图")
+
+    abs_path = os.path.abspath(os.path.join(settings.FILE_ROOT_DIR, rel_path))
+    if not os.path.isfile(abs_path):
+        raise HTTPException(status_code=404, detail=f"预览图文件不存在: {rel_path}")
+
+    try:
+        return external.understand_image(abs_path)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"图片语义生成失败: {e}")
 
 
 def _extract_dimensions(content: bytes) -> Tuple[Optional[int], Optional[int]]:

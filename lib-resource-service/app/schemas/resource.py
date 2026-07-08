@@ -18,7 +18,6 @@ class ResourceOut(BaseModel):
     description:        Optional[str]
     raw_data:           Optional[str]
     created_by:         Optional[str]
-    sort_order:         int
     created_at:         Optional[datetime]
     updated_at:         Optional[datetime]
     tags:               List[str] = []
@@ -36,5 +35,4 @@ class ResourceListResponse(BaseModel):
 class ResourceUpdateRequest(BaseModel):
     name:        Optional[str]       = None
     description: Optional[str]       = None
-    sort_order:  Optional[int]       = None
     tags:        Optional[List[str]] = None

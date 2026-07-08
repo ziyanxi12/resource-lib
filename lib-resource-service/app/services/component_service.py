@@ -58,6 +58,12 @@ def _update_component_map(file_key: str, index_path: str) -> None:
 
 
 async def sync_component(db: Session, file_key: str) -> dict:
+    lib_name = None
+    for item in get_component_map():
+        if item.get("fileKey") == file_key:
+            lib_name = item.get("name")
+            break
+    
     # 步骤 1：获取版本
     version_resp = await external.get_component_version(file_key)
     version_id   = version_resp["list"][0]["id"]
@@ -81,8 +87,8 @@ async def sync_component(db: Session, file_key: str) -> dict:
     _update_component_map(file_key, f"component/{file_key}/component_index.json")
 
     # 步骤 4：解析并写入数据库 + 收集向量数据
-    domain, components = _parse_index(index_path)
-    result, vector_items = _write_to_db(db, components, domain)
+    components = _parse_index(index_path)
+    result, vector_items = _write_to_db(db, components, file_key, lib_name)
 
     # 步骤 5：入向量库
     if settings.VECTOR_SERVICE_ENABLED and vector_items:
@@ -108,15 +114,15 @@ def _get_hex_file_size(hex_file: Optional[str]) -> Optional[int]:
     return os.path.getsize(abs_path)
 
 
-def _parse_index(index_path: str) -> Tuple[str, List[dict]]:
+def _parse_index(index_path: str) -> List[dict]:
     with open(index_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     if isinstance(data, list):
-        return "", data
-    return data.get("domain", ""), data.get("componentSets", [])
+        return data
+    return data.get("componentSets", [])
 
 
-def _write_to_db(db: Session, components: List[dict], domain: str = "") -> Tuple[dict, List[dict]]:
+def _write_to_db(db: Session, components: List[dict], lib_file_key: str = None, lib_name: str = None) -> Tuple[dict, List[dict]]:
     added, updated = 0, 0
     vector_items = []
 
@@ -135,7 +141,6 @@ def _write_to_db(db: Session, components: List[dict], domain: str = "") -> Tuple
                 "file_size":     file_size,
                 "mime_type":     "text/plain",
                 "raw_data":      json.dumps({
-                    "domain":          domain,
                     "canvasName":      comp.get("canvasName"),
                     "componentKey":    comp.get("componentKey"),
                     "componentGuid":   comp.get("guid"),
@@ -148,7 +153,7 @@ def _write_to_db(db: Session, components: List[dict], domain: str = "") -> Tuple
                 }, ensure_ascii=False),
             })
 
-            _upsert_component_variant(db, comp, variant, resource_row.id, domain)
+            _upsert_component_variant(db, comp, variant, resource_row.id, lib_file_key, lib_name)
 
             if is_new:
                 added += 1
@@ -169,7 +174,7 @@ def _write_to_db(db: Session, components: List[dict], domain: str = "") -> Tuple
                     "name": resource_row.name,
                     "canvas_name": comp.get("canvasName", ""),
                     "component_name": parent_name,
-                    "domain": domain,
+                    "lib_name": lib_name,
                 },
             })
 
@@ -181,7 +186,8 @@ def _upsert_component_variant(
     comp: dict,
     variant: dict,
     resource_id: int,
-    domain: str = None,
+    lib_file_key: str = None,
+    lib_name: str = None,
 ) -> None:
     variant_key = variant.get("variantKey")
     guid        = variant.get("guid")
@@ -199,7 +205,8 @@ def _upsert_component_variant(
     if row is None:
         db.add(ComponentVariant(
             resource_id=resource_id,
-            domain=domain,
+            lib_file_key=lib_file_key,
+            lib_name=lib_name,
             canvas_name=comp.get("canvasName"),
             component_name=comp.get("name"),
             component_guid=comp.get("guid"),
@@ -211,7 +218,8 @@ def _upsert_component_variant(
         ))
     else:
         row.resource_id     = resource_id
-        row.domain          = domain if domain is not None else row.domain
+        row.lib_file_key    = lib_file_key if lib_file_key is not None else row.lib_file_key
+        row.lib_name        = lib_name if lib_name is not None else row.lib_name
         row.canvas_name     = comp.get("canvasName", row.canvas_name)
         row.component_name  = comp.get("name", row.component_name)
         row.component_guid  = comp.get("guid", row.component_guid)

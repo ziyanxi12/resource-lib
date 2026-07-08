@@ -47,6 +47,10 @@ def setup_logging(log_dir: str, log_level: str = "INFO") -> None:
     root.setLevel(getattr(logging, log_level.upper(), logging.INFO))
     root.addHandler(app_handler)
     root.addHandler(debug_handler)
+    
+    # 抑制第三方库的 DEBUG/INFO 日志，只保留 WARNING 以上
+    for lib in ["httpx", "httpcore", "httpx._client", "httpcore._backends", "hpack", "hpack.hpack"]:
+        logging.getLogger(lib).setLevel(logging.WARNING)
 
 
 def _namer(name: str) -> str:

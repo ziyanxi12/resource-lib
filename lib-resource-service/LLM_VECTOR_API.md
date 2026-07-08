@@ -334,7 +334,7 @@ LLM 告知用户：
 | `instance.variant_key` | `cv_variant_key` | 变体唯一 key |
 | `instance.component_set_key` | `cv_component_key` | 组件集 key（即 parentKey）|
 | `instance.symbol_id` | `cv_variant_guid` | 变体 GUID，格式 `"sessionID:localID"` |
-| `instance.path` | `cv_domain` + `"/"` + `file_path` | 拼接得到 hex 文件路径，如 `"ICT_UI/component/be1d....txt"` |
+| `instance.path` | `cv_lib_file_key` + `"/"` + `file_path` | 拼接得到 hex 文件路径，如 `"mock-key-001/component/be1d....txt"` |
 | `instance.variant_props` | `cv_variant_name` 解析 | 将 `"size=normal, disabled=false"` 解析为 `{"size":"normal","disabled":"false"}` |
 | `instance.component_set_resolved` | 固定 `true` | 本地库已成功解析 |
 | `instance.overrides` | 固定 `[]` | 无覆写 |
@@ -371,7 +371,8 @@ GET /api/vector/detail?type=component&data_id=f884abc...
   "cv_variant_key":    "f884abc...",
   "cv_component_key":  "be1dabc...",
   "cv_variant_guid":   "8229:277395",
-  "cv_domain":         "ICT_UI",
+  "cv_lib_file_key":  "mock-key-001",
+  "cv_lib_name":      "AAA组件库",
   "cv_variant_name":   "size=normal, disabled=false",
   "file_path":         "component/be1dabc....txt",
   ...
@@ -400,7 +401,7 @@ dsl_layer = {
         "variant_key":            detail["cv_variant_key"],
         "component_set_key":      detail["cv_component_key"],
         "component_set_resolved": True,
-        "path":                   f"{detail['cv_domain']}/{detail['file_path']}",
+        "path":                   f"{detail['cv_lib_file_key']}/{detail['file_path']}",
         "variant_props":          variant_props,
         "overrides":              []
     }
