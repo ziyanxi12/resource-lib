@@ -6,7 +6,7 @@ import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
-// import SemanticUnderstand from '../components/SemanticUnderstand'
+import SemanticUnderstand from '../components/SemanticUnderstand'
 
 const DEFAULT_PAGE_SIZE = 20
 
@@ -54,9 +54,36 @@ function HashVal({ value }: { value: string | null | undefined }) {
 }
 
 // ── Detail Drawer ────────────────────────────────────────────────
-function IconDetail({ item, open, onClose }: {
-  item: Resource | null; open: boolean; onClose: () => void
+function IconDetail({ item, open, onClose, onSaved }: {
+  item: Resource | null; open: boolean; onClose: () => void; onSaved?: () => void
 }) {
+  const [name, setName] = useState(item?.name ?? '')
+  const [description, setDescription] = useState(item?.description ?? '')
+  const [tags, setTags] = useState<string[]>(item?.tags ?? [])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!item) return
+    setName(item.name ?? '')
+    setDescription(item.description ?? '')
+    setTags(item.tags ?? [])
+  }, [item])
+
+  const handleSave = async () => {
+    if (!item) return
+    setSaving(true)
+    try {
+      await api.updateResource(item.id, { name, description, tags })
+      message.success('保存成功')
+      onSaved?.()
+      onClose()
+    } catch (e: unknown) {
+      message.error('保存失败：' + (e instanceof Error ? e.message : '未知错误'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (!item) return null
 
   return (
@@ -65,6 +92,12 @@ function IconDetail({ item, open, onClose }: {
       onClose={onClose}
       width="clamp(720px, 70%, 1100px)"
       destroyOnClose
+      footer={
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+          <Button onClick={onClose}>取消</Button>
+          <Button type="primary" loading={saving} onClick={handleSave}>保存</Button>
+        </div>
+      }
       styles={{ body: { padding: '12px 20px 24px', overflowY: 'auto' } }}
     >
       <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
@@ -85,7 +118,12 @@ function IconDetail({ item, open, onClose }: {
             暂无预览图
           </div>
         )}
-        {/* <SemanticUnderstand resourceId={item.id} /> */}
+        <SemanticUnderstand 
+          resourceId={item.id}
+          onFill={(text) => {
+            setDescription(prev => prev ? `${prev}\n${text}` : text)
+          }}
+        />
       </div>
 
       {/* ── 右侧字段列表 ── */}
@@ -93,9 +131,28 @@ function IconDetail({ item, open, onClose }: {
       {/* ── 基础信息 ── */}
       <SectionHeader title="基础信息" />
       <Field label="ID">{item.id}</Field>
-      <Field label="名称">{item.name || dash}</Field>
-      <Field label="描述">{item.description || dash}</Field>
-      <Field label="标签">{item.tags.length > 0 ? item.tags.join('、') : dash}</Field>
+      <Field label="名称">
+        <Input value={name} onChange={e => setName(e.target.value)} size="small" />
+      </Field>
+      <Field label="描述">
+        <Input.TextArea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          autoSize={{ minRows: 2, maxRows: 5 }}
+          size="small"
+        />
+      </Field>
+      <Field label="标签">
+        <Select
+          mode="tags"
+          value={tags}
+          onChange={setTags}
+          style={{ width: '100%' }}
+          size="small"
+          placeholder="输入后回车添加"
+          tokenSeparators={[',']}
+        />
+      </Field>
       <Field label="创建时间">{item.created_at ? item.created_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="更新时间">{item.updated_at ? item.updated_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="文件名"><HashVal value={item.file_name} /></Field>
@@ -434,6 +491,7 @@ export default function IconList({ type, label, handleRef }: Props) {
         item={detailItem}
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
+        onSaved={refresh}
       />
     </div>
   )
