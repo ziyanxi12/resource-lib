@@ -424,3 +424,64 @@ dsl_layer = {
     "overrides":              []
   }
 }
+```
+
+---
+
+### 修改组件文字（variant_props）
+
+组件显示的文字内容**只能通过 `variant_props` 修改**，且只有 `type == "TEXT"` 的属性才能承载文字。
+
+`/detail` 返回的 `cv_component_props` 字段记录了该变体的所有属性（名称 + 类型），例如：
+
+```json
+{
+  "cv_component_props": [
+    { "name": "text",     "type": "TEXT"     },
+    { "name": "icon",     "type": "INSTANCE" },
+    { "name": "disabled", "type": "BOOLEAN"  }
+  ]
+}
+```
+
+**Step 1：从 `cv_component_props` 中筛选 TEXT 属性**
+
+```python
+detail = response_from_detail_api
+
+text_props = [
+    prop for prop in detail.get("cv_component_props", [])
+    if prop.get("type") == "TEXT"
+]
+# text_props → [{"name": "text", "type": "TEXT"}]
+```
+
+**Step 2：将目标文字追加到 `variant_props`**
+
+```python
+new_label = "立即购买"   # 由调用方按实际需求填写
+
+for prop in text_props:
+    variant_props[prop["name"]] = new_label
+# variant_props → {"size": "normal", "disabled": "false", "text": "立即购买"}
+
+dsl_layer["instance"]["variant_props"] = variant_props
+```
+
+**最终输出的 DSL 片段**：
+
+```json
+{
+  "type": "instance",
+  "name": "按钮",
+  "box": { "x": 0, "y": 0, "width": 120, "height": 36 },
+  "instance": {
+    "symbol_id":              "8229:277395",
+    "variant_key":            "f884abc...",
+    "component_set_key":      "be1dabc...",
+    "component_set_resolved": true,
+    "path":                   "ICT_UI/component/be1dabc....txt",
+    "variant_props":          { "size": "normal", "disabled": "false", "text": "立即购买" },
+    "overrides":              []
+  }
+}
