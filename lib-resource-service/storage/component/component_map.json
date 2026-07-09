@@ -1,0 +1,14 @@
+[
+  {
+    "fileKey":   "mock-key-001",
+    "name":      "AAA组件库",
+    "indexPath": "component/mock-key-001/component_index.json",
+    "updatedAt": "2026-06-25T00:00:00"
+  },
+  {
+    "fileKey":   "bbbbb",
+    "name":      "BBBB组件库",
+    "indexPath": "component/bbbbb/component_index.json",
+    "updatedAt": "2026-06-25T00:00:00"
+  }
+]

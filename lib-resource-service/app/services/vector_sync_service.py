@@ -185,8 +185,8 @@ def extract_raw_data_from_resource(res: Resource, resource_type: ResourceType) -
         return {
             "parent_name": raw.get("componentName") or (cv.component_name if cv else "") or "",
             "canvas_name": raw.get("canvasName") or (cv.canvas_name if cv else "") or "",
-            "variant_name": res.name,
-            "domain": raw.get("domain") or (cv.domain if cv else "") or ""
+            "variant_name": raw.get("variantName") or (cv.name if cv else "") or res.name,
+            "lib_name": (cv.lib_name if cv else "") or ""
         }
     
     elif resource_type == ResourceType.icon:
