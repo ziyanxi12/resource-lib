@@ -7,6 +7,7 @@ from app.enums import ResourceType
 
 # 表头筛选字段：对外字段名（与 _fmt 输出一致）→ (关联表, 列)
 FILTER_FIELDS = {
+    "cv_lib_name":       (ComponentVariant, ComponentVariant.lib_name),
     "cv_canvas_name":    (ComponentVariant, ComponentVariant.canvas_name),
     "cv_component_name": (ComponentVariant, ComponentVariant.component_name),
     "icon_category":     (ResourceIcon, ResourceIcon.category),
@@ -18,7 +19,7 @@ FILTER_FIELDS = {
 
 # 各资源类型可筛选的字段
 FILTERABLE_BY_TYPE = {
-    ResourceType.component: ["cv_canvas_name", "cv_component_name"],
+    ResourceType.component: ["cv_lib_name", "cv_canvas_name", "cv_component_name"],
     ResourceType.icon:      ["icon_category", "icon_group"],
     ResourceType.illus:     ["illus_category", "illus_version", "illus_theme"],
 }

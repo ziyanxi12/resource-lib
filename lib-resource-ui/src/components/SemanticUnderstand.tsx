@@ -8,7 +8,7 @@ import { api } from '../api'
  */
 export default function SemanticUnderstand({ resourceId, onFill }: {
   resourceId: number
-  onFill: (text: string) => void
+  onFill?: (text: string) => void
 }) {
   const [loading, setLoading] = useState(false)
   const [text, setText] = useState<string | null>(null)
@@ -49,7 +49,7 @@ export default function SemanticUnderstand({ resourceId, onFill }: {
               size="small"
               type="link"
               style={{ padding: 0, height: 'auto' }}
-              onClick={() => onFill(text)}
+              onClick={() => onFill?.(text)}
             >
               追加到描述
             </Button>

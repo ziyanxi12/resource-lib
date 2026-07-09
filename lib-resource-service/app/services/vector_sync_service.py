@@ -313,13 +313,81 @@ def sync_missing_vectors(
             logger.error("批次 %d 失败: %s", batch_num, e)
             failed_items.extend([spec.get_data_id(r) for r, _ in batch])
     
-    logger.info("补录完成: 检测=%d 实际=%d 失败=%d", 
+    logger.info("补录完成: 检测=%d 实际=%d 失败=%d",
                 len(missing_ids), synced_count, len(failed_items))
-    
+
     return {
         "detected_missing": len(missing_ids),
         "actual_synced": synced_count,
         "batch_count": total_batches,
         "failed": failed_items,
         "dry_run": False
+    }
+
+
+# ──────────────────────────────────────────────────────────────────
+# 全量重建向量库
+# ──────────────────────────────────────────────────────────────────
+
+def rebuild_all_vectors(
+    db: Session,
+    resource_type: ResourceType,
+    batch_size: int = 200,
+) -> dict:
+    """
+    从 DB 全量读取记录并入向量库，适用于向量库清空后的完整恢复。
+    """
+    from sqlalchemy.orm import selectinload
+
+    logger.info("开始全量重建: type=%s", resource_type.name)
+
+    load_opts = [selectinload(Resource.tags)]
+    if resource_type == ResourceType.component:
+        load_opts.append(selectinload(Resource.component_variant))
+    elif resource_type == ResourceType.icon:
+        load_opts.append(selectinload(Resource.icon_detail))
+    elif resource_type == ResourceType.illus:
+        load_opts.append(selectinload(Resource.illus_detail))
+
+    resources = (
+        db.query(Resource)
+        .options(*load_opts)
+        .filter(Resource.resource_type == int(resource_type), Resource.is_deleted == 0)
+        .all()
+    )
+
+    total = len(resources)
+    logger.info("查到 %d 条记录", total)
+
+    if not total:
+        return {"total": 0, "synced": 0, "batch_count": 0, "failed": []}
+
+    spec = get_registry().get(resource_type)
+    vector_pairs = [
+        (res, extract_raw_data_from_resource(res, resource_type))
+        for res in resources
+    ]
+
+    synced = 0
+    failed: List[str] = []
+    total_batches = (total + batch_size - 1) // batch_size
+
+    for i in range(0, len(vector_pairs), batch_size):
+        batch = vector_pairs[i : i + batch_size]
+        batch_num = i // batch_size + 1
+        logger.info("重建批次 %d/%d: %d 条", batch_num, total_batches, len(batch))
+        try:
+            ingest_vectors(resource_type, batch, skip_vector=False)
+            synced += len(batch)
+        except Exception as e:
+            logger.error("批次 %d 失败: %s", batch_num, e)
+            if spec:
+                failed.extend([spec.get_data_id(r) for r, _ in batch])
+
+    logger.info("全量重建完成: total=%d synced=%d failed=%d", total, synced, len(failed))
+    return {
+        "total": total,
+        "synced": synced,
+        "batch_count": total_batches,
+        "failed": failed,
     }

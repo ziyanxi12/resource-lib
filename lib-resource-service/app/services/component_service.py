@@ -28,7 +28,7 @@ from app.enums import ResourceType
 from app.clients import external
 from app.models.resource import ComponentVariant
 from app.services.resource_service import upsert_resource
-from app.services.vector_text_builder import build_component_text, main_tag_text
+from app.services.vector_text_builder import ingest_vectors
 
 logger = logging.getLogger(__name__)
 
@@ -88,16 +88,10 @@ async def sync_component(db: Session, file_key: str) -> dict:
 
     # 步骤 4：解析并写入数据库 + 收集向量数据
     components = _parse_index(index_path)
-    result, vector_items = _write_to_db(db, components, file_key, lib_name)
+    result, vector_pairs = _write_to_db(db, components, file_key, lib_name)
 
     # 步骤 5：入向量库
-    if settings.VECTOR_SERVICE_ENABLED and vector_items:
-        try:
-            from app.clients import vector_client
-            vector_client.ingest("component", vector_items)
-            logger.info("组件向量入库完成：%d 条", len(vector_items))
-        except Exception as e:
-            logger.warning("组件向量入库异常（不影响 DB 结果）: %s", e)
+    ingest_vectors(ResourceType.component, vector_pairs)
 
     return result
 
@@ -122,9 +116,9 @@ def _parse_index(index_path: str) -> List[dict]:
     return data.get("componentSets", [])
 
 
-def _write_to_db(db: Session, components: List[dict], lib_file_key: str = None, lib_name: str = None) -> Tuple[dict, List[dict]]:
+def _write_to_db(db: Session, components: List[dict], lib_file_key: str = None, lib_name: str = None) -> Tuple[dict, List[tuple]]:
     added, updated = 0, 0
-    vector_items = []
+    vector_pairs = []
 
     for comp in components:
         hex_file    = comp.get("hexFile")
@@ -160,25 +154,14 @@ def _write_to_db(db: Session, components: List[dict], lib_file_key: str = None, 
             else:
                 updated += 1
 
-            vector_items.append({
-                "data_id": str(resource_row.id),
-                "text": " ".join(p for p in [
-                    build_component_text(
-                        parent_name,
-                        comp.get("canvasName", ""),
-                        variant.get("name", ""),
-                    ),
-                    main_tag_text(resource_row),
-                ] if p),
-                "metadata": {
-                    "name": resource_row.name,
-                    "canvas_name": comp.get("canvasName", ""),
-                    "component_name": parent_name,
-                    "lib_name": lib_name,
-                },
-            })
+            vector_pairs.append((resource_row, {
+                "parent_name":  parent_name,
+                "canvas_name":  comp.get("canvasName", ""),
+                "variant_name": variant.get("name", ""),
+                "lib_name":     lib_name or "",
+            }))
 
-    return {"added": added, "updated": updated}, vector_items
+    return {"added": added, "updated": updated}, vector_pairs
 
 
 def _upsert_component_variant(

@@ -103,7 +103,7 @@ def _build_component_metadata(resource: "Resource", raw: dict) -> dict:
         "name":           resource.name,
         "canvas_name":    raw.get("canvas_name")  or (cv.canvas_name    if cv else "") or "",
         "component_name": raw.get("parent_name")  or (cv.component_name if cv else "") or "",
-        "domain":         raw.get("domain")        or (cv.domain         if cv else "") or "",
+        "lib_name":       raw.get("lib_name")      or (cv.lib_name       if cv else "") or "",
     }
 
 

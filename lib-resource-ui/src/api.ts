@@ -73,7 +73,12 @@ export const api = {
   understandImage: (id: number): Promise<{ id: number; description: string }> =>
     request(`/api/resources/${id}/understand`, { method: 'POST' }),
 
-  vectorSearch: async (params: { query: string; type: string; limit?: number }) => {
+  vectorSearch: async (params: {
+    query: string
+    type: string
+    limit?: number
+    filters?: Record<string, unknown>
+  }) => {
     const data = await request('/api/vector/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -81,6 +86,7 @@ export const api = {
         type: params.type,
         queries: [params.query],
         top_k: params.limit ?? 50,
+        ...(params.filters ? { filters: params.filters } : {}),
       }),
     })
     return (data.results?.[0]) ?? []

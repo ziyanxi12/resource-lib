@@ -12,7 +12,11 @@ class Settings:
     """
 
     # ── 服务 ──────────────────────────────────────────────────
-    PORT: int = int(os.getenv("PORT", "8009"))
+    PORT: int     = int(os.getenv("PORT", "8009"))
+    # nginx 路径前缀，留空表示直接暴露（无前缀）
+    # 例如 nginx location /resource-lib/ → proxy_pass http://127.0.0.1:8009/
+    # 则此处填 ROOT_PATH=/resource-lib
+    ROOT_PATH: str = os.getenv("ROOT_PATH", "")
 
     # ── 数据库 ────────────────────────────────────────────────
     # DB_URL 直接指定完整连接串，优先级高于下方 MySQL 分项配置

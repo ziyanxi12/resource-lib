@@ -134,6 +134,23 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
     if not all_meta:
         return {"added": 0, "updated": 0}
 
+    variants_size_map: dict = {}
+    for entry in component_map:
+        lib_file_key = entry.get("fileKey")
+        if not lib_file_key:
+            continue
+        variants_json_path = os.path.join(settings.FILE_ROOT_DIR, "component", lib_file_key, "instance", "variants.json")
+        if os.path.exists(variants_json_path):
+            with open(variants_json_path, "r", encoding="utf-8") as f:
+                variants_data = json.load(f)
+            for v in variants_data:
+                key = v.get("key")
+                if key:
+                    variants_size_map[key] = {
+                        "width": v.get("width"),
+                        "height": v.get("height"),
+                    }
+
     logger.info("组件集：共 %d 条 variant，开始 DB 入库", len(all_meta))
 
     all_variant_keys = [
@@ -165,14 +182,20 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
         parent_name   = meta["parent_name"]
         variant_key   = variant.get("variantKey")
 
+        variant_size = variants_size_map.get(variant_key, {})
+        thumbnail_path = f"component/{lib_file_key}/instance/{variant_key}.png" if lib_file_key and variant_key else None
+
         resource_data = {
             "resource_type": int(ResourceType.component),
-            "name":      variant.get("name", ""),
-            "file_name": meta["file_name"],
-            "file_path": meta["hex_file"],
-            "file_size": meta["file_size"],
-            "mime_type": "text/plain",
-            "raw_data":  json.dumps({
+            "name":          variant.get("name", ""),
+            "file_name":     meta["file_name"],
+            "file_path":     meta["hex_file"],
+            "file_size":     meta["file_size"],
+            "mime_type":     "text/plain",
+            "thumbnail_path": thumbnail_path,
+            "width":         variant_size.get("width"),
+            "height":        variant_size.get("height"),
+            "raw_data":      json.dumps({
                 "canvasName":     comp.get("canvasName"),
                 "componentKey":   comp.get("componentKey"),
                 "componentGuid":  comp.get("guid"),
@@ -266,9 +289,11 @@ def import_icons(db: Session, skip_vector: bool = False) -> dict:
             logger.warning("图标缺少 id 字段，跳过：%s", item)
             continue
         chinese_name = item.get("chineseName") or item.get("name", "未命名")
+        thumbnail_path = f"icon/{icon_id}.png" if icon_id else None
         resource_data = {
             "resource_type": int(ResourceType.icon),
             "name":          chinese_name,
+            "thumbnail_path": thumbnail_path,
             "description":   item.get("description"),
             "raw_data":      json.dumps(item, ensure_ascii=False),
         }
@@ -360,9 +385,11 @@ def import_illus(db: Session, skip_vector: bool = False) -> dict:
         if illus_id is None:
             logger.warning("插画缺少 id 字段，跳过：%s", item)
             continue
+        thumbnail_path = f"illus/{illus_id}.png" if illus_id else None
         resource_data = {
             "resource_type": int(ResourceType.illus),
             "name":          item.get("alias", "未命名插画"),
+            "thumbnail_path": thumbnail_path,
             "description":   item.get("description"),
             "raw_data":      json.dumps(item, ensure_ascii=False),
         }
@@ -470,6 +497,7 @@ def import_templates(db: Session, skip_vector: bool = False) -> dict:
 
         file_name = os.path.basename(rel_path)
         file_size = os.path.getsize(abs_path)
+        thumbnail_path = rel_path.rsplit(".", 1)[0] + ".png" if "." in rel_path else rel_path + ".png"
 
         resource_data = {
             "resource_type": int(ResourceType.template),
@@ -478,6 +506,7 @@ def import_templates(db: Session, skip_vector: bool = False) -> dict:
             "file_path":     rel_path,
             "file_size":     file_size,
             "mime_type":     "text/plain",
+            "thumbnail_path": thumbnail_path,
             "description":   item.get("description"),
         }
 
@@ -563,6 +592,7 @@ def import_images(db: Session, skip_vector: bool = False) -> dict:
             "file_path":     rel_path,
             "file_size":     file_size,
             "mime_type":     mime_type,
+            "thumbnail_path": rel_path,
             "width":         width,
             "height":        height,
             "description":   item.get("description"),

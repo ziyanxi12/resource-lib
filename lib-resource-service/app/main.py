@@ -42,6 +42,7 @@ app = FastAPI(
     description="统一管理五类设计资源：组件集、模版、SVG、插画、图片",
     version=__version__,
     lifespan=lifespan,
+    root_path=settings.ROOT_PATH,
 )
 
 # 允许前端跨域访问（开发时前端跑在不同端口）

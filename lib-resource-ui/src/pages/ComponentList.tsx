@@ -6,7 +6,7 @@ import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
-import SemanticUnderstand from '../components/SemanticUnderstand'
+// import SemanticUnderstand from '../components/SemanticUnderstand'
 
 const DEFAULT_PAGE_SIZE = 20
 
@@ -55,36 +55,9 @@ function HashVal({ value }: { value: string | null | undefined }) {
 }
 
 // ── Detail Drawer ────────────────────────────────────────────────
-function ComponentDetail({ item, open, onClose, onSaved }: {
-  item: Resource | null; open: boolean; onClose: () => void; onSaved?: () => void
+function ComponentDetail({ item, open, onClose }: {
+  item: Resource | null; open: boolean; onClose: () => void
 }) {
-  const [name, setName] = useState(item?.name ?? '')
-  const [description, setDescription] = useState(item?.description ?? '')
-  const [tags, setTags] = useState<string[]>(item?.tags ?? [])
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    if (!item || !open) return
-    setName(item.name ?? '')
-    setDescription(item.description ?? '')
-    setTags(item.tags ?? [])
-  }, [item, open])
-
-  const handleSave = async () => {
-    if (!item) return
-    setSaving(true)
-    try {
-      await api.updateResource(item.id, { name, description, tags })
-      message.success('保存成功')
-      onSaved?.()
-      onClose()
-    } catch (e: unknown) {
-      message.error('保存失败：' + (e instanceof Error ? e.message : '未知错误'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
   if (!item) return null
 
   return (
@@ -93,17 +66,11 @@ function ComponentDetail({ item, open, onClose, onSaved }: {
       onClose={onClose}
       width="clamp(720px, 70%, 1100px)"
       destroyOnClose
-      footer={
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <Button onClick={onClose}>取消</Button>
-          <Button type="primary" loading={saving} onClick={handleSave}>保存</Button>
-        </div>
-      }
       styles={{ body: { padding: '12px 20px 24px', overflowY: 'auto' } }}
     >
       <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
       {/* ── 左侧预览图 ── */}
-      <div style={{ width: 300, flexShrink: 0, position: 'sticky' as const, top: 0 }}>
+      <div style={{ width: '42%', flexShrink: 0, position: 'sticky' as const, top: 0 }}>
         {item.thumbnail_path ? (
           <Image
             src={staticUrl(item.thumbnail_path)}
@@ -112,17 +79,14 @@ function ComponentDetail({ item, open, onClose, onSaved }: {
           />
         ) : (
           <div style={{
-            height: 260, borderRadius: 8, border: '1px dashed #e2e8f0',
+            aspectRatio: '4 / 3', borderRadius: 8, border: '1px dashed #e2e8f0',
             background: '#f8fafc', display: 'flex', alignItems: 'center',
             justifyContent: 'center', color: '#cbd5e1', fontSize: 13,
           }}>
             暂无预览图
           </div>
         )}
-        <SemanticUnderstand
-          resourceId={item.id}
-          onFill={text => setDescription(d => d ? `${d}\n${text}` : text)}
-        />
+        {/* <SemanticUnderstand resourceId={item.id} /> */}
       </div>
 
       {/* ── 右侧字段列表 ── */}
@@ -130,28 +94,9 @@ function ComponentDetail({ item, open, onClose, onSaved }: {
       {/* ── 基础信息 ── */}
       <SectionHeader title="基础信息" />
       <Field label="ID">{item.id}</Field>
-      <Field label="名称">
-        <Input value={name} onChange={e => setName(e.target.value)} size="small" />
-      </Field>
-      <Field label="描述">
-        <Input.TextArea
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          autoSize={{ minRows: 2, maxRows: 5 }}
-          size="small"
-        />
-      </Field>
-      <Field label="标签">
-        <Select
-          mode="tags"
-          value={tags}
-          onChange={setTags}
-          style={{ width: '100%' }}
-          size="small"
-          placeholder="输入后回车添加"
-          tokenSeparators={[',']}
-        />
-      </Field>
+      <Field label="名称">{item.name || dash}</Field>
+      <Field label="描述">{item.description || dash}</Field>
+      <Field label="标签">{item.tags.length > 0 ? item.tags.join('、') : dash}</Field>
       <Field label="创建时间">{item.created_at ? item.created_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="更新时间">{item.updated_at ? item.updated_at.slice(0, 19).replace('T', ' ') : '—'}</Field>
       <Field label="文件名"><HashVal value={item.file_name} /></Field>
@@ -211,7 +156,7 @@ interface Props {
   handleRef?: React.MutableRefObject<ComponentListHandle | null>
 }
 
-export default function ComponentList({ handleRef }: Props) {
+export default function ComponentList({ handleRef, extraActions }: Props) {
   const [items, setItems] = useState<Resource[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -224,6 +169,9 @@ export default function ComponentList({ handleRef }: Props) {
 
   const [filters, setFilters] = useState<Record<string, string[] | null>>({})
   const [filterOptions, setFilterOptions] = useState<Record<string, string[]>>({})
+
+  const [lib, setLib] = useState<string>()
+  const [libsReady, setLibsReady] = useState(false)
 
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -248,22 +196,29 @@ export default function ComponentList({ handleRef }: Props) {
 
   useEffect(() => {
     api.getFilterOptions('component')
-      .then(data => setFilterOptions(data.options))
+      .then(data => {
+        setFilterOptions(data.options)
+        setLib(prev => prev ?? data.options.cv_lib_name?.[0])
+      })
       .catch(() => {})
+      .finally(() => setLibsReady(true))
   }, [refreshKey])
 
   useEffect(() => {
-    if (searchMode) return
+    if (searchMode || !libsReady) return
     let cancelled = false
     setLoading(true)
-    api.listResources({ type: 'component', page, limit: pageSize, filters })
+    api.listResources({
+      type: 'component', page, limit: pageSize,
+      filters: { ...filters, cv_lib_name: lib ? [lib] : null },
+    })
       .then(data => { if (!cancelled) { setItems(data.items); setTotal(data.total) } })
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [page, pageSize, searchMode, refreshKey, filters])
+  }, [page, pageSize, searchMode, refreshKey, filters, lib, libsReady])
 
-  const handleSearch = useCallback(async (q: string) => {
+  const handleSearch = useCallback(async (q: string, libName?: string) => {
     const trimmed = q.trim()
     if (!trimmed) {
       setSearchMode(false); setPage(1); setRefreshKey(k => k + 1)
@@ -272,12 +227,21 @@ export default function ComponentList({ handleRef }: Props) {
     setSearchMode(true)
     setLoading(true)
     try {
-      const results = await api.vectorSearch({ query: trimmed, type: 'component', limit: 50 })
+      const results = await api.vectorSearch({
+        query: trimmed, type: 'component', limit: 50,
+        filters: libName ? { lib_name: libName } : undefined,
+      })
       setItems(results as Resource[])
       setTotal(results.length)
     } catch { message.error('搜索失败') }
     finally { setLoading(false) }
   }, [])
+
+  const handleLibChange = useCallback((value: string) => {
+    setLib(value)
+    setPage(1)
+    if (searchMode && query.trim()) handleSearch(query, value)
+  }, [searchMode, query, handleSearch])
 
   const refresh = useCallback(() => {
     setSearchMode(false); setQuery(''); setPage(1); setRefreshKey(k => k + 1)
@@ -320,7 +284,6 @@ export default function ComponentList({ handleRef }: Props) {
     {
       title: '组件库', width: 120,
       ellipsis: { showTitle: false },
-      ...filterProps('cv_lib_name'),
       render: (_: unknown, r: Resource) => {
         if (!r.cv_lib_name) return emptyCell
         return <Tooltip title={r.cv_lib_name} placement="topLeft">{r.cv_lib_name}</Tooltip>
@@ -384,12 +347,20 @@ export default function ComponentList({ handleRef }: Props) {
         padding: '12px 16px', marginBottom: 14,
         display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flexShrink: 0,
       }}>
+        <Select
+          value={lib}
+          onChange={handleLibChange}
+          options={(filterOptions.cv_lib_name ?? []).map(v => ({ value: v, label: v }))}
+          placeholder="选择组件库"
+          showSearch
+          style={{ width: 200 }}
+        />
         <Input.Search
           placeholder="向量搜索组件"
           allowClear
           value={query}
           onChange={e => setQuery(e.target.value)}
-          onSearch={handleSearch}
+          onSearch={q => handleSearch(q, lib)}
           style={{ width: 280 }}
           prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
           enterButton
@@ -399,6 +370,7 @@ export default function ComponentList({ handleRef }: Props) {
             返回全量
           </Button>
         )}
+        {extraActions && <div style={{ marginLeft: 'auto' }}>{extraActions}</div>}
       </div>
 
       <div ref={tableWrapRef} style={{
@@ -432,7 +404,7 @@ export default function ComponentList({ handleRef }: Props) {
         />
       </div>
 
-      <ComponentDetail item={detailItem} open={detailOpen} onClose={() => setDetailOpen(false)} onSaved={refresh} />
+      <ComponentDetail item={detailItem} open={detailOpen} onClose={() => setDetailOpen(false)} />
     </div>
   )
 }

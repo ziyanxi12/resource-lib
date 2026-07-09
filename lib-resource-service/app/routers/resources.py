@@ -72,6 +72,7 @@ def list_resources(
     page:   int           = Query(1,    ge=1),
     limit:  int           = Query(20,   ge=1, le=100),
     search: Optional[str] = Query(None, description="关键词，匹配名称/英文名/描述"),
+    cv_lib_name:       Optional[List[str]] = Query(None, description="组件-组件库"),
     cv_canvas_name:    Optional[List[str]] = Query(None, description="组件-类别"),
     cv_component_name: Optional[List[str]] = Query(None, description="组件-组件名"),
     icon_category:     Optional[List[str]] = Query(None, description="图标-分类"),
@@ -91,6 +92,7 @@ def list_resources(
 
     filters = {
         k: v for k, v in {
+            "cv_lib_name": cv_lib_name,
             "cv_canvas_name": cv_canvas_name,
             "cv_component_name": cv_component_name,
             "icon_category": icon_category,

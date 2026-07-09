@@ -20,7 +20,7 @@ from app.enums import ResourceType
 from app.models.resource import ComponentVariant, Resource, ResourceIcon, ResourceIllus
 from app.routers.resources import _fmt, _build_vector_text
 from app.services.vector_text_builder import get_registry
-from app.services.vector_sync_service import detect_missing_data_ids, sync_missing_vectors
+from app.services.vector_sync_service import detect_missing_data_ids, sync_missing_vectors, rebuild_all_vectors
 
 router = APIRouter(prefix="/api/vector", tags=["向量管理"])
 
@@ -270,6 +270,39 @@ def get_missing(
         )
     
     result = detect_missing_data_ids(db, rt)
+    result["resource_type"] = rt.name
+    return result
+
+
+@router.post("/rebuild")
+def rebuild_vectors(
+    resource_type: int = Query(..., description="资源类型 ID：1=component 2=template 3=icon 4=illus 5=image"),
+    batch_size: int = Query(200, ge=50, le=500, description="每批处理数量（50-500）"),
+    db: Session = Depends(get_db),
+):
+    """
+    全量重建向量库：从 DB 读取所有记录并入向量，适用于向量库清空后的完整恢复。
+
+    示例：POST /api/vector/rebuild?resource_type=3
+
+    返回：
+    {
+        "resource_type": "icon",
+        "total": 800,
+        "synced": 800,
+        "batch_count": 4,
+        "failed": []
+    }
+    """
+    try:
+        rt = ResourceType(resource_type)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"未知 resource_type: {resource_type}，可选值: {[e.value for e in ResourceType]}",
+        )
+
+    result = rebuild_all_vectors(db, rt, batch_size=batch_size)
     result["resource_type"] = rt.name
     return result
 
