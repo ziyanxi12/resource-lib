@@ -2,11 +2,41 @@
   {
     "name": "登录页面模版",
     "file_name": "template/login.txt",
-    "description": "适用于移动端登录页面，包含账号密码输入框和登录按钮"
+    "description": "适用于移动端和 PC 端登录页，包含账号密码输入框、验证码和登录按钮"
   },
   {
     "name": "表单布局模版",
     "file_name": "template/form.txt",
-    "description": "通用表单布局，适用于各种表单场景"
+    "description": "通用表单布局，支持多行多列排列，适用于新增、编辑等各类表单场景"
+  },
+  {
+    "name": "列表页面模版",
+    "file_name": "template/0ce03b84-f968-4de8-bada-dfe6ff96f894.txt",
+    "description": "带搜索栏和分页的列表页，适用于数据展示、资源浏览等场景"
+  },
+  {
+    "name": "卡片布局模版",
+    "file_name": "template/10cf326f-6305-449b-a244-cf38dea7d44d.txt",
+    "description": "多列卡片瀑布流布局，适用于图片展示、资源卡片等视觉优先场景"
+  },
+  {
+    "name": "详情页面模版",
+    "file_name": "template/a6649149-f961-4246-ac52-3592e2e279db.txt",
+    "description": "左侧信息面板 + 右侧内容区的详情页，适用于资源详情、个人主页等场景"
+  },
+  {
+    "name": "数据表格模版",
+    "file_name": "template/eaae36a9-3c3d-4681-a3cd-2b118d38ba41.txt",
+    "description": "带筛选、排序、批量操作的数据表格页，适用于后台管理类数据列表"
+  },
+  {
+    "name": "仪表盘模版",
+    "file_name": "template/dashboard.txt",
+    "description": "数据看板布局，包含统计卡片、折线图、饼图等可视化组件，适用于数据概览页"
+  },
+  {
+    "name": "错误页面模版",
+    "file_name": "template/error-page.txt",
+    "description": "通用错误/异常页面，包含 404、500、无权限等状态的占位插画和操作引导"
   }
 ]

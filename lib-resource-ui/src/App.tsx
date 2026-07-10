@@ -8,6 +8,7 @@ import {
   PictureOutlined,
   StarOutlined,
   FunctionOutlined,
+  FileOutlined,
 } from '@ant-design/icons'
 import ResourceOverview from './pages/ResourceOverview'
 import ComponentManage from './pages/ComponentManage'
@@ -15,8 +16,9 @@ import TemplateManage from './pages/TemplateManage'
 import SVGManage from './pages/SVGManage'
 import IllustrationManage from './pages/IllustrationManage'
 import ImageManage from './pages/ImageManage'
+import FileManage from './pages/FileManage'
 
-type PageKey = 'overview' | 'component' | 'template' | 'icon' | 'illus' | 'image'
+type PageKey = 'overview' | 'component' | 'template' | 'icon' | 'illus' | 'image' | 'file'
 
 const PAGES: Record<PageKey, React.ReactNode> = {
   overview:  <ResourceOverview />,
@@ -25,6 +27,7 @@ const PAGES: Record<PageKey, React.ReactNode> = {
   icon:      <SVGManage />,
   illus:     <IllustrationManage />,
   image:     <ImageManage />,
+  file:      <FileManage />,
 }
 
 const NAV = [
@@ -34,6 +37,7 @@ const NAV = [
   { key: 'icon'      as PageKey, icon: <FunctionOutlined />,  label: '图标' },
   { key: 'illus'     as PageKey, icon: <StarOutlined />,      label: '插画' },
   { key: 'image'     as PageKey, icon: <PictureOutlined />,   label: '图片' },
+  { key: 'file'      as PageKey, icon: <FileOutlined />,      label: '文件' },
 ]
 
 const HEADER_H = 56

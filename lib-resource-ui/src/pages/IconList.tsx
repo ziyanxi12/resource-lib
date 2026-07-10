@@ -164,8 +164,7 @@ function IconDetail({ item, open, onClose, onSaved }: {
       <Field label="资源高度">{item.height != null ? `${item.height} px` : dash}</Field>
       <Field label="图标ID">{item.icon_id != null ? item.icon_id : dash}</Field>
       <Field label="中文名">{item.icon_chinese_name ?? dash}</Field>
-      <Field label="英文全称">{item.icon_name ?? dash}</Field>
-      <Field label="英文名">{item.icon_english_name ?? dash}</Field>
+      <Field label="名称">{item.icon_name ?? dash}</Field>
       <Field label="分类">{item.icon_category ?? dash}</Field>
       <Field label="领域">{item.icon_group ?? dash}</Field>
 
@@ -174,8 +173,7 @@ function IconDetail({ item, open, onClose, onSaved }: {
       <Field label="向量文本">{item.vector_text || dash}</Field>
       <Field label="分类">{item.icon_category ?? dash}</Field>
       <Field label="中文名">{item.icon_chinese_name ?? dash}</Field>
-      <Field label="英文全称">{item.icon_name ?? dash}</Field>
-      <Field label="英文名">{item.icon_english_name ?? dash}</Field>
+      <Field label="名称">{item.icon_name ?? dash}</Field>
       <Field label="描述">{item.description ?? dash}</Field>
       <Field label="标签">{item.tags.length > 0 ? item.tags.join('、') : dash}</Field>
 
@@ -351,12 +349,12 @@ export default function IconList({ type, label, handleRef }: Props) {
       },
     },
     {
-      title: '英文名',
+      title: '名称',
       width: 180,
       ellipsis: { showTitle: false },
       render: (_: unknown, r: Resource) => {
-        if (!r.icon_english_name) return emptyCell
-        return <Tooltip title={r.icon_english_name} placement="topLeft">{r.icon_english_name}</Tooltip>
+        if (!r.icon_name) return emptyCell
+        return <Tooltip title={r.icon_name} placement="topLeft">{r.icon_name}</Tooltip>
       },
     },
     {

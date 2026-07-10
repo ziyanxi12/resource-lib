@@ -198,7 +198,7 @@ interface Props {
   handleRef?: React.MutableRefObject<ResourceListHandle | null>
 }
 
-export default function ResourceList({ type, label, handleRef }: Props) {
+export default function ResourceList({ type, label, extraActions, handleRef }: Props) {
   const [search, setSearch] = useState('')
 
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
@@ -335,6 +335,7 @@ export default function ResourceList({ type, label, handleRef }: Props) {
           enterButton
           onSearch={v => { setSearch(v); setTPage(1) }}
         />
+        {extraActions}
       </div>
 
       <div

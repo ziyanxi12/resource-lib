@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table, Input, Button, Select, message, Drawer, Tooltip, Image,
 } from 'antd'
-import { SearchOutlined } from '@ant-design/icons'
+import { SearchOutlined, SyncOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
@@ -163,7 +163,7 @@ function ComponentDetail({ item, open, onClose, onSaved }: {
       <Field label="文件大小">{item.file_size != null ? formatSize(item.file_size) : dash}</Field>
       <Field label="资源宽度">{item.width != null ? `${item.width} px` : dash}</Field>
       <Field label="资源高度">{item.height != null ? `${item.height} px` : dash}</Field>
-      <Field label="组件库">{item.cv_lib_name ?? dash}</Field>
+      <Field label="组件库名">{item.cv_lib_name ?? dash}</Field>
       <Field label="组件库 fileKey"><HashVal value={item.cv_lib_file_key} /></Field>
       <Field label="组件类别">{item.cv_canvas_name ?? dash}</Field>
       <Field label="组件名">{item.cv_component_name ?? dash}</Field>
@@ -184,7 +184,6 @@ function ComponentDetail({ item, open, onClose, onSaved }: {
       <Field label="组件名">{item.cv_component_name ?? dash}</Field>
       <Field label="组件类别">{item.cv_canvas_name ?? dash}</Field>
       <Field label="变体名">{item.cv_variant_name ?? dash}</Field>
-      <Field label="组件库">{item.cv_lib_name ?? dash}</Field>
       <Field label="标签">{item.tags.length > 0 ? item.tags.join('、') : dash}</Field>
 
       {/* ── JSON 数据 ── */}
@@ -229,6 +228,8 @@ export default function ComponentList({ handleRef, extraActions }: Props) {
 
   const [lib, setLib] = useState<string>()
   const [libsReady, setLibsReady] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [componentMap, setComponentMap] = useState<{name: string, fileKey: string}[]>([])
 
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -252,6 +253,12 @@ export default function ComponentList({ handleRef, extraActions }: Props) {
   }, [])
 
   useEffect(() => {
+    api.listComponentMap()
+      .then(data => {
+        setComponentMap(data.items || [])
+      })
+      .catch(() => {})
+    
     api.getFilterOptions('component')
       .then(data => {
         setFilterOptions(data.options)
@@ -304,6 +311,30 @@ export default function ComponentList({ handleRef, extraActions }: Props) {
     setSearchMode(false); setQuery(''); setPage(1); setRefreshKey(k => k + 1)
   }, [])
 
+  const handleSync = useCallback(async () => {
+    if (!lib) {
+      message.warning('请先选择组件库')
+      return
+    }
+    
+    const currentLib = componentMap.find(item => item.name === lib)
+    if (!currentLib) {
+      message.error('未找到当前组件库信息')
+      return
+    }
+    
+    setSyncing(true)
+    try {
+      const res = await api.syncComponent(currentLib.fileKey)
+      message.success(res.message || '组件库更新成功')
+      refresh()
+    } catch (e: unknown) {
+      message.error('更新失败：' + (e instanceof Error ? e.message : '未知错误'))
+    } finally {
+      setSyncing(false)
+    }
+  }, [lib, componentMap, refresh])
+
   useEffect(() => { if (handleRef) handleRef.current = { refresh } })
 
   // ── 列定义 ───────────────────────────────────────────────────
@@ -339,7 +370,7 @@ export default function ComponentList({ handleRef, extraActions }: Props) {
       }
     },
     {
-      title: '组件库', width: 120,
+      title: '组件库名', width: 120,
       ellipsis: { showTitle: false },
       render: (_: unknown, r: Resource) => {
         if (!r.cv_lib_name) return emptyCell
@@ -404,14 +435,6 @@ export default function ComponentList({ handleRef, extraActions }: Props) {
         padding: '12px 16px', marginBottom: 14,
         display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flexShrink: 0,
       }}>
-        <Select
-          value={lib}
-          onChange={handleLibChange}
-          options={(filterOptions.cv_lib_name ?? []).map(v => ({ value: v, label: v }))}
-          placeholder="选择组件库"
-          showSearch
-          style={{ width: 200 }}
-        />
         <Input.Search
           placeholder="向量搜索组件"
           allowClear
@@ -427,7 +450,24 @@ export default function ComponentList({ handleRef, extraActions }: Props) {
             返回全量
           </Button>
         )}
-        {extraActions && <div style={{ marginLeft: 'auto' }}>{extraActions}</div>}
+        <Select
+          value={lib}
+          onChange={handleLibChange}
+          options={(filterOptions.cv_lib_name ?? []).map(v => ({ value: v, label: v }))}
+          placeholder="选择组件库"
+          showSearch
+          style={{ width: 200 }}
+        />
+        {/* <Button
+          type="primary"
+          icon={<SyncOutlined spin={syncing} />}
+          loading={syncing}
+          onClick={handleSync}
+          disabled={!lib}
+        >
+          更新组件库
+        </Button> */}
+        {extraActions}
       </div>
 
       <div ref={tableWrapRef} style={{

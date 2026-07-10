@@ -3,7 +3,7 @@ from enum import IntEnum
 
 class ResourceType(IntEnum):
     """
-    资源五大类型枚举
+    资源六大类型枚举
     数据库存整数，API 传/返字符串，在此处做双向转换
     """
     component = 1  # 组件集
@@ -11,6 +11,7 @@ class ResourceType(IntEnum):
     icon      = 3  # SVG 图标
     illus     = 4  # 插画
     image     = 5  # 图片
+    file      = 6  # 文件
 
     @classmethod
     def from_name(cls, name: str) -> "ResourceType":
@@ -26,5 +27,6 @@ class ResourceType(IntEnum):
             3: "SVG",
             4: "插画",
             5: "图片",
+            6: "文件",
         }
         return _labels[self.value]

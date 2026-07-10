@@ -204,6 +204,12 @@ def _build_registry() -> Dict:
             build_metadata=_build_simple_metadata,
             get_data_id=lambda res: str(res.id),
         ),
+        ResourceType.file: VectorSpec(
+            vec_type="file",
+            build_text=_build_simple_text,
+            build_metadata=_build_simple_metadata,
+            get_data_id=lambda res: str(res.id),
+        ),
     }
 
 

@@ -61,11 +61,56 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  batchUploadTemplates: (formData: FormData): Promise<{
+    success: boolean
+    count: number
+    items: { id: number; name: string; file_path: string; thumbnail_path: string }[]
+    message: string
+  }> =>
+    request('/api/template/batch-upload', {
+      method: 'POST',
+      body: formData,
+    }),
+
   syncIcon: () =>
     request('/api/icon/sync', { method: 'POST' }),
 
   uploadImage: (formData: FormData) =>
     request('/api/image/upload', {
+      method: 'POST',
+      body: formData,
+    }),
+
+  batchUploadImages: (formData: FormData): Promise<{
+    success: boolean
+    count: number
+    items: { id: number; name: string; file_path: string; width?: number; height?: number }[]
+    message: string
+  }> =>
+    request('/api/image/batch-upload', {
+      method: 'POST',
+      body: formData,
+    }),
+
+  uploadFile: (formData: FormData): Promise<{
+    id: number
+    name: string
+    file_path: string
+    thumbnail_path: string
+    message: string
+  }> =>
+    request('/api/file/upload', {
+      method: 'POST',
+      body: formData,
+    }),
+
+  batchUploadFiles: (formData: FormData): Promise<{
+    success: boolean
+    count: number
+    items: { id: number; name: string; file_path: string; thumbnail_path: string; message: string }[]
+    message: string
+  }> =>
+    request('/api/file/batch-upload', {
       method: 'POST',
       body: formData,
     }),

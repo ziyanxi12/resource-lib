@@ -18,7 +18,7 @@
 
 ---
 
-## 五类向量拼接字段速览
+## 六类向量拼接字段速览
 
 | 类型 | 拼接字段公式 | data_id来源 |
 |------|-------------|------------|
@@ -27,6 +27,7 @@
 | illus | `{illus_id} {alias} {description} {category} {tags空格连接} {version}` | illus_id |
 | template | `{name} {description}` | resource.id |
 | image | `{name} {description}` | resource.id |
+| file | `{name} {description} {tags空格连接}` | resource.id |
 
 ---
 
@@ -368,6 +369,63 @@ def _build_simple_text(resource: "Resource", raw: dict) -> str:
 ```json
 {
   "name":        "图片名称",
+  "description": "描述文本"
+}
+```
+
+---
+
+## 6. 文件 (file, type=6)
+
+### 【快速参考】拼接字段
+
+**文本公式**: `{name} {description} {tags空格连接}`
+
+**构造示例**: 
+- 输入: name="产品文档.pdf", description="产品功能说明书", tags=["文档", "产品", "规范"]
+- 输出: `"产品文档.pdf 产品功能说明书 文档 产品 规范"`
+
+**data_id**: `resource.id` (来自 Resource.id)
+
+---
+
+### 详细说明
+
+#### 数据表关联
+
+仅使用 `resources` 主表，无关联表。标签存储在 `resource_tags` 表。
+
+**关键字段**:
+- `Resource.id` - 主键ID（用作 data_id）
+- `Resource.name` - 文件名称
+- `Resource.description` - 文件描述
+- `Resource.tags` - 标签列表（来自 resource_tags 表）
+
+#### 文本构造函数
+
+**函数**: `_build_simple_text` (line 154-155) - 与模版/图片相同，但包含 tags
+
+**构造逻辑**:
+```python
+def _build_simple_text(resource: "Resource", raw: dict) -> str:
+    return " ".join(p for p in [resource.name, resource.description or "", main_tag_text(resource)] if p)
+```
+
+其中 `main_tag_text(resource)` 函数拼接所有标签：
+```python
+def main_tag_text(resource: "Resource") -> str:
+    """主库标签（resource_tags 表）拼接为空格分隔文本"""
+    return " ".join(t.tag for t in resource.tags)
+```
+
+#### 元数据构造
+
+**函数**: `_build_simple_metadata` (line 158-159) - 与模版/图片相同
+
+**字段**:
+```json
+{
+  "name":        "文件名称",
   "description": "描述文本"
 }
 ```
