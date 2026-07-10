@@ -14,13 +14,21 @@ export default function FileManage() {
       label="文件"
       handleRef={listRef}
       extraActions={
-        <Button
-          type="primary"
-          icon={<UploadOutlined />}
-          onClick={() => navigate('/file/upload')}
-        >
-          批量上传
-        </Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button
+            type="primary"
+            icon={<UploadOutlined />}
+            onClick={() => navigate('/file/upload')}
+          >
+            批量上传
+          </Button>
+          <Button
+            icon={<UploadOutlined />}
+            onClick={() => navigate('/file/zip-upload')}
+          >
+            ZIP批量上传
+          </Button>
+        </div>
       }
     />
   )

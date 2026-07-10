@@ -20,6 +20,7 @@ import ImageManage from './pages/ImageManage'
 import ImageBatchUpload from './pages/ImageBatchUpload'
 import FileManage from './pages/FileManage'
 import FileBatchUpload from './pages/FileBatchUpload'
+import ZipBatchUpload from './pages/ZipBatchUpload'
 
 type PageKey = 'overview' | 'component' | 'template' | 'icon' | 'illus' | 'image' | 'file'
 
@@ -36,7 +37,7 @@ const NAV: { key: PageKey; path: string; icon: React.ReactNode; label: string }[
 const HEADER_H = 56
 const SIDEBAR_W = 200
 
-const UPLOAD_PAGES = ['/template/upload', '/image/upload', '/file/upload']
+const UPLOAD_PAGES = ['/template/upload', '/image/upload', '/file/upload', '/file/zip-upload']
 
 function NavItem({
   icon, label, active, onClick,
@@ -209,6 +210,7 @@ function AppLayout() {
               <Route path="/image/upload" element={<ImageBatchUpload />} />
               <Route path="/file" element={<FileManage />} />
               <Route path="/file/upload" element={<FileBatchUpload />} />
+              <Route path="/file/zip-upload" element={<ZipBatchUpload />} />
             </Routes>
           </div>
         </main>
