@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
-import { Modal, Button, Input, Select, Upload, message, Progress, Image } from 'antd'
-import { UploadOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
-import type { RcFile } from 'antd/es/upload'
+import { useNavigate } from 'react-router-dom'
+import { Button, Input, Select, message, Progress, Image } from 'antd'
+import { ArrowLeftOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import { api } from '../api'
 
 interface UploadItem {
@@ -13,26 +13,18 @@ interface UploadItem {
   tags: string[]
 }
 
-interface Props {
-  open: boolean
-  onClose: () => void
-  onSuccess: () => void
-}
-
-export default function BatchUploadModal({ open, onClose, onSuccess }: Props) {
+export default function ImageBatchUpload() {
+  const navigate = useNavigate()
   const [items, setItems] = useState<UploadItem[]>([])
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleClose = () => {
+  const handleBack = () => {
     items.forEach(item => {
       if (item.preview) URL.revokeObjectURL(item.preview)
     })
-    setItems([])
-    setUploading(false)
-    setUploadProgress(0)
-    onClose()
+    navigate('/image')
   }
 
   const handleSelectFiles = (files: FileList | null) => {
@@ -108,8 +100,11 @@ export default function BatchUploadModal({ open, onClose, onSuccess }: Props) {
 
       setUploadProgress(100)
       message.success(res.message)
-      onSuccess()
-      handleClose()
+      
+      items.forEach(item => {
+        if (item.preview) URL.revokeObjectURL(item.preview)
+      })
+      navigate('/image')
     } catch (e: unknown) {
       message.error('上传失败：' + (e instanceof Error ? e.message : '未知错误'))
     } finally {
@@ -119,15 +114,27 @@ export default function BatchUploadModal({ open, onClose, onSuccess }: Props) {
   }
 
   return (
-    <Modal
-      title="批量上传图片"
-      open={open}
-      onCancel={uploading ? undefined : handleClose}
-      width={750}
-      footer={null}
-      destroyOnClose
-      maskClosable={!uploading}
-    >
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        marginBottom: 20,
+        paddingBottom: 16,
+        borderBottom: '1px solid #e2e8f0',
+      }}>
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={handleBack}
+          disabled={uploading}
+        >
+          返回
+        </Button>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1e293b' }}>
+          批量上传图片
+        </h2>
+      </div>
+
       <div style={{ marginBottom: 16 }}>
         <div style={{
           padding: '8px 12px',
@@ -137,7 +144,7 @@ export default function BatchUploadModal({ open, onClose, onSuccess }: Props) {
           fontSize: 13,
           marginBottom: 12,
         }}>
-          💡 建议单次上传不超过 50 张图片
+          建议单次上传不超过 50 张图片
         </div>
 
         <input
@@ -151,7 +158,7 @@ export default function BatchUploadModal({ open, onClose, onSuccess }: Props) {
 
         {items.length > 0 && (
           <div style={{
-            maxHeight: 400,
+            flex: 1,
             overflowY: 'auto',
             border: '1px solid #e2e8f0',
             borderRadius: 8,
@@ -257,7 +264,7 @@ export default function BatchUploadModal({ open, onClose, onSuccess }: Props) {
           paddingTop: 16,
           borderTop: '1px solid #f1f5f9',
         }}>
-          <Button onClick={handleClose} disabled={uploading}>
+          <Button onClick={handleBack} disabled={uploading}>
             取消
           </Button>
           <Button
@@ -270,6 +277,6 @@ export default function BatchUploadModal({ open, onClose, onSuccess }: Props) {
           </Button>
         </div>
       </div>
-    </Modal>
+    </div>
   )
 }

@@ -12,10 +12,11 @@
   "dependencies": {
     "@ant-design/icons": "^5.4.0",
     "antd": "^5.21.6",
-    "compressing":"^2.1.1",
+    "compressing": "^2.1.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "ssh2":"^1.17.0"
+    "react-router-dom": "^7.18.1",
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.5",

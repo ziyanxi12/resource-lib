@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { BrowserRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import { ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import {
@@ -13,35 +13,30 @@ import {
 import ResourceOverview from './pages/ResourceOverview'
 import ComponentManage from './pages/ComponentManage'
 import TemplateManage from './pages/TemplateManage'
+import TemplateBatchUpload from './pages/TemplateBatchUpload'
 import SVGManage from './pages/SVGManage'
 import IllustrationManage from './pages/IllustrationManage'
 import ImageManage from './pages/ImageManage'
+import ImageBatchUpload from './pages/ImageBatchUpload'
 import FileManage from './pages/FileManage'
+import FileBatchUpload from './pages/FileBatchUpload'
 
 type PageKey = 'overview' | 'component' | 'template' | 'icon' | 'illus' | 'image' | 'file'
 
-const PAGES: Record<PageKey, React.ReactNode> = {
-  overview:  <ResourceOverview />,
-  component: <ComponentManage />,
-  template:  <TemplateManage />,
-  icon:      <SVGManage />,
-  illus:     <IllustrationManage />,
-  image:     <ImageManage />,
-  file:      <FileManage />,
-}
-
-const NAV = [
-  { key: 'overview'  as PageKey, icon: <AppstoreOutlined />,  label: '数据总览' },
-  { key: 'component' as PageKey, icon: <BlockOutlined />,     label: '组件' },
-  { key: 'template'  as PageKey, icon: <FileTextOutlined />,  label: '模版' },
-  { key: 'icon'      as PageKey, icon: <FunctionOutlined />,  label: '图标' },
-  { key: 'illus'     as PageKey, icon: <StarOutlined />,      label: '插画' },
-  { key: 'image'     as PageKey, icon: <PictureOutlined />,   label: '图片' },
-  { key: 'file'      as PageKey, icon: <FileOutlined />,      label: '文件' },
+const NAV: { key: PageKey; path: string; icon: React.ReactNode; label: string }[] = [
+  { key: 'overview'  , path: '/'          , icon: <AppstoreOutlined />,  label: '数据总览' },
+  { key: 'component' , path: '/component' , icon: <BlockOutlined />,     label: '组件' },
+  { key: 'template'  , path: '/template'  , icon: <FileTextOutlined />,  label: '模版' },
+  { key: 'icon'      , path: '/icon'      , icon: <FunctionOutlined />, label: '图标' },
+  { key: 'illus'     , path: '/illus'     , icon: <StarOutlined />,     label: '插画' },
+  { key: 'image'     , path: '/image'     , icon: <PictureOutlined />,  label: '图片' },
+  { key: 'file'      , path: '/file'      , icon: <FileOutlined />,     label: '文件' },
 ]
 
 const HEADER_H = 56
 const SIDEBAR_W = 200
+
+const UPLOAD_PAGES = ['/template/upload', '/image/upload', '/file/upload']
 
 function NavItem({
   icon, label, active, onClick,
@@ -85,28 +80,15 @@ function NavItem({
   )
 }
 
-export default function App() {
-  const [page, setPage] = useState<PageKey>('overview')
+function AppLayout() {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const isUploadPage = UPLOAD_PAGES.includes(location.pathname)
+
+  const currentNavKey = NAV.find(item => item.path === location.pathname)?.key || 'overview'
 
   return (
-    <ConfigProvider
-      locale={zhCN}
-      theme={{
-        token: {
-          colorPrimary: '#6366f1',
-          borderRadius: 8,
-          fontFamily:
-            "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'PingFang SC', sans-serif",
-          colorBgContainer: '#ffffff',
-          boxShadow: '0 1px 3px 0 rgba(0,0,0,0.07), 0 1px 2px -1px rgba(0,0,0,0.07)',
-        },
-        components: {
-          Table: { headerBg: '#f8fafc', borderColor: '#f1f5f9' },
-          Input: { activeShadow: '0 0 0 3px rgba(99,102,241,0.12)' },
-          Button: { primaryShadow: '0 1px 3px rgba(99,102,241,0.4)' },
-        },
-      }}
-    >
+    <>
       {/* ── Top header ── */}
       <header
         style={{
@@ -150,60 +132,62 @@ export default function App() {
 
       <div style={{ display: 'flex', minHeight: '100vh', paddingTop: HEADER_H }}>
         {/* ── Sidebar ── */}
-        <aside
-          style={{
-            width: SIDEBAR_W,
-            background: '#0f172a',
-            position: 'fixed',
-            top: HEADER_H,
-            left: 0,
-            bottom: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            zIndex: 100,
-          }}
-        >
-          <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
-            <div
-              style={{
-                padding: '6px 16px 8px',
-                fontSize: 11,
-                color: '#475569',
-                fontWeight: 600,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-              }}
-            >
-              导航
-            </div>
-            {NAV.map(item => (
-              <NavItem
-                key={item.key}
-                icon={item.icon}
-                label={item.label}
-                active={page === item.key}
-                onClick={() => setPage(item.key)}
-              />
-            ))}
-          </nav>
-
-          <div
+        {!isUploadPage && (
+          <aside
             style={{
-              padding: '14px 20px',
-              borderTop: '1px solid rgba(255,255,255,0.06)',
-              fontSize: 11,
-              color: '#334155',
+              width: SIDEBAR_W,
+              background: '#0f172a',
+              position: 'fixed',
+              top: HEADER_H,
+              left: 0,
+              bottom: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              zIndex: 100,
             }}
           >
-            v{__APP_VERSION__}
-          </div>
-        </aside>
+            <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
+              <div
+                style={{
+                  padding: '6px 16px 8px',
+                  fontSize: 11,
+                  color: '#475569',
+                  fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                导航
+              </div>
+              {NAV.map(item => (
+                <NavItem
+                  key={item.key}
+                  icon={item.icon}
+                  label={item.label}
+                  active={currentNavKey === item.key}
+                  onClick={() => navigate(item.path)}
+                />
+              ))}
+            </nav>
+
+            <div
+              style={{
+                padding: '14px 20px',
+                borderTop: '1px solid rgba(255,255,255,0.06)',
+                fontSize: 11,
+                color: '#334155',
+              }}
+            >
+              v{__APP_VERSION__}
+            </div>
+          </aside>
+        )}
 
         {/* ── Content ── */}
         <main
           style={{
             flex: 1,
-            marginLeft: SIDEBAR_W,
+            marginLeft: isUploadPage ? 0 : SIDEBAR_W,
             height: `calc(100vh - ${HEADER_H}px)`,
             background: '#f1f5f9',
             padding: '28px 32px',
@@ -213,12 +197,49 @@ export default function App() {
             overflow: 'hidden',
           }}
         >
-          {/* inner wrapper so page components can use flex:1 to fill height */}
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-            {PAGES[page]}
+            <Routes>
+              <Route path="/" element={<ResourceOverview />} />
+              <Route path="/component" element={<ComponentManage />} />
+              <Route path="/template" element={<TemplateManage />} />
+              <Route path="/template/upload" element={<TemplateBatchUpload />} />
+              <Route path="/icon" element={<SVGManage />} />
+              <Route path="/illus" element={<IllustrationManage />} />
+              <Route path="/image" element={<ImageManage />} />
+              <Route path="/image/upload" element={<ImageBatchUpload />} />
+              <Route path="/file" element={<FileManage />} />
+              <Route path="/file/upload" element={<FileBatchUpload />} />
+            </Routes>
           </div>
         </main>
       </div>
+    </>
+  )
+}
+
+export default function App() {
+  return (
+    <ConfigProvider
+      locale={zhCN}
+      theme={{
+        token: {
+          colorPrimary: '#6366f1',
+          borderRadius: 8,
+          fontFamily:
+            "-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', 'PingFang SC', sans-serif",
+          colorBgContainer: '#ffffff',
+          boxShadow: '0 1px 3px 0 rgba(0,0,0,0.07), 0 1px 2px -1px rgba(0,0,0,0.07)',
+        },
+        components: {
+          Table: { headerBg: '#f8fafc', borderColor: '#f1f5f9' },
+          Input: { activeShadow: '0 0 0 3px rgba(99,102,241,0.12)' },
+          Button: { primaryShadow: '0 1px 3px rgba(99,102,241,0.4)' },
+        },
+      }}
+    >
+      <BrowserRouter>
+        <AppLayout />
+      </BrowserRouter>
     </ConfigProvider>
   )
 }

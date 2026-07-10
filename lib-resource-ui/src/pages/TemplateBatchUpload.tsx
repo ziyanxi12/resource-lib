@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
-import { Modal, Button, Input, Select, message, Progress, Image } from 'antd'
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
+import { Button, Input, Select, message, Progress, Image } from 'antd'
+import { ArrowLeftOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import { api } from '../api'
 
 interface UploadTemplateItem {
@@ -13,30 +14,22 @@ interface UploadTemplateItem {
   tags: string[]
 }
 
-interface Props {
-  open: boolean
-  onClose: () => void
-  onSuccess: () => void
-}
-
 const ALLOWED_PREVIEW_TYPES = ['png']
 const ALLOWED_PREVIEW_MIME_TYPES = ['image/png']
 
-export default function BatchUploadTemplateModal({ open, onClose, onSuccess }: Props) {
+export default function TemplateBatchUpload() {
+  const navigate = useNavigate()
   const [items, setItems] = useState<UploadTemplateItem[]>([])
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const previewInputRef = useRef<HTMLInputElement>(null)
   const currentUidRef = useRef<string>('')
 
-  const handleClose = () => {
+  const handleBack = () => {
     items.forEach(item => {
       if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
     })
-    setItems([])
-    setUploading(false)
-    setUploadProgress(0)
-    onClose()
+    navigate('/template')
   }
 
   const handleAddTemplate = () => {
@@ -90,21 +83,18 @@ export default function BatchUploadTemplateModal({ open, onClose, onSuccess }: P
   }
 
   const handleSubmit = async () => {
-    // 检查缩略图
     const missingPreview = items.filter(item => !item.previewFile)
     if (missingPreview.length > 0) {
       message.error(`请为所有模版上传缩略图（PNG格式）`)
       return
     }
     
-    // 检查名称
     const missingName = items.filter(item => !item.name.trim())
     if (missingName.length > 0) {
       message.error('请填写所有模版的名称')
       return
     }
     
-    // 检查 hex 数据
     const missingHex = items.filter(item => !item.hexData.trim())
     if (missingHex.length > 0) {
       message.error('请填写所有模版的 hex 数据')
@@ -137,8 +127,11 @@ export default function BatchUploadTemplateModal({ open, onClose, onSuccess }: P
 
       setUploadProgress(100)
       message.success(res.message)
-      onSuccess()
-      handleClose()
+      
+      items.forEach(item => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl)
+      })
+      navigate('/template')
     } catch (e: unknown) {
       message.error('上传失败：' + (e instanceof Error ? e.message : '未知错误'))
     } finally {
@@ -148,15 +141,27 @@ export default function BatchUploadTemplateModal({ open, onClose, onSuccess }: P
   }
 
   return (
-    <Modal
-      title="批量上传模版"
-      open={open}
-      onCancel={uploading ? undefined : handleClose}
-      width={800}
-      footer={null}
-      destroyOnClose
-      maskClosable={!uploading}
-    >
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 16,
+        marginBottom: 20,
+        paddingBottom: 16,
+        borderBottom: '1px solid #e2e8f0',
+      }}>
+        <Button
+          icon={<ArrowLeftOutlined />}
+          onClick={handleBack}
+          disabled={uploading}
+        >
+          返回
+        </Button>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1e293b' }}>
+          批量上传模版
+        </h2>
+      </div>
+
       <div style={{ marginBottom: 16 }}>
         <div style={{
           padding: '8px 12px',
@@ -166,7 +171,7 @@ export default function BatchUploadTemplateModal({ open, onClose, onSuccess }: P
           fontSize: 13,
           marginBottom: 12,
         }}>
-          💡 建议单次上传不超过 20 个模版
+          建议单次上传不超过 20 个模版
         </div>
 
         <input
@@ -179,12 +184,11 @@ export default function BatchUploadTemplateModal({ open, onClose, onSuccess }: P
 
         {items.length > 0 && (
           <div style={{
-            maxHeight: 450,
+            flex: 1,
             overflowY: 'auto',
             border: '1px solid #e2e8f0',
             borderRadius: 8,
           }}>
-            {/* 表头行 */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -332,7 +336,7 @@ export default function BatchUploadTemplateModal({ open, onClose, onSuccess }: P
           paddingTop: 16,
           borderTop: '1px solid #f1f5f9',
         }}>
-          <Button onClick={handleClose} disabled={uploading}>
+          <Button onClick={handleBack} disabled={uploading}>
             取消
           </Button>
           <Button
@@ -345,6 +349,6 @@ export default function BatchUploadTemplateModal({ open, onClose, onSuccess }: P
           </Button>
         </div>
       </div>
-    </Modal>
+    </div>
   )
 }
