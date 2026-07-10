@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
-  BlockOutlined, FileTextOutlined, FunctionOutlined, StarOutlined, PictureOutlined,
+  BlockOutlined, FileTextOutlined, FunctionOutlined, StarOutlined, PictureOutlined, FileOutlined,
 } from '@ant-design/icons'
 import { api } from '../api'
 
@@ -10,6 +10,7 @@ const STATS = [
   { key: 'icon',      label: '图标',  icon: <FunctionOutlined />, color: '#0891b2', bg: '#ecfeff' },
   { key: 'illus',     label: '插画',  icon: <StarOutlined />,     color: '#d97706', bg: '#fffbeb' },
   { key: 'image',     label: '图片',  icon: <PictureOutlined />,  color: '#059669', bg: '#ecfdf5' },
+  { key: 'file',      label: '文件',  icon: <FileOutlined />,     color: '#f59e0b', bg: '#fffbeb' },
 ]
 
 function StatCard({
@@ -88,7 +89,7 @@ export default function ResourceOverview() {
     <div>
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>数据总览</h1>
-        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>五类设计资源的当前数量</p>
+        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>六类设计资源的当前数量</p>
       </div>
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
