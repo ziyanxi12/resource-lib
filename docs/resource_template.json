@@ -1,0 +1,20 @@
+{
+  "name": "资源名称",
+  "description": "资源描述",
+  "resource_type": 1,
+  "source_id": 1,
+  "group_id": 10,
+  "tags": ["标签1", "标签2"],
+  "search_text": "业务搜索关键词",
+  "file_name": "example.svg",
+  "file_url": "https://cdn.example.com/file.svg",
+  "file_path": "storage/icon/example.svg",
+  "file_size": 1024,
+  "file_type": "svg",
+  "width": 24,
+  "height": 24,
+  "thumbnail_path": "storage/thumbnail/example.png",
+  "meta_json": {
+    "custom_field": "value"
+  }
+}
