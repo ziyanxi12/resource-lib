@@ -196,9 +196,10 @@ interface Props {
   label: string
   extraActions?: React.ReactNode
   handleRef?: React.MutableRefObject<ResourceListHandle | null>
+  groupId?: number | null
 }
 
-export default function ResourceList({ type, label, extraActions, handleRef }: Props) {
+export default function ResourceList({ type, label, extraActions, handleRef, groupId }: Props) {
   const [search, setSearch] = useState('')
 
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
@@ -234,7 +235,7 @@ export default function ResourceList({ type, label, extraActions, handleRef }: P
     setTLoading(true)
     const req = search
       ? api.vectorSearch({ query: search, type, limit: 50 }).then(results => ({ items: results as Resource[], total: results.length }))
-      : api.listResources({ type, page: tPage, limit: tPageSize })
+      : api.listResources({ type, page: tPage, limit: tPageSize, group_id: groupId })
     req
       .then(data => {
         if (cancelled) return
@@ -244,7 +245,7 @@ export default function ResourceList({ type, label, extraActions, handleRef }: P
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setTLoading(false) })
     return () => { cancelled = true }
-  }, [type, tPage, tPageSize, search, refreshKey])
+  }, [type, tPage, tPageSize, search, refreshKey, groupId])
 
   const refresh = useCallback(() => {
     setRefreshKey(k => k + 1)

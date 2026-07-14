@@ -12,9 +12,12 @@ export interface Resource {
   height: number | null
   description: string | null
   raw_data: string | null
+  group_id: number | null
   created_by: string | null
   created_at: string | null
   updated_at: string | null
+  data_updated_at: string | null
+  vector_updated_at: string | null
   tags: string[]
   score?: number
   vector_text?: string | null

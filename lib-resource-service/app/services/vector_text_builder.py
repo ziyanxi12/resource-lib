@@ -104,6 +104,7 @@ def _build_component_metadata(resource: "Resource", raw: dict) -> dict:
         "canvas_name":    raw.get("canvas_name")  or (cv.canvas_name    if cv else "") or "",
         "component_name": raw.get("parent_name")  or (cv.component_name if cv else "") or "",
         "lib_name":       raw.get("lib_name")      or (cv.lib_name       if cv else "") or "",
+        "group_id":       resource.group_id,
     }
 
 
@@ -125,6 +126,7 @@ def _build_icon_metadata(resource: "Resource", raw: dict) -> dict:
         "description":  resource.description or "",
         "english_name": raw.get("englishName") or (ic.english_name if ic else "") or "",
         "category":     raw.get("category")    or (ic.category     if ic else "") or "",
+        "group_id":     resource.group_id,
     }
 
 
@@ -148,6 +150,7 @@ def _build_illus_metadata(resource: "Resource", raw: dict) -> dict:
         "category": raw.get("category") or (il.category if il else "") or "",
         "version":  raw.get("version") or (il.version if il else "") or "",
         "theme":    raw.get("theme")    or (il.theme    if il else "") or "",
+        "group_id": resource.group_id,
     }
 
 
@@ -156,7 +159,11 @@ def _build_simple_text(resource: "Resource", raw: dict) -> str:
 
 
 def _build_simple_metadata(resource: "Resource", raw: dict) -> dict:
-    return {"name": resource.name, "description": resource.description or ""}
+    return {
+        "name": resource.name,
+        "description": resource.description or "",
+        "group_id": resource.group_id,
+    }
 
 
 # ──────────────────────────────────────────────────────────────────

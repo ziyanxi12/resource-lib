@@ -20,6 +20,7 @@ from app.models.resource import Resource
 from app.services import resource_service, image_service
 from app.schemas.resource import ResourceUpdateRequest
 from app.services.vector_text_builder import get_registry, ingest_vectors
+from app.services import vector_sync_service
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +67,31 @@ def get_filter_options(
     return {"options": resource_service.get_filter_options(db, resource_type_int)}
 
 
+@router.post("/sync-vectors")
+def sync_vectors(
+    type: str = Query(..., description="资源类型名，如 component、icon、illus、template、image、file"),
+    db: Session = Depends(get_db),
+):
+    """
+    批量同步指定类型的向量数据。
+    仅同步 vector_updated_at < updated_at 的数据。
+    """
+    try:
+        resource_type = ResourceType.from_name(type)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
+    
+    result = vector_sync_service.sync_vectors_by_type(db, resource_type)
+    return result
+
+
 @router.get("")
 def list_resources(
     type:   Optional[str] = Query(None, description="资源类型名，如 component、icon、illus"),
     page:   int           = Query(1,    ge=1),
     limit:  int           = Query(20,   ge=1, le=100),
     search: Optional[str] = Query(None, description="关键词，匹配名称/英文名/描述"),
+    group_id:          Optional[int]    = Query(None, description="分组ID筛选"),
     cv_lib_name:       Optional[List[str]] = Query(None, description="组件-组件库"),
     cv_canvas_name:    Optional[List[str]] = Query(None, description="组件-类别"),
     cv_component_name: Optional[List[str]] = Query(None, description="组件-组件名"),
@@ -103,7 +123,7 @@ def list_resources(
         }.items() if v
     }
 
-    items, total = resource_service.get_resources(db, resource_type_int, search, page, limit, filters)
+    items, total = resource_service.get_resources(db, resource_type_int, search, page, limit, filters, group_id)
 
     return {
         "total": total,
@@ -128,19 +148,35 @@ def update_resource(
     body: ResourceUpdateRequest,
     db: Session = Depends(get_db),
 ):
-    """更新资源元数据（名称、描述、排序等），同步更新向量库"""
+    """更新资源元数据（名称、描述、排序等），仅更新数据库，不触发向量同步"""
+    from datetime import datetime
+    from app.models.resource import ResourceIcon
+    
     update_data = body.model_dump(exclude_none=True)
     tags = update_data.pop("tags", None)
+    
+    update_data["data_updated_at"] = datetime.utcnow()
+
+    logger.debug("用户修改数据: resource_id=%d, fields=%s", resource_id, list(update_data.keys()))
+    logger.debug("修改详情: %s", update_data)
+    if tags is not None:
+        logger.debug("修改标签: resource_id=%d, tags=%s", resource_id, tags)
 
     resource = resource_service.update_resource(db, resource_id, update_data)
     if not resource:
         raise HTTPException(status_code=404, detail="资源不存在")
 
+    # 同步更新 icon 表的 name 字段
+    if "name" in update_data and resource.resource_type == ResourceType.icon:
+        icon_detail = db.query(ResourceIcon).filter(ResourceIcon.resource_id == resource_id).first()
+        if icon_detail:
+            icon_detail.name = update_data["name"]
+            logger.debug("同步更新 icon.name: resource_id=%d, name=%s", resource_id, update_data["name"])
+
     if tags is not None:
         resource_service.update_tags(db, resource_id, tags)
 
-    if settings.VECTOR_SERVICE_ENABLED:
-        _sync_to_vector(db, resource)
+    logger.debug("数据修改完成: resource_id=%d, data_updated_at=%s", resource_id, resource.data_updated_at)
 
     return {"message": "更新成功", "id": resource_id}
 
@@ -215,9 +251,12 @@ def _fmt(r) -> dict:
         "height":             r.height,
         "description":        r.description,
         "raw_data":           r.raw_data,
+        "group_id":           r.group_id,
         "created_by":         r.created_by,
         "created_at":         r.created_at.isoformat() if r.created_at else None,
         "updated_at":         r.updated_at.isoformat() if r.updated_at else None,
+        "data_updated_at":    r.data_updated_at.isoformat() if r.data_updated_at else None,
+        "vector_updated_at":  r.vector_updated_at.isoformat() if r.vector_updated_at else None,
         "tags":               [t.tag for t in r.tags],
         "vector_text":        _build_vector_text(r),
         # icon 字段
@@ -231,8 +270,8 @@ def _fmt(r) -> dict:
         "illus_id":           r.illus_detail.illus_id   if r.illus_detail else None,
         "illus_category":     r.illus_detail.category   if r.illus_detail else None,
         "illus_tags":         r.illus_detail.tags        if r.illus_detail else None,
-        "illus_version":      r.illus_detail.version     if r.illus_detail else None,
-        "illus_theme":        r.illus_detail.theme       if r.illus_detail else None,
+        "illus_version":      r.illus_detail.version    if r.illus_detail else None,
+        "illus_theme":        r.illus_detail.theme      if r.illus_detail else None,
         # component 字段
         "cv_lib_file_key":    r.component_variant.lib_file_key    if r.component_variant else None,
         "cv_lib_name":        r.component_variant.lib_name        if r.component_variant else None,

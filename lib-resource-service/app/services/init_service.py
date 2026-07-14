@@ -21,6 +21,7 @@
 import json
 import logging
 import os
+from datetime import datetime
 from typing import Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -28,7 +29,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.enums import ResourceType
 from app.models.resource import ComponentVariant, Resource, ResourceIcon, ResourceIllus
-from app.services.resource_service import create_resource
+from app.services.resource_service import create_resource, batch_update_vector_time
 from app.services.vector_text_builder import ingest_vectors
 
 try:
@@ -195,6 +196,7 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
             "thumbnail_path": thumbnail_path,
             "width":         variant_size.get("width"),
             "height":        variant_size.get("height"),
+            "data_updated_at": datetime.utcnow(),
             "raw_data":      json.dumps({
                 "canvasName":     comp.get("canvasName"),
                 "componentKey":   comp.get("componentKey"),
@@ -247,7 +249,11 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
     db.commit()
     logger.info("组件集：DB 全部提交完成")
 
-    ingest_vectors(ResourceType.component, vector_pairs, skip_vector=skip_vector)
+    if vector_pairs and not skip_vector:
+        ingest_vectors(ResourceType.component, vector_pairs, skip_vector=False)
+        new_resource_ids = [r.id for r, _ in vector_pairs]
+        batch_update_vector_time(db, new_resource_ids)
+        logger.debug("更新 vector_updated_at: %d 条", len(new_resource_ids))
 
     return {"added": added, "updated": updated}
 
@@ -288,14 +294,15 @@ def import_icons(db: Session, skip_vector: bool = False) -> dict:
         if icon_id is None:
             logger.warning("图标缺少 id 字段，跳过：%s", item)
             continue
-        chinese_name = item.get("chineseName") or item.get("name", "未命名")
         thumbnail_path = f"icon/{icon_id}.png" if icon_id else None
         resource_data = {
             "resource_type": int(ResourceType.icon),
-            "name":          chinese_name,
+            "name":          item.get("name", "未命名"),
             "thumbnail_path": thumbnail_path,
             "description":   item.get("description"),
+            "data_updated_at": datetime.utcnow(),
             "raw_data":      json.dumps(item, ensure_ascii=False),
+            "group_id":      item.get("group_id"),
         }
 
         existing_ri = existing_icon_map.get(icon_id)
@@ -344,7 +351,11 @@ def import_icons(db: Session, skip_vector: bool = False) -> dict:
     db.commit()
     logger.info("icon：DB 全部提交完成")
 
-    ingest_vectors(ResourceType.icon, vector_pairs, skip_vector=skip_vector)
+    if vector_pairs and not skip_vector:
+        ingest_vectors(ResourceType.icon, vector_pairs, skip_vector=False)
+        new_resource_ids = [r.id for r, _ in vector_pairs]
+        batch_update_vector_time(db, new_resource_ids)
+        logger.debug("更新 vector_updated_at: %d 条", len(new_resource_ids))
 
     return {"added": added, "updated": updated}
 
@@ -391,7 +402,9 @@ def import_illus(db: Session, skip_vector: bool = False) -> dict:
             "name":          item.get("alias", "未命名插画"),
             "thumbnail_path": thumbnail_path,
             "description":   item.get("description"),
+            "data_updated_at": datetime.utcnow(),
             "raw_data":      json.dumps(item, ensure_ascii=False),
+            "group_id":      item.get("group_id"),
         }
 
         existing_ri = existing_illus_map.get(illus_id)
@@ -447,7 +460,11 @@ def import_illus(db: Session, skip_vector: bool = False) -> dict:
     db.commit()
     logger.info("illus：DB 全部提交完成")
 
-    ingest_vectors(ResourceType.illus, vector_pairs, skip_vector=skip_vector)
+    if vector_pairs and not skip_vector:
+        ingest_vectors(ResourceType.illus, vector_pairs, skip_vector=False)
+        new_resource_ids = [r.id for r, _ in vector_pairs]
+        batch_update_vector_time(db, new_resource_ids)
+        logger.debug("更新 vector_updated_at: %d 条", len(new_resource_ids))
 
     return {"added": added, "updated": updated}
 
@@ -508,6 +525,7 @@ def import_templates(db: Session, skip_vector: bool = False) -> dict:
             "mime_type":     "text/plain",
             "thumbnail_path": thumbnail_path,
             "description":   item.get("description"),
+            "data_updated_at": datetime.utcnow(),
         }
 
         existing = existing_map.get(name)
@@ -528,7 +546,11 @@ def import_templates(db: Session, skip_vector: bool = False) -> dict:
     db.commit()
     logger.info("template DB 入库完成：新增 %d 条，更新 %d 条", added, updated)
 
-    ingest_vectors(ResourceType.template, vector_pairs, skip_vector=skip_vector)
+    if vector_pairs and not skip_vector:
+        ingest_vectors(ResourceType.template, vector_pairs, skip_vector=False)
+        new_resource_ids = [r.id for r, _ in vector_pairs]
+        batch_update_vector_time(db, new_resource_ids)
+        logger.debug("更新 vector_updated_at: %d 条", len(new_resource_ids))
 
     return {"added": added, "updated": updated}
 
@@ -596,6 +618,7 @@ def import_images(db: Session, skip_vector: bool = False) -> dict:
             "width":         width,
             "height":        height,
             "description":   item.get("description"),
+            "data_updated_at": datetime.utcnow(),
         }
 
         existing = existing_map.get(name)
@@ -616,7 +639,11 @@ def import_images(db: Session, skip_vector: bool = False) -> dict:
     db.commit()
     logger.info("image DB 入库完成：新增 %d 条，更新 %d 条", added, updated)
 
-    ingest_vectors(ResourceType.image, vector_pairs, skip_vector=skip_vector)
+    if vector_pairs and not skip_vector:
+        ingest_vectors(ResourceType.image, vector_pairs, skip_vector=False)
+        new_resource_ids = [r.id for r, _ in vector_pairs]
+        batch_update_vector_time(db, new_resource_ids)
+        logger.debug("更新 vector_updated_at: %d 条", len(new_resource_ids))
 
     return {"added": added, "updated": updated}
 

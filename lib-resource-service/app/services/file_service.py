@@ -5,13 +5,14 @@
 
 import os
 import uuid
+from datetime import datetime
 from typing import Optional, List, Dict
 from sqlalchemy.orm import Session
 from fastapi import UploadFile, HTTPException
 
 from app.config import settings
 from app.enums import ResourceType
-from app.services.resource_service import create_resource, update_tags
+from app.services.resource_service import create_resource, update_tags, batch_update_vector_time
 from app.services.vector_text_builder import ingest_vectors
 
 
@@ -67,6 +68,7 @@ async def upload_file(
         "mime_type": mime_type,
         "thumbnail_path": thumb_relative_path,
         "description": description,
+        "data_updated_at": datetime.utcnow(),
         "created_by": created_by,
     }
     resource = create_resource(db, data)
@@ -78,6 +80,7 @@ async def upload_file(
         ResourceType.file,
         [(resource, {"name": name, "description": description or "", "tags": tags or []})]
     )
+    batch_update_vector_time(db, [resource.id])
 
     return {
         "id": resource.id,
@@ -146,6 +149,7 @@ async def batch_upload_files(
                 "mime_type": mime_type,
                 "thumbnail_path": thumb_relative_path,
                 "description": description,
+                "data_updated_at": datetime.utcnow(),
                 "created_by": created_by,
             }
             resource = create_resource(db, data)
@@ -175,6 +179,8 @@ async def batch_upload_files(
 
     if vectors_data:
         ingest_vectors(ResourceType.file, vectors_data)
+        resource_ids = [r.id for r, _ in vectors_data]
+        batch_update_vector_time(db, resource_ids)
 
     return {
         "success": True,

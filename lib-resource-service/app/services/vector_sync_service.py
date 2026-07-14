@@ -5,16 +5,20 @@
 1. 检测数据库存在但向量库缺失的 data_id
 2. 反查数据库完整记录并构造向量数据
 3. 分批调用向量服务进行补录
+4. 基于时间戳的增量向量同步
 """
 
 import json
 import logging
+from datetime import datetime
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.enums import ResourceType
 from app.models.resource import Resource, ComponentVariant, ResourceIcon, ResourceIllus
+from app.services import resource_service
 from app.services.resource_service import get_all_data_ids
 from app.clients import vector_client
 from app.services.vector_text_builder import get_registry, ingest_vectors
@@ -44,12 +48,10 @@ def detect_missing_data_ids(
     """
     logger.info("检测缺失数据: type=%s", resource_type.name)
     
-    # 1. 从数据库获取所有 data_id
     db_ids = get_all_data_ids(db, resource_type)
     db_count = len(db_ids)
     logger.info("数据库数量: %d", db_count)
     
-    # 2. 从向量库获取缺失列表
     spec = get_registry().get(resource_type)
     if spec is None:
         logger.warning("未找到向量配置: type=%s", resource_type.name)
@@ -62,7 +64,6 @@ def detect_missing_data_ids(
     
     vec_type = spec.vec_type
     
-    # 方式A：使用 check API（推荐，性能好）
     if use_check_api:
         try:
             missing_ids = vector_client.check_ids_missing(vec_type, db_ids)
@@ -70,14 +71,12 @@ def detect_missing_data_ids(
             logger.info("向量库数量（通过 check API）: %d", vector_count)
         except Exception as e:
             logger.warning("check API 调用失败，fallback 到列表对比: %s", e)
-            # Fallback 到方式B
             vec_ids = set(vector_client.get_all_ids(vec_type))
             db_ids_set = set(db_ids)
             missing_ids = list(db_ids_set - vec_ids)
             vector_count = len(vec_ids)
             logger.info("向量库数量（通过列表对比）: %d", vector_count)
     else:
-        # 方式B：对比两个列表（如果向量服务未实现 check API）
         vec_ids = set(vector_client.get_all_ids(vec_type))
         db_ids_set = set(db_ids)
         missing_ids = list(db_ids_set - vec_ids)
@@ -106,12 +105,6 @@ def query_resources_by_data_ids(
 ) -> List[Resource]:
     """
     根据 data_ids 反查数据库完整记录
-    
-    不同类型的查询策略：
-    - component: 通过 ComponentVariant.variant_key 反查
-    - icon: 通过 ResourceIcon.icon_id 反查（转为 int）
-    - illus: 通过 ResourceIllus.illus_id 反查
-    - template/image: 通过 Resource.id 反查（转为 int）
     """
     if not data_ids:
         logger.info("无缺失 ID，跳过反查")
@@ -120,7 +113,6 @@ def query_resources_by_data_ids(
     logger.info("反查数据库: type=%s ids=%d", resource_type.name, len(data_ids))
     
     if resource_type == ResourceType.component:
-        # 先查 component_variants 表获取 resource_id
         variants = db.query(ComponentVariant).filter(
             ComponentVariant.variant_key.in_(data_ids)
         ).all()
@@ -129,7 +121,6 @@ def query_resources_by_data_ids(
         return db.query(Resource).filter(Resource.id.in_(resource_ids)).all()
     
     elif resource_type == ResourceType.icon:
-        # icon_id 需转为 int
         try:
             icon_ids = [int(did) for did in data_ids]
         except ValueError as e:
@@ -150,8 +141,7 @@ def query_resources_by_data_ids(
         logger.debug("查到 %d 个 resource_id", len(resource_ids))
         return db.query(Resource).filter(Resource.id.in_(resource_ids)).all()
     
-    else:  # template, image
-        # resource.id 需转为 int
+    else:
         try:
             resource_ids = [int(did) for did in data_ids]
         except ValueError as e:
@@ -168,12 +158,6 @@ def query_resources_by_data_ids(
 def extract_raw_data_from_resource(res: Resource, resource_type: ResourceType) -> dict:
     """
     从 Resource ORM 对象提取 raw_data（用于构造向量文本）
-    
-    不同类型的提取策略：
-    - component: 从 component_variant + raw_data 提取
-    - icon: 从 icon_detail + raw_data 提取
-    - illus: 从 illus_detail + raw_data 提取
-    - template/image: 从 Resource 基础字段提取
     """
     try:
         raw = json.loads(res.raw_data or "{}")
@@ -210,7 +194,7 @@ def extract_raw_data_from_resource(res: Resource, resource_type: ResourceType) -
             "version": raw.get("version") or (il.version if il else "") or ""
         }
     
-    else:  # template, image
+    else:
         return {
             "name": res.name,
             "description": res.description or ""
@@ -247,7 +231,6 @@ def sync_missing_vectors(
     logger.info("开始补录: type=%s batch_size=%d dry_run=%s", 
                 resource_type.name, batch_size, dry_run)
     
-    # 1. 检测缺失
     missing_info = detect_missing_data_ids(db, resource_type)
     missing_ids = missing_info["missing_ids"]
     
@@ -270,7 +253,6 @@ def sync_missing_vectors(
             "dry_run": False
         }
     
-    # 2. 反查数据库完整记录
     logger.info("反查数据库记录...")
     resources = query_resources_by_data_ids(db, resource_type, missing_ids)
     
@@ -286,7 +268,6 @@ def sync_missing_vectors(
     
     logger.info("查到 %d 条记录", len(resources))
     
-    # 3. 构造向量数据
     logger.info("构造向量数据...")
     spec = get_registry().get(resource_type)
     vector_pairs = []
@@ -294,7 +275,6 @@ def sync_missing_vectors(
         raw = extract_raw_data_from_resource(res, resource_type)
         vector_pairs.append((res, raw))
     
-    # 4. 分批入库
     logger.info("开始分批入库...")
     synced_count = 0
     failed_items = []
@@ -390,4 +370,123 @@ def rebuild_all_vectors(
         "synced": synced,
         "batch_count": total_batches,
         "failed": failed,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────
+# 基于时间戳的增量向量同步（新增）
+# ──────────────────────────────────────────────────────────────────
+
+_SYNC_BATCH_SIZE = 100
+
+
+def sync_vectors_by_type(db: Session, resource_type: ResourceType) -> dict:
+    """
+    同步指定类型的向量数据（基于时间戳）
+    
+    仅同步 vector_updated_at < updated_at 的数据
+    
+    返回：
+    {
+        "total": 待同步总数,
+        "synced": 成功同步数,
+        "failed": 失败数,
+        "skipped": 跳过数,
+        "message": "同步完成：成功 X 条，失败 Y 条"
+    }
+    """
+    if not settings.VECTOR_SERVICE_ENABLED:
+        logger.info("向量服务未启用，跳过同步")
+        return {"total": 0, "synced": 0, "failed": 0, "skipped": 0, "message": "向量服务未启用"}
+
+    spec = get_registry().get(resource_type)
+    if spec is None:
+        logger.warning("未找到资源类型 %s 的向量配置", resource_type)
+        return {"total": 0, "synced": 0, "failed": 0, "skipped": 0, "message": "不支持的资源类型"}
+
+    resources, total = resource_service.get_resources_need_sync(db, int(resource_type))
+    
+    if not resources:
+        logger.info("类型 %s 无待同步数据", resource_type.name)
+        return {"total": 0, "synced": 0, "failed": 0, "skipped": 0, "message": "无待同步数据"}
+
+    logger.info("开始同步类型 %s: 共 %d 条待同步", resource_type.name, total)
+
+    synced_ids: List[int] = []
+    failed_count = 0
+
+    for i in range(0, len(resources), _SYNC_BATCH_SIZE):
+        batch = resources[i:i + _SYNC_BATCH_SIZE]
+        batch_num = i // _SYNC_BATCH_SIZE + 1
+        total_batches = (len(resources) + _SYNC_BATCH_SIZE - 1) // _SYNC_BATCH_SIZE
+        
+        logger.info(
+            "同步批次 %d/%d: type=%s 本批=%d条",
+            batch_num, total_batches, resource_type.name, len(batch)
+        )
+
+        items = []
+        for res in batch:
+            try:
+                data_id = spec.get_data_id(res)
+                text = spec.build_text(res, {})
+                metadata = spec.build_metadata(res, {})
+                items.append({
+                    "data_id": data_id,
+                    "text": text,
+                    "metadata": metadata,
+                })
+                logger.debug("构造向量数据: resource_id=%s, data_id=%s, text=%s", res.id, data_id, text[:100] if text else "")
+            except Exception as e:
+                logger.warning("构造向量数据失败 resource_id=%s: %s", res.id, e)
+                failed_count += 1
+                continue
+
+        if not items:
+            continue
+
+        try:
+            result = vector_client.ingest(spec.vec_type, items)
+            
+            succeeded = result.get("succeeded", [])
+            failed = result.get("failed", [])
+
+            logger.debug("向量入库返回: succeeded=%s, failed=%s", succeeded, failed)
+
+            succeeded_data_ids = set(succeeded) if succeeded else set()
+            for res in batch:
+                try:
+                    res_data_id = spec.get_data_id(res)
+                    if res_data_id in succeeded_data_ids:
+                        synced_ids.append(res.id)
+                        logger.debug("资源同步成功: resource_id=%s, data_id=%s", res.id, res_data_id)
+                except Exception:
+                    pass
+            
+            failed_count += len(failed)
+            
+            logger.info(
+                "批次 %d/%d 完成: 成功=%d 失败=%d",
+                batch_num, total_batches, len(succeeded), len(failed)
+            )
+
+        except Exception as e:
+            logger.warning("向量入库异常 type=%s batch=%d: %s", resource_type.name, batch_num, e)
+            failed_count += len(batch)
+
+    if synced_ids:
+        updated = resource_service.batch_update_vector_time(db, synced_ids)
+        logger.info("更新向量同步时间: %d 条", updated)
+
+    logger.info(
+        "同步完成 type=%s: 总计=%d 成功=%d 失败=%d",
+        resource_type.name, total, len(synced_ids), failed_count
+    )
+
+    return {
+        "total": total,
+        "synced": len(synced_ids),
+        "failed": failed_count,
+        "skipped": 0,
+        "message": f"同步完成：成功 {len(synced_ids)} 条，失败 {failed_count} 条"
     }

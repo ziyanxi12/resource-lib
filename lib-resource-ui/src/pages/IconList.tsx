@@ -203,9 +203,10 @@ interface Props {
   label: string
   extraActions?: React.ReactNode
   handleRef?: React.MutableRefObject<IconListHandle | null>
+  groupId?: number | null
 }
 
-export default function IconList({ type, label, handleRef }: Props) {
+export default function IconList({ type, label, extraActions, handleRef, groupId }: Props) {
   const [items, setItems] = useState<Resource[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -250,7 +251,7 @@ export default function IconList({ type, label, handleRef }: Props) {
     if (searchMode) return
     let cancelled = false
     setLoading(true)
-    api.listResources({ type, page, limit: pageSize, filters })
+    api.listResources({ type, page, limit: pageSize, filters, group_id: groupId })
       .then(data => {
         if (cancelled) return
         setItems(data.items)
@@ -259,7 +260,7 @@ export default function IconList({ type, label, handleRef }: Props) {
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [type, page, pageSize, searchMode, refreshKey, filters])
+  }, [type, page, pageSize, searchMode, refreshKey, filters, groupId])
 
   const handleSearch = useCallback(async (q: string) => {
     const trimmed = q.trim()
@@ -444,6 +445,8 @@ export default function IconList({ type, label, handleRef }: Props) {
             返回全量
           </Button>
         )}
+
+        {extraActions && <div>{extraActions}</div>}
       </div>
 
       <div

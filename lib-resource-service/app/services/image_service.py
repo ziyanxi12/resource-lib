@@ -6,6 +6,7 @@
 import os
 import uuid
 import json
+from datetime import datetime
 from typing import Optional, Tuple, List, Dict
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, UploadFile
@@ -13,7 +14,7 @@ from fastapi import HTTPException, UploadFile
 from app.config import settings
 from app.enums import ResourceType
 from app.clients import external
-from app.services.resource_service import create_resource, get_resource_by_id, update_tags
+from app.services.resource_service import create_resource, get_resource_by_id, update_tags, batch_update_vector_time
 from app.services.vector_text_builder import ingest_vectors
 
 try:
@@ -59,10 +60,12 @@ async def upload_image(
         "width":         width,
         "height":        height,
         "description":   description,
+        "data_updated_at": datetime.utcnow(),
         "created_by":    created_by,
     }
     resource = create_resource(db, data)
     ingest_vectors(ResourceType.image, [(resource, {"name": name, "description": description or ""})])
+    batch_update_vector_time(db, [resource.id])
 
     return {
         "id":        resource.id,
@@ -174,6 +177,7 @@ async def batch_upload_images(
                 "width": width,
                 "height": height,
                 "description": item.get("description"),
+                "data_updated_at": datetime.utcnow(),
                 "created_by": created_by,
             }
             
@@ -204,6 +208,8 @@ async def batch_upload_images(
     
     if vectors_data:
         ingest_vectors(ResourceType.image, vectors_data)
+        resource_ids = [r.id for r, _ in vectors_data]
+        batch_update_vector_time(db, resource_ids)
     
     return {
         "success": True,

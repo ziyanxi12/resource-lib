@@ -18,7 +18,7 @@ from app.config import settings
 from app.database import get_db
 from app.enums import ResourceType
 from app.models.resource import ComponentVariant, Resource, ResourceIcon, ResourceIllus
-from app.routers.resources import _fmt, _build_vector_text
+from app.routers.resources import _fmt
 from app.services.vector_text_builder import get_registry
 from app.services.vector_sync_service import detect_missing_data_ids, sync_missing_vectors, rebuild_all_vectors
 
@@ -116,6 +116,7 @@ def _enrich(raw_results: List[dict], db: Session, vec_type: str) -> List[dict]:
         if res_row is None:
             continue
         item = _fmt(res_row)
+        item["vector_text"] = r.get("text")
         item["score"] = r.get("score")
         output.append(item)
     return output
@@ -124,26 +125,6 @@ def _enrich(raw_results: List[dict], db: Session, vec_type: str) -> List[dict]:
 # ──────────────────────────────────────────────────────────────────
 # LLM 精简版专用（新增）
 # ──────────────────────────────────────────────────────────────────
-
-def _get_data_id(r: Resource) -> str:
-    """按资源类型返回向量库 data_id"""
-    if r.resource_type == 1:
-        return r.component_variant.variant_key if r.component_variant else str(r.id)
-    elif r.resource_type == 3:
-        return r.icon_detail.icon_id if r.icon_detail else str(r.id)
-    elif r.resource_type == 4:
-        return r.illus_detail.illus_id if r.illus_detail else str(r.id)
-    else:
-        return str(r.id)
-
-
-def _fmt_llm(r: Resource) -> dict:
-    """LLM 精简版：仅返回 data_id + vector_text"""
-    return {
-        "data_id": _get_data_id(r),
-        "vector_text": _build_vector_text(r),
-    }
-
 
 def _enrich_llm(raw_results: List[dict], db: Session, vec_type: str) -> List[dict]:
     """LLM 版 enrichment，补充 score"""
@@ -158,8 +139,11 @@ def _enrich_llm(raw_results: List[dict], db: Session, vec_type: str) -> List[dic
         data_id = r.get("data_id")
         res_row = resources_by_data_id.get(str(data_id)) if data_id else None
         if res_row:
-            item = _fmt_llm(res_row)
-            item["score"] = r.get("score")
+            item = {
+                "data_id": data_id,
+                "vector_text": r.get("text"),
+                "score": r.get("score"),
+            }
             output.append(item)
     return output
 

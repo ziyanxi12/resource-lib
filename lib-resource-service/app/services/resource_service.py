@@ -1,8 +1,12 @@
+import logging
 from typing import Dict, Optional, List, Tuple
+from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
 from app.models.resource import Resource, ResourceTag, ComponentVariant, ResourceIcon, ResourceIllus
 from app.enums import ResourceType
+
+logger = logging.getLogger(__name__)
 
 
 # 表头筛选字段：对外字段名（与 _fmt 输出一致）→ (关联表, 列)
@@ -32,11 +36,15 @@ def get_resources(
     page: int = 1,
     limit: int = 20,
     filters: Optional[Dict[str, List[str]]] = None,
+    group_id: Optional[int] = None,
 ) -> Tuple[List[Resource], int]:
     query = db.query(Resource).filter(Resource.is_deleted == 0)
 
     if resource_type is not None:
         query = query.filter(Resource.resource_type == resource_type)
+
+    if group_id is not None:
+        query = query.filter(Resource.group_id == group_id)
 
     if search:
         pattern = f"%{search}%"
@@ -214,3 +222,46 @@ def get_all_data_ids(db: Session, resource_type: ResourceType) -> List[str]:
             data_ids.append(str(r.id))
     
     return data_ids
+
+
+def get_resources_need_sync(db: Session, resource_type: int) -> Tuple[List[Resource], int]:
+    """
+    获取需要同步向量的资源（vector_updated_at < data_updated_at 或 vector_updated_at 为空）
+    返回：(待同步资源列表, 总数)
+    """
+    logger.debug("查询待同步资源: type=%d, 条件=vector_updated_at < data_updated_at OR NULL", resource_type)
+    resources = (
+        db.query(Resource)
+        .filter(
+            Resource.resource_type == resource_type,
+            Resource.is_deleted == 0,
+            or_(
+                Resource.vector_updated_at.is_(None),
+                Resource.vector_updated_at < Resource.data_updated_at
+            )
+        )
+        .order_by(Resource.data_updated_at.asc())
+        .all()
+    )
+    logger.debug("查询到 %d 条待同步资源: ids=%s", len(resources), [r.id for r in resources])
+    return resources, len(resources)
+
+
+def batch_update_vector_time(db: Session, resource_ids: List[int]) -> int:
+    """
+    批量更新资源的向量同步时间
+    返回：更新的记录数
+    """
+    if not resource_ids:
+        logger.debug("无资源需要更新向量时间")
+        return 0
+    now = datetime.utcnow()
+    logger.debug("批量更新向量同步时间: ids=%s, time=%s", resource_ids, now.isoformat())
+    count = (
+        db.query(Resource)
+        .filter(Resource.id.in_(resource_ids))
+        .update({Resource.vector_updated_at: now}, synchronize_session=False)
+    )
+    db.commit()
+    logger.debug("更新完成: %d 条记录", count)
+    return count

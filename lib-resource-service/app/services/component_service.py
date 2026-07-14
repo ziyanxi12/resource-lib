@@ -19,6 +19,7 @@ component_index.json 真实格式：
 import json
 import logging
 import os
+from datetime import datetime
 from typing import List, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -27,7 +28,7 @@ from app.config import settings
 from app.enums import ResourceType
 from app.clients import external
 from app.models.resource import ComponentVariant
-from app.services.resource_service import upsert_resource
+from app.services.resource_service import upsert_resource, batch_update_vector_time
 from app.services.vector_text_builder import ingest_vectors
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,10 @@ async def sync_component(db: Session, file_key: str) -> dict:
 
     # 步骤 5：入向量库
     ingest_vectors(ResourceType.component, vector_pairs)
+    
+    # 步骤 6：更新 vector_updated_at
+    resource_ids = [r.id for r, _ in vector_pairs]
+    batch_update_vector_time(db, resource_ids)
 
     return result
 
@@ -134,6 +139,7 @@ def _write_to_db(db: Session, components: List[dict], lib_file_key: str = None, 
                 "file_path":     hex_file,
                 "file_size":     file_size,
                 "mime_type":     "text/plain",
+                "data_updated_at": datetime.utcnow(),
                 "raw_data":      json.dumps({
                     "canvasName":      comp.get("canvasName"),
                     "componentKey":    comp.get("componentKey"),

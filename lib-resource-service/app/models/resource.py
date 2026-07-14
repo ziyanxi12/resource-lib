@@ -8,7 +8,7 @@ class Resource(Base):
     __tablename__ = "resources"
 
     id             = Column(Integer, primary_key=True, autoincrement=True)
-    resource_type  = Column(SmallInteger, nullable=False, comment="1=component 2=template 3=icon 4=illus 5=image")
+    resource_type  = Column(SmallInteger, nullable=False, comment="1=component 2=template 3=icon 4=illus 5=image 6=file")
     name           = Column(String(255), nullable=False)
     file_name      = Column(String(255), nullable=True, comment="文件名，如 abc.svg")
     file_path      = Column(String(500), nullable=True, comment="文件相对路径，如 icon/abc.svg")
@@ -19,15 +19,19 @@ class Resource(Base):
     height         = Column(Float, nullable=True, comment="资源高度（px），可能为小数")
     description    = Column(Text, nullable=True)
     raw_data       = Column(Text, nullable=True, comment="原始数据 JSON 字符串")
+    group_id       = Column(Integer, ForeignKey("resource_groups.id", ondelete="SET NULL"), nullable=True, comment="所属分组ID")
     created_by     = Column(String(100), nullable=True)
     is_deleted     = Column(Integer, nullable=False, default=0)
-    created_at     = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at     = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at         = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at         = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    data_updated_at    = Column(DateTime, nullable=True, comment="业务数据更新时间，用于向量同步判断")
+    vector_updated_at  = Column(DateTime, nullable=True, comment="向量库更新时间")
 
     tags = relationship("ResourceTag", back_populates="resource", cascade="all, delete-orphan")
     component_variant = relationship("ComponentVariant", back_populates="resource", uselist=False)
     icon_detail       = relationship("ResourceIcon",  back_populates="resource", uselist=False)
     illus_detail      = relationship("ResourceIllus", back_populates="resource", uselist=False)
+    group             = relationship("ResourceGroup", back_populates="resources")
 
 
 class ResourceTag(Base):
@@ -93,3 +97,21 @@ class ResourceIllus(Base):
     updated_at  = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     resource = relationship("Resource", back_populates="illus_detail")
+
+
+class ResourceGroup(Base):
+    """资源分组，树形结构，每种资源类型有独立的分组树"""
+    __tablename__ = "resource_groups"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    resource_type = Column(SmallInteger, nullable=False, comment="资源类型：1-6 对应六类资源")
+    name          = Column(String(255), nullable=False, comment="分组名称")
+    parent_id     = Column(Integer, ForeignKey("resource_groups.id", ondelete="CASCADE"), nullable=True, comment="父分组ID，NULL表示根节点")
+    level         = Column(SmallInteger, default=0, comment="层级深度：0=根节点")
+    real_path     = Column(String(500), nullable=False, comment="完整路径：根分组/一级分组/二级分组")
+    sort_order    = Column(Integer, default=0, comment="同级排序序号")
+    created_at    = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at    = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    children  = relationship("ResourceGroup", backref="parent", remote_side=[id], cascade="all")
+    resources = relationship("Resource", back_populates="group")

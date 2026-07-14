@@ -18,12 +18,14 @@ export const api = {
     limit?: number
     search?: string
     filters?: Record<string, string[] | null | undefined>
+    group_id?: number | null
   }) => {
     const q = new URLSearchParams()
     if (params.type) q.set('type', params.type)
     if (params.page) q.set('page', String(params.page))
     if (params.limit) q.set('limit', String(params.limit))
     if (params.search) q.set('search', params.search)
+    if (params.group_id) q.set('group_id', String(params.group_id))
     if (params.filters) {
       for (const [key, values] of Object.entries(params.filters)) {
         values?.forEach(v => q.append(key, v))
@@ -136,4 +138,67 @@ export const api = {
     })
     return (data.results?.[0]) ?? []
   },
+
+  getGroups: (type: string): Promise<{
+    resource_type: number
+    resource_type_name: string
+    items: GroupNode[]
+  }> =>
+    request(`/api/groups?type=${type}`),
+
+  createGroup: (data: { resource_type: number; name: string; parent_id?: number | null }): Promise<{
+    id: number
+    name: string
+    parent_id: number | null
+    level: number
+    real_path: string
+    sort_order: number
+  }> =>
+    request('/api/groups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  updateGroup: (id: number, data: { name: string }): Promise<{ id: number; name: string }> =>
+    request(`/api/groups/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  deleteGroup: (id: number): Promise<{ id: number; message: string }> =>
+    request(`/api/groups/${id}`, { method: 'DELETE' }),
+
+  moveGroup: (id: number, data: { parent_id?: number | null; sort_order?: number }): Promise<{
+    id: number
+    parent_id: number | null
+    level: number
+    real_path: string
+    sort_order: number
+  }> =>
+    request(`/api/groups/${id}/move`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  syncVectors: (type: string): Promise<{
+    total: number
+    synced: number
+    failed: number
+    skipped: number
+    message: string
+  }> =>
+    request(`/api/resources/sync-vectors?type=${type}`, { method: 'POST' }),
+}
+
+export interface GroupNode {
+  id: number
+  name: string
+  parent_id: number | null
+  level: number
+  real_path: string
+  sort_order: number
+  children: GroupNode[]
 }

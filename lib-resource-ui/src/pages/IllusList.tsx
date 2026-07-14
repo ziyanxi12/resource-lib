@@ -202,9 +202,10 @@ export interface IllusListHandle { refresh: () => void }
 interface Props {
   handleRef?: React.MutableRefObject<IllusListHandle | null>
   extraActions?: React.ReactNode
+  groupId?: number | null
 }
 
-export default function IllusList({ handleRef, extraActions }: Props) {
+export default function IllusList({ handleRef, extraActions, groupId }: Props) {
   const [items, setItems] = useState<Resource[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -249,7 +250,7 @@ export default function IllusList({ handleRef, extraActions }: Props) {
     if (searchMode) return
     let cancelled = false
     setLoading(true)
-    api.listResources({ type: 'illus', page, limit: pageSize, filters })
+    api.listResources({ type: 'illus', page, limit: pageSize, filters, group_id: groupId })
       .then(data => {
         if (cancelled) return
         setItems(data.items)
@@ -258,7 +259,7 @@ export default function IllusList({ handleRef, extraActions }: Props) {
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [page, pageSize, searchMode, refreshKey, filters])
+  }, [page, pageSize, searchMode, refreshKey, filters, groupId])
 
   const handleSearch = useCallback(async (q: string) => {
     const trimmed = q.trim()

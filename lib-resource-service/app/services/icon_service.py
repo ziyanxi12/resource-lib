@@ -6,6 +6,7 @@ SVG 图标服务
 import json
 import logging
 import os
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -13,7 +14,7 @@ from app.config import settings
 from app.enums import ResourceType
 from app.clients import external
 from app.models.resource import ResourceIcon
-from app.services.resource_service import upsert_resource
+from app.services.resource_service import upsert_resource, batch_update_vector_time
 from app.services.vector_text_builder import ingest_vectors
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,7 @@ async def sync_icons(db: Session) -> dict:
             "resource_type": int(ResourceType.icon),
             "name":          chinese_name,
             "description":   item.get("description"),
+            "data_updated_at": datetime.utcnow(),
             "raw_data":      json.dumps(item, ensure_ascii=False),
         })
 
@@ -54,6 +56,10 @@ async def sync_icons(db: Session) -> dict:
 
     # 步骤 4：入向量库
     ingest_vectors(ResourceType.icon, vector_pairs)
+    
+    # 步骤 5：更新 vector_updated_at
+    resource_ids = [r.id for r, _ in vector_pairs]
+    batch_update_vector_time(db, resource_ids)
 
     return {"added": added, "updated": updated}
 

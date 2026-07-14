@@ -210,9 +210,10 @@ export interface ComponentListHandle { refresh: () => void }
 interface Props {
   extraActions?: React.ReactNode
   handleRef?: React.MutableRefObject<ComponentListHandle | null>
+  groupId?: number | null
 }
 
-export default function ComponentList({ handleRef, extraActions }: Props) {
+export default function ComponentList({ handleRef, extraActions, groupId }: Props) {
   const [items, setItems] = useState<Resource[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -275,12 +276,13 @@ export default function ComponentList({ handleRef, extraActions }: Props) {
     api.listResources({
       type: 'component', page, limit: pageSize,
       filters: { ...filters, cv_lib_name: lib ? [lib] : null },
+      group_id: groupId,
     })
       .then(data => { if (!cancelled) { setItems(data.items); setTotal(data.total) } })
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [page, pageSize, searchMode, refreshKey, filters, lib, libsReady])
+  }, [page, pageSize, searchMode, refreshKey, filters, lib, libsReady, groupId])
 
   const handleSearch = useCallback(async (q: string, libName?: string) => {
     const trimmed = q.trim()

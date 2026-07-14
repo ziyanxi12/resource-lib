@@ -20,6 +20,8 @@ class ResourceOut(BaseModel):
     created_by:         Optional[str]
     created_at:         Optional[datetime]
     updated_at:         Optional[datetime]
+    data_updated_at:    Optional[datetime]
+    vector_updated_at:  Optional[datetime]
     tags:               List[str] = []
 
     model_config = {"from_attributes": True}
@@ -36,3 +38,4 @@ class ResourceUpdateRequest(BaseModel):
     name:        Optional[str]       = None
     description: Optional[str]       = None
     tags:        Optional[List[str]] = None
+    group_id:    Optional[int]       = None
