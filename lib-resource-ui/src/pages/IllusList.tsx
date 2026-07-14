@@ -272,7 +272,12 @@ export default function IllusList({ handleRef, extraActions, groupId }: Props) {
     setSearchMode(true)
     setLoading(true)
     try {
-      const results = await api.vectorSearch({ query: trimmed, type: 'illus', limit: 50 })
+      const results = await api.vectorSearch({
+        query: trimmed,
+        type: 'illus',
+        limit: 50,
+        filters: groupId ? { group_id: groupId } : undefined,
+      })
       setItems(results as Resource[])
       setTotal(results.length)
     } catch {
@@ -280,7 +285,7 @@ export default function IllusList({ handleRef, extraActions, groupId }: Props) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [groupId])
 
   const refresh = useCallback(() => {
     setSearchMode(false)

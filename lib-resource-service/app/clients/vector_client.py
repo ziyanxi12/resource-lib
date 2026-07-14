@@ -220,6 +220,7 @@ def batch_search(
                     "data_id": item["data_id"],
                     "score": round(item.get("score", 0), 4),
                     "text": (item.get("text") or "")[:50],
+                    "metadata": item.get("metadata"),
                 }
                 for item in group
             ]

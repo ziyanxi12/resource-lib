@@ -234,7 +234,10 @@ export default function ResourceList({ type, label, extraActions, handleRef, gro
     let cancelled = false
     setTLoading(true)
     const req = search
-      ? api.vectorSearch({ query: search, type, limit: 50 }).then(results => ({ items: results as Resource[], total: results.length }))
+      ? api.vectorSearch({
+          query: search, type, limit: 50,
+          filters: groupId ? { group_id: groupId } : undefined,
+        }).then(results => ({ items: results as Resource[], total: results.length }))
       : api.listResources({ type, page: tPage, limit: tPageSize, group_id: groupId })
     req
       .then(data => {

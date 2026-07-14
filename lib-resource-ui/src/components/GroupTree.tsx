@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Tree, Button, Input, Dropdown, message, Modal } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined, FolderOutlined, FolderOpenOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { TreeDataNode, TreeProps } from 'antd'
 import { api, GroupNode } from '../api'
 
@@ -24,7 +24,6 @@ function convertToTreeData(groups: GroupNode[]): TreeDataNode[] {
   return groups.map(g => ({
     key: g.id,
     title: g.name,
-    icon: ({ expanded }: { expanded?: boolean }) => expanded ? <FolderOpenOutlined /> : <FolderOutlined />,
     children: convertToTreeData(g.children),
   }))
 }
@@ -256,29 +255,68 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240 }: G
 
       <div
         style={{
-          padding: '6px 8px',
+          height: 28,
+          lineHeight: '28px',
+          padding: '0 6px',
           borderRadius: 4,
           cursor: 'pointer',
-          marginBottom: 8,
-          background: selectedId === null ? '#e0e7ff' : 'transparent',
+          marginBottom: 4,
           fontWeight: selectedId === null ? 600 : 400,
+          color: selectedId === null ? '#6366f1' : '#475569',
+          background: selectedId === null ? '#eef2ff' : 'transparent',
+          transition: 'background 0.15s',
         }}
         onClick={() => onSelect?.(null)}
+        onMouseEnter={e => {
+          if (selectedId !== null) {
+            e.currentTarget.style.background = '#f1f5f9'
+          }
+        }}
+        onMouseLeave={e => {
+          if (selectedId !== null) {
+            e.currentTarget.style.background = 'transparent'
+          }
+        }}
       >
         全部
       </div>
 
-      <Tree
-        treeData={treeData}
-        selectedKeys={selectedId ? [selectedId] : []}
-        onSelect={handleSelect}
-        titleRender={titleRender}
-        draggable
-        onDrop={handleDrop}
-        blockNode
-        showIcon
-        style={{ fontSize: 13 }}
-      />
+      <style>{`
+        .group-tree .ant-tree-treenode {
+          padding: 1px 0 !important;
+          margin: 0 !important;
+        }
+        .group-tree .ant-tree-node-content-wrapper {
+          height: 28px !important;
+          line-height: 28px !important;
+          padding: 0 6px !important;
+          border-radius: 4px;
+          transition: background 0.15s;
+        }
+        .group-tree .ant-tree-node-content-wrapper:hover {
+          background: #f1f5f9;
+        }
+        .group-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+          background: #e0e7ff !important;
+        }
+        .group-tree .ant-tree-switcher {
+          width: 18px !important;
+          line-height: 28px !important;
+        }
+      `}</style>
+      <div className="group-tree">
+        <Tree
+          treeData={treeData}
+          selectedKeys={selectedId ? [selectedId] : []}
+          onSelect={handleSelect}
+          titleRender={titleRender}
+          draggable
+          onDrop={handleDrop}
+          blockNode
+          defaultExpandAll
+          style={{ fontSize: 13 }}
+        />
+      </div>
 
       <Modal
         open={isAdding}

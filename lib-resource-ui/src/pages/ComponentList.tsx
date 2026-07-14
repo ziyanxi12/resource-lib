@@ -293,15 +293,18 @@ export default function ComponentList({ handleRef, extraActions, groupId }: Prop
     setSearchMode(true)
     setLoading(true)
     try {
+      const filters: Record<string, unknown> = {}
+      if (libName) filters.lib_name = libName
+      if (groupId) filters.group_id = groupId
       const results = await api.vectorSearch({
         query: trimmed, type: 'component', limit: 50,
-        filters: libName ? { lib_name: libName } : undefined,
+        filters: Object.keys(filters).length > 0 ? filters : undefined,
       })
       setItems(results as Resource[])
       setTotal(results.length)
     } catch { message.error('搜索失败') }
     finally { setLoading(false) }
-  }, [])
+  }, [groupId])
 
   const handleLibChange = useCallback((value: string) => {
     setLib(value)

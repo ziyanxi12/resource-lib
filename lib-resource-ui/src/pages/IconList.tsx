@@ -273,7 +273,12 @@ export default function IconList({ type, label, extraActions, handleRef, groupId
     setSearchMode(true)
     setLoading(true)
     try {
-      const results = await api.vectorSearch({ query: trimmed, type, limit: 50 })
+      const results = await api.vectorSearch({
+        query: trimmed,
+        type,
+        limit: 50,
+        filters: groupId ? { group_id: groupId } : undefined,
+      })
       setItems(results as Resource[])
       setTotal(results.length)
     } catch {
@@ -281,7 +286,7 @@ export default function IconList({ type, label, extraActions, handleRef, groupId
     } finally {
       setLoading(false)
     }
-  }, [type])
+  }, [type, groupId])
 
   const refresh = useCallback(() => {
     setSearchMode(false)
