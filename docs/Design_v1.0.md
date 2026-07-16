@@ -54,7 +54,7 @@
 | 15 | `search_text` | TEXT | | 业务搜索关键词 | 业务 |
 | 16 | `vector_text` | TEXT | | 向量文本（四个字段拼接，存储） | 业务 |
 | **原始数据字段** |
-| 17 | `meta_json` | JSON | | 原始数据 JSON | 原始 |
+| 17 | `raw_data` | JSON | | 原始数据 JSON | 原始 |
 | **时间字段** |
 | 18 | `created_at` | DATETIME | ✓ | 创建时间 | 时间 |
 | 19 | `updated_at` | DATETIME | ✓ | 更新时间 | 时间 |
@@ -323,7 +323,7 @@ POST /api/resources/search
 
 #### normal 模式（其他方专用）
 
-**返回字段：** `id`, `text`, `score`, `meta_json`
+**返回字段：** `id`, `text`, `score`, `raw_data`
 
 **使用场景：** 外部系统调用、第三方集成
 
@@ -334,7 +334,7 @@ POST /api/resources/search
       "id": 1001,
       "text": "主按钮 主要操作按钮 表单 确认",
       "score": 0.95,
-      "meta_json": {
+      "raw_data": {
         "figma_node_id": "123:456",
         "component_key": "abc123"
       }
@@ -368,7 +368,7 @@ POST /api/resources/search
       "width": null,
       "height": null,
       "thumbnail_path": "thumbnail/button_primary.png",
-      "meta_json": {
+      "raw_data": {
         "figma_node_id": "123:456",
         "component_key": "abc123"
       },
@@ -389,7 +389,7 @@ POST /api/resources/search
 | `id` | ✓ | ✓ | ✓ | 资源ID |
 | `text` | ✓ | ✓ | ✓ | 向量文本 |
 | `score` | ✓ | ✓ | ✓ | 相似度分数 |
-| `meta_json` | - | ✓ | ✓ | 原始数据 |
+| `raw_data` | - | ✓ | ✓ | 原始数据 |
 | `name` | - | - | ✓ | 资源名称 |
 | `description` | - | - | ✓ | 描述 |
 | `tags` | - | - | ✓ | 标签 |
@@ -513,7 +513,7 @@ UNIQUE INDEX idx_name_type_source (name, resource_type, source_id)
   "width": null,
   "height": null,
   "thumbnail_path": "thumbnail/button_primary.png",
-  "meta_json": {
+  "raw_data": {
     "figma_node_id": "123:456",
     "component_key": "abc123",
     "canvas_name": "1.基础类"
@@ -545,7 +545,7 @@ UNIQUE INDEX idx_name_type_source (name, resource_type, source_id)
   "width": 24,
   "height": 24,
   "thumbnail_path": "thumbnail/home.png",
-  "meta_json": {
+  "raw_data": {
     "icon_id": "100",
     "english_name": "home",
     "category": "navigation"
@@ -577,7 +577,7 @@ UNIQUE INDEX idx_name_type_source (name, resource_type, source_id)
   "width": 1920,
   "height": 1080,
   "thumbnail_path": "thumbnail/login.png",
-  "meta_json": {
+  "raw_data": {
     "version": "1.0",
     "author": "设计团队"
   }

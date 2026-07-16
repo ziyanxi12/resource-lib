@@ -1,6 +1,6 @@
 # lib-resource-service
 
-资源库管理服务（Python / FastAPI），统一管理五类设计资源：组件集、模版、SVG、插画、图片。
+资源库管理服务（Python / FastAPI），统一管理六类设计资源：组件集、模版、SVG、插画、图片、文件。
 
 ---
 
@@ -13,21 +13,43 @@ lib-resource-service/
 │   ├── config.py             # 所有配置项（从 .env 读取）
 │   ├── database.py           # 数据库连接（SQLite / MySQL 二选一）
 │   ├── enums.py              # ResourceType 枚举，DB 整数 ↔ API 字符串
-│   ├── models/resource.py    # ORM 表定义（resources / resource_tags / component_variants / resource_icons）
-│   ├── schemas/              # Pydantic 请求/响应模型（每类资源一个文件）
+│   ├── models/
+│   │   └── resource.py       # ORM 表定义（resources / resource_tags / resource_sources / resource_groups）
+│   ├── schemas/              # Pydantic 请求/响应模型
+│   │   ├── resource.py       # 通用资源请求/响应
+│   │   ├── source.py         # 来源管理
+│   │   ├── group.py          # 分组管理
+│   │   └── upload.py         # 批量上传响应
 │   ├── clients/
-│   │   └── external.py       # ★ 所有外部 API 调用集中在此，Mock 开关在这里
-│   ├── services/             # 业务逻辑（每类资源一个文件）
+│   │   ├── external.py       # 所有外部 API 调用（Mock 开关）
+│   │   └── vector_client.py  # 向量服务客户端
+│   ├── services/             # 业务逻辑
 │   │   ├── resource_service.py   # 通用 CRUD
-│   │   ├── component_service.py  # 组件集同步流程
-│   │   ├── template_service.py   # 模版写文件 + 写 DB
-│   │   ├── icon_service.py       # SVG/插画同步
-│   │   └── image_service.py      # 图片上传
-│   └── routers/              # HTTP 路由（每类资源一个文件）
-├── component_map.json         # 组件库 fileKey → 名称 映射表
+│   │   ├── upload_service.py     # 统一批量上传
+│   │   ├── source_service.py     # 来源管理
+│   │   ├── group_service.py      # 分组管理
+│   │   ├── vector_sync_service.py # 向量同步
+│   │   ├── vector_text_builder.py # 向量文本构建
+│   │   └── init_service.py       # 初始化入库
+│   └── routers/              # HTTP 路由
+│       ├── resources.py      # 资源 CRUD
+│       ├── upload.py         # 统一上传
+│       ├── sources.py        # 来源管理
+│       ├── group.py          # 分组管理
+│       ├── search.py         # 向量搜索
+│       ├── vector_router.py  # 向量服务代理
+│       └── init_router.py    # 初始化入库
+├── storage/                  # 文件存储根目录
+│   ├── component/            # 组件集文件
+│   ├── icon/                 # SVG 文件
+│   ├── illus/                # 插画文件
+│   ├── template/             # 模版文件
+│   ├── image/                # 图片文件（含缩略图）
+│   └── file/                 # 通用文件
 ├── requirements.txt
 ├── .env.example
-└── DESIGN.md                  # 完整设计文档
+├── DATABASE.md               # 数据库表结构文档
+└── DESIGN.md                 # 完整设计文档
 ```
 
 ---
@@ -66,9 +88,8 @@ DB_URL=sqlite:///./dev.db
 # DB_PASSWORD=yourpassword
 
 FILE_ROOT_DIR=./storage          # 上传文件存储根目录
-COMPONENT_MAP_FILE=./component_map.json
-
 USE_MOCK=true                    # true=不调用真实外部 API
+VECTOR_SERVICE_URL=http://localhost:8008
 ```
 
 > **数据库会自动建表**，启动时 `Base.metadata.create_all()` 自动执行，无需手动建表。  
@@ -90,50 +111,9 @@ USE_MOCK=true                    # true=不调用真实外部 API
 
 ---
 
-## 对接真实 API 时改哪里
-
-所有外部 API 调用集中在 **`app/clients/external.py`**，每个函数都有 Mock 分支和真实分支。
-
-**步骤一：** `.env` 中填写真实地址并关闭 Mock：
-
-```env
-USE_MOCK=false
-
-GET_VERSION_API_URL=http://your-service/api/getVersion
-GET_FILE_API_URL=http://your-service/api/getFile
-SPLIT_API_URL=http://your-service/split
-REBUILD_COMPONENT_API_URL=http://your-service/api/rebuild/component
-ICON_API_URL=http://your-service/api/icon
-REBUILD_ICON_API_URL=http://your-service/api/rebuild/icon
-```
-
-**步骤二：** 只需确认 `external.py` 中各函数的请求/响应格式与真实 API 一致，如有差异在对应函数内调整即可：
-
-| 函数 | 对应 API | 注意点 |
-|------|---------|--------|
-| `get_component_version(file_key)` | `GET_VERSION_API_URL/{fileKey}` | 返回值需包含 `list[0].id` |
-| `download_pix_file(file_key, version_id)` | `GET_FILE_API_URL/{fileKey}&{versionId}` | 返回原始字节 |
-| `call_split_api(pix_path)` | `SPLIT_API_URL` | POST，body 包含文件路径 |
-| `call_rebuild_component_api()` | `REBUILD_COMPONENT_API_URL` | POST，无需 body |
-| `fetch_icon_list()` | `ICON_API_URL` | 返回 `[{id, name, description, englishName}]` |
-| `call_rebuild_icon_api()` | `REBUILD_ICON_API_URL` | POST，无需 body |
-
-**步骤三：** 如果 `component_index.json` 的字段名与当前映射不同，在 `app/services/component_service.py` 的 `_write_to_db()` 函数中调整字段映射：
-
-```python
-# 当前映射（修改这里）
-"name":       comp.get("name"),
-"unique_key": comp.get("componentKey"),
-"file_path":  comp.get("hexFile"),
-"lib_file_key": file_key,     # 来自 component_map.json 的 fileKey
-  "lib_name":    lib_name,      # 来自 component_map.json 的 name
-```
-
----
-
 ## 数据初始化
 
-服务启动后，调用初始化接口将 `storage/` 下的预置文件批量写入数据库。**接口可重复调用（幂等）**，已存在的记录会更新，不会重复插入。
+服务启动后，调用初始化接口将 `storage/` 下的预置文件批量写入数据库。
 
 ### 接口
 
@@ -144,85 +124,72 @@ REBUILD_ICON_API_URL=http://your-service/api/rebuild/icon
 | POST | `/api/init/icon` | 仅导入 SVG + 插画 |
 | POST | `/api/init/template` | 仅导入模版 |
 
-### 各类型数据来源与格式
-
-**组件集**
-
-入口文件：`storage/component/component_map.json`
-```json
-[
-  { "indexPath": "component/ICT_UI/component_index.json" }
-]
-```
-
-按 `indexPath` 找到各组件库的索引文件 `component_index.json`：
-```json
-{
-  "lib_file_key":  "mock-key-001",
-  "lib_name":      "AAA组件库",
-  "componentSets": [
-    {
-      "name": "文字链接",
-      "guid": "8229:277383",
-      "componentKey": "be1d...",
-      "canvasName": "1.基础类",
-      "hexFile": "component/be1d....txt",
-      "variants": [
-        {
-          "name": "size=normal, disabled=false",
-          "guid": "8229:277395",
-          "variantKey": "f884...",
-          "parentKey": "be1d...",
-          "componentProps": [{ "name": "text", "type": "TEXT" }]
-        }
-      ]
-    }
-  ]
-}
-```
-
-以 variant 为粒度入库，每条 variant 写：
-- `resources`（upsert key：`name + resource_type`）
-- `component_variants`（upsert key：`variant_key`）
-
-**SVG / 插画**
-
-- SVG：`storage/icon/icons.json`
-- 插画：`storage/illus/illus.json`
-
-```json
-[
-  { "id": 100, "name": "首页", "englishName": "home", "category": "navigation", "description": "..." }
-]
-```
-
-每条写 `resources` + `resource_icons`（upsert key：`name + resource_type`）。
-
-**模版**
-
-`storage/template/templates.json`，每次调用均 create 新记录（**不幂等**），只写 `resources`。
-
 ---
 
 ## 主要 API
 
+### 资源管理
+
 ```
-GET    /api/resources              列表（?type=&search=&page=&limit=）
+GET    /api/resources              列表（?type=&source_id=&group_id=&search=&page=&limit=）
 GET    /api/resources/{id}         详情
 PUT    /api/resources/{id}         更新元数据
 DELETE /api/resources/{id}         软删除
+DELETE /api/resources/batch        批量删除（?type=&source_id=&group_id=）
+POST   /api/resources/{id}/understand  语义理解
+POST   /api/resources/sync-vectors     向量同步
+```
 
-GET    /api/component/list         组件库列表（读 component_map.json）
-POST   /api/component/sync         同步组件集（完整流程）
+### 统一上传
 
-POST   /api/template/upload        上传模版 hex 数据
+```
+POST   /api/upload?type={icon|illus|template|image|file}
+```
 
-POST   /api/icon/sync              同步 SVG 或插画（body: {type: "svg"|"illustration"}）
+请求参数（multipart/form-data）：
+- `files` - 资源文件列表
+- `thumbnails` - 缩略图列表（PNG）
+- `items` - JSON 字符串，元数据数组
+- `source_id` - 来源ID（必填）
 
-POST   /api/image/upload           上传图片（multipart/form-data）
+### 来源管理
 
-POST   /api/vector/search          向量搜索（支持单条/批量，见下方说明）
+```
+GET    /api/sources                来源列表
+POST   /api/sources                创建来源
+PUT    /api/sources/{id}           更新来源
+DELETE /api/sources/{id}           删除来源
+```
 
+### 分组管理
+
+```
+GET    /api/groups?type={type}&source_id={id}  分组树
+POST   /api/groups                 创建分组
+PUT    /api/groups/{id}            更新分组
+DELETE /api/groups/{id}            删除分组
+PUT    /api/groups/{id}/move       移动分组
+```
+
+### 向量搜索
+
+```
+POST   /api/vector/search
+```
+
+请求体：
+```json
+{
+  "type": "component",
+  "queries": ["蓝色按钮"],
+  "mode": "hybrid",
+  "top_k": 10
+}
+```
+
+### 静态文件
+
+```
 GET    /static/{file_path}         访问上传文件
 GET    /health                     健康检查
 GET    /docs                       Swagger API 文档
@@ -230,47 +197,35 @@ GET    /docs                       Swagger API 文档
 
 ---
 
-## 向量搜索
+## 核心设计
 
-**POST** `/api/vector/search`
+### 资源类型枚举
 
-统一接口，`queries` 传一个或多个查询词，`results` 始终为二维数组，顺序与 `queries` 一一对应。
+| 值 | 名称 | 中文 |
+|----|------|------|
+| 1 | component | 组件集 |
+| 2 | template | 模版 |
+| 3 | icon | SVG |
+| 4 | illus | 插画 |
+| 5 | image | 图片 |
+| 6 | file | 文件 |
 
-### 请求
+### 向量文本构建
 
-| 字段 | 类型 | 必填 | 默认 | 说明 |
-|------|------|------|------|------|
-| type | string | 是 | — | `component` / `component_set` / `icon` / `svg` / `illustration` |
-| queries | array[string] | 是 | — | 查询文本列表，至少 1 条 |
-| mode | string | 否 | `hybrid` | `vector` / `text` / `hybrid` |
-| top_k | integer | 否 | `10` | 每个 query 返回条数 |
-| filters | object | 否 | — | 精确过滤条件，透传给向量服务 |
-| hybrid_weight | float | 否 | `0.7` | hybrid 模式下向量分数权重（0~1） |
-
-```json
-{
-  "type": "component",
-  "queries": ["蓝色按钮", "输入框"],
-  "mode": "hybrid",
-  "top_k": 5
-}
+```python
+vector_text = name + description + tags + search_text
 ```
 
-### 响应
+### 来源管理
 
-`results` 为二维数组，每项对应一个 query 的结果，结构与 `/api/resources` 列表项相同，额外附 `score` 字段。
+每个资源必须关联一个来源（`source_id` 必填）。来源类型：
+- 手动上传（manual_*）
+- API 同步（api_*）
+- Figma 同步（figma_*）
 
-```json
-{
-  "results": [
-    [
-      { "id": 1, "name": "主按钮", "score": 0.92, ... }
-    ],
-    [
-      { "id": 5, "name": "文本输入框", "score": 0.88, ... }
-    ]
-  ]
-}
-```
+---
 
-> **依赖**：需配置 `.env` 中的 `VECTOR_SERVICE_URL`，指向向量管理服务地址。
+## 详细文档
+
+- [DATABASE.md](./DATABASE.md) - 数据库表结构
+- [DESIGN.md](./DESIGN.md) - 完整设计文档

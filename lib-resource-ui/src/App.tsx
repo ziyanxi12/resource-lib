@@ -11,16 +11,9 @@ import {
   FileOutlined,
 } from '@ant-design/icons'
 import ResourceOverview from './pages/ResourceOverview'
-import ComponentManage from './pages/ComponentManage'
-import TemplateManage from './pages/TemplateManage'
-import TemplateBatchUpload from './pages/TemplateBatchUpload'
-import SVGManage from './pages/SVGManage'
-import IllustrationManage from './pages/IllustrationManage'
-import ImageManage from './pages/ImageManage'
-import ImageBatchUpload from './pages/ImageBatchUpload'
-import FileManage from './pages/FileManage'
-import FileBatchUpload from './pages/FileBatchUpload'
-import ZipBatchUpload from './pages/ZipBatchUpload'
+import ResourceManage from './pages/ResourceManage'
+import ResourceUpload from './pages/ResourceUpload'
+import SourceManage from './pages/SourceManage'
 
 type PageKey = 'overview' | 'component' | 'template' | 'icon' | 'illus' | 'image' | 'file'
 
@@ -37,7 +30,9 @@ const NAV: { key: PageKey; path: string; icon: React.ReactNode; label: string }[
 const HEADER_H = 56
 const SIDEBAR_W = 200
 
-const UPLOAD_PAGES = ['/template/upload', '/image/upload', '/file/upload', '/file/zip-upload']
+function isUploadPage(pathname: string): boolean {
+  return pathname.endsWith('/upload')
+}
 
 function NavItem({
   icon, label, active, onClick,
@@ -84,13 +79,13 @@ function NavItem({
 function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
-  const isUploadPage = UPLOAD_PAGES.includes(location.pathname)
+  const uploadPage = isUploadPage(location.pathname)
 
-  const currentNavKey = NAV.find(item => item.path === location.pathname)?.key || 'overview'
+  const pathParts = location.pathname.split('/').filter(Boolean)
+  const currentNavKey = NAV.find(item => item.path === `/${pathParts[0] || ''}`)?.key || 'overview'
 
   return (
     <>
-      {/* ── Top header ── */}
       <header
         style={{
           position: 'fixed',
@@ -132,8 +127,7 @@ function AppLayout() {
       </header>
 
       <div style={{ display: 'flex', minHeight: '100vh', paddingTop: HEADER_H }}>
-        {/* ── Sidebar ── */}
-        {!isUploadPage && (
+        {!uploadPage && (
           <aside
             style={{
               width: SIDEBAR_W,
@@ -184,11 +178,10 @@ function AppLayout() {
           </aside>
         )}
 
-        {/* ── Content ── */}
         <main
           style={{
             flex: 1,
-            marginLeft: isUploadPage ? 0 : SIDEBAR_W,
+            marginLeft: uploadPage ? 0 : SIDEBAR_W,
             height: `calc(100vh - ${HEADER_H}px)`,
             background: '#f1f5f9',
             padding: '28px 32px',
@@ -201,16 +194,9 @@ function AppLayout() {
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <Routes>
               <Route path="/" element={<ResourceOverview />} />
-              <Route path="/component" element={<ComponentManage />} />
-              <Route path="/template" element={<TemplateManage />} />
-              <Route path="/template/upload" element={<TemplateBatchUpload />} />
-              <Route path="/icon" element={<SVGManage />} />
-              <Route path="/illus" element={<IllustrationManage />} />
-              <Route path="/image" element={<ImageManage />} />
-              <Route path="/image/upload" element={<ImageBatchUpload />} />
-              <Route path="/file" element={<FileManage />} />
-              <Route path="/file/upload" element={<FileBatchUpload />} />
-              <Route path="/file/zip-upload" element={<ZipBatchUpload />} />
+              <Route path="/source-manage" element={<SourceManage />} />
+              <Route path="/:type" element={<ResourceManage />} />
+              <Route path="/:type/upload" element={<ResourceUpload />} />
             </Routes>
           </div>
         </main>

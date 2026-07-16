@@ -11,14 +11,47 @@ async function request(url: string, options?: RequestInit) {
   return res.json()
 }
 
+export interface Source {
+  id: number
+  name: string
+  resource_type: number
+  is_sync_source: boolean
+  config: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export const api = {
+  getSources: (): Promise<{ items: Source[] }> =>
+    request('/api/sources'),
+
+  createSource: (data: {
+    name: string
+    resource_type: number
+    is_sync_source: number
+    is_active: number
+  }): Promise<Source> =>
+    request('/api/sources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  updateSource: (id: number, data: { name: string }): Promise<Source> =>
+    request(`/api/sources/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
   listResources: (params: {
     type?: string
     page?: number
     limit?: number
     search?: string
-    filters?: Record<string, string[] | null | undefined>
     group_id?: number | null
+    source_id?: number | null
   }) => {
     const q = new URLSearchParams()
     if (params.type) q.set('type', params.type)
@@ -26,16 +59,9 @@ export const api = {
     if (params.limit) q.set('limit', String(params.limit))
     if (params.search) q.set('search', params.search)
     if (params.group_id) q.set('group_id', String(params.group_id))
-    if (params.filters) {
-      for (const [key, values] of Object.entries(params.filters)) {
-        values?.forEach(v => q.append(key, v))
-      }
-    }
+    if (params.source_id) q.set('source_id', String(params.source_id))
     return request(`/api/resources?${q}`)
   },
-
-  getFilterOptions: (type: string): Promise<{ options: Record<string, string[]> }> =>
-    request(`/api/resources/filter-options?type=${type}`),
 
   updateResource: (id: number, data: Record<string, unknown>) =>
     request(`/api/resources/${id}`, {
@@ -47,72 +73,13 @@ export const api = {
   deleteResource: (id: number) =>
     request(`/api/resources/${id}`, { method: 'DELETE' }),
 
-  listComponentMap: () => request('/api/component/list'),
-
-  syncComponent: (file_key: string) =>
-    request('/api/component/sync', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ file_key }),
-    }),
-
-  uploadTemplate: (data: { name: string; description?: string; hex_data: string }) =>
-    request('/api/template/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }),
-
-  batchUploadTemplates: (formData: FormData): Promise<{
+  batchUpload: (type: string, formData: FormData): Promise<{
     success: boolean
     count: number
     items: { id: number; name: string; file_path: string; thumbnail_path: string }[]
     message: string
   }> =>
-    request('/api/template/batch-upload', {
-      method: 'POST',
-      body: formData,
-    }),
-
-  syncIcon: () =>
-    request('/api/icon/sync', { method: 'POST' }),
-
-  uploadImage: (formData: FormData) =>
-    request('/api/image/upload', {
-      method: 'POST',
-      body: formData,
-    }),
-
-  batchUploadImages: (formData: FormData): Promise<{
-    success: boolean
-    count: number
-    items: { id: number; name: string; file_path: string; width?: number; height?: number }[]
-    message: string
-  }> =>
-    request('/api/image/batch-upload', {
-      method: 'POST',
-      body: formData,
-    }),
-
-  uploadFile: (formData: FormData): Promise<{
-    id: number
-    name: string
-    file_path: string
-    thumbnail_path: string
-    message: string
-  }> =>
-    request('/api/file/upload', {
-      method: 'POST',
-      body: formData,
-    }),
-
-  batchUploadFiles: (formData: FormData): Promise<{
-    success: boolean
-    count: number
-    items: { id: number; name: string; file_path: string; thumbnail_path: string; message: string }[]
-    message: string
-  }> =>
-    request('/api/file/batch-upload', {
+    request(`/api/upload?type=${type}`, {
       method: 'POST',
       body: formData,
     }),
@@ -139,14 +106,18 @@ export const api = {
     return (data.results?.[0]) ?? []
   },
 
-  getGroups: (type: string): Promise<{
+  getGroups: (type: string, sourceId?: number | null): Promise<{
     resource_type: number
     resource_type_name: string
     items: GroupNode[]
-  }> =>
-    request(`/api/groups?type=${type}`),
+  }> => {
+    const q = new URLSearchParams()
+    q.set('type', type)
+    if (sourceId) q.set('source_id', String(sourceId))
+    return request(`/api/groups?${q}`)
+  },
 
-  createGroup: (data: { resource_type: number; name: string; parent_id?: number | null }): Promise<{
+  createGroup: (data: { resource_type: number; name: string; parent_id?: number | null; source_id?: number }): Promise<{
     id: number
     name: string
     parent_id: number | null
@@ -191,6 +162,14 @@ export const api = {
     message: string
   }> =>
     request(`/api/resources/sync-vectors?type=${type}`, { method: 'POST' }),
+
+  clearResources: (type: string, sourceId?: number | null, groupId?: number | null): Promise<{ deleted: number }> => {
+    const q = new URLSearchParams()
+    q.set('type', type)
+    if (sourceId) q.set('source_id', String(sourceId))
+    if (groupId) q.set('group_id', String(groupId))
+    return request(`/api/resources/batch?${q}`, { method: 'DELETE' })
+  },
 }
 
 export interface GroupNode {

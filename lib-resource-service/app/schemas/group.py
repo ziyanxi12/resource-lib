@@ -17,11 +17,13 @@ class GroupNode(BaseModel):
 class GroupTreeResponse(BaseModel):
     resource_type: int
     resource_type_name: str
+    source_id: Optional[int] = None
     items: List[GroupNode]
 
 
 class GroupCreate(BaseModel):
     resource_type: int
+    source_id: Optional[int] = None
     name: str
     parent_id: Optional[int] = None
 

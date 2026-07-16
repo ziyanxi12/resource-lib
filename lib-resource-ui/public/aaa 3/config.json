@@ -1,0 +1,117 @@
+{
+  "meta": {
+    "type": "icon",
+    "source_id": 0
+  },
+  "data": [
+    {
+      "name": "示例资源1-使用外部链接",
+      "group_id": 0,
+      "width": 24,
+      "height": 24,
+      "file_path": "",
+      "file_url": "https://cdn.example.com/example.svg",
+      "thumbnail_path": "image/example1.png",
+      "description": "使用外部链接的示例",
+      "tags": ["示例", "测试"],
+      "search_text": "示例关键词",
+      "meta_json": {
+        "custom_field": "自定义值"
+      }
+    },
+    {
+      "name": "示例资源2-使用本地文件",
+      "group_id": 0,
+      "width": 24,
+      "height": 24,
+      "file_path": "data/example.svg",
+      "file_url": "",
+      "thumbnail_path": "image/example2.png",
+      "description": "使用本地文件的示例",
+      "tags": ["示例"],
+      "search_text": "",
+      "meta_json": {}
+    }
+  ],
+  "_字段说明": {
+    "meta.type": {
+      "说明": "资源类型，必填",
+      "可选值": [
+        "component - 组件集",
+        "icon - SVG图标",
+        "illus - 插画素材",
+        "template - 设计模版",
+        "image - 图片素材",
+        "file - 通用文件"
+      ]
+    },
+    "meta.source_id": {
+      "说明": "来源ID，必填，请替换为实际值",
+      "获取方式": "GET /api/sources?type={type}"
+    },
+    "data[].name": {
+      "说明": "资源名称，必填",
+      "示例": "首页图标"
+    },
+    "data[].group_id": {
+      "说明": "分组ID，必填，请替换为实际值",
+      "获取方式": "GET /api/groups?type={type}&source_id={source_id}"
+    },
+    "data[].width": {
+      "说明": "宽度，必填，必须为正数",
+      "示例": 24
+    },
+    "data[].height": {
+      "说明": "高度，必填，必须为正数",
+      "示例": 24
+    },
+    "data[].file_path": {
+      "说明": "文件在ZIP中的相对路径，与file_url至少填一个",
+      "示例": "icon/home.svg"
+    },
+    "data[].file_url": {
+      "说明": "外部文件链接（如Figma链接），与file_path至少填一个",
+      "示例": "https://cdn.example.com/icon.svg"
+    },
+    "data[].thumbnail_path": {
+      "说明": "缩略图在ZIP中的相对路径，必填",
+      "示例": "image/home.png"
+    },
+    "data[].description": {
+      "说明": "资源描述，可选",
+      "示例": "首页导航图标"
+    },
+    "data[].tags": {
+      "说明": "标签数组，可选",
+      "示例": ["导航", "常用"]
+    },
+    "data[].search_text": {
+      "说明": "搜索关键词，可选，用于提升搜索匹配度",
+      "示例": "home 首页 导航"
+    },
+    "data[].meta_json": {
+      "说明": "自定义元数据，可选，必须是对象",
+      "示例": {"english_name": "home"}
+    }
+  },
+  "_上传限制": {
+    "单次条目数": "最多500条",
+    "ZIP包大小": "最大100MB",
+    "单文件大小": "最大20MB"
+  },
+  "_API参考": {
+    "获取来源列表": "GET /api/sources?type={type}",
+    "获取分组树": "GET /api/groups?type={type}&source_id={source_id}",
+    "创建新分组": "POST /api/groups\n请求体: {\"resource_type\": 3, \"source_id\": 1, \"name\": \"分组名\", \"parent_id\": null}"
+  },
+  "_使用步骤": [
+    "1. 调用 GET /api/sources?type={type} 获取来源列表，选择合适的source_id",
+    "2. 调用 GET /api/groups?type={type}&source_id={source_id} 获取分组列表，选择合适的group_id",
+    "3. 如果没有合适的分组，调用 POST /api/groups 创建新分组",
+    "4. 修改本文件中的 source_id 和所有 group_id",
+    "5. 修改 type 为实际的资源类型",
+    "6. 准备资源文件和缩略图，放入对应目录",
+    "7. 将本文件和资源文件一起打包成ZIP",
+    "8. 在上传页面选择ZIP文件进行上传"
+  ]
+}

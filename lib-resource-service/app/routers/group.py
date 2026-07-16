@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/groups", tags=["分组管理"])
 @router.get("")
 def get_groups(
     type: str = Query(..., description="资源类型名，如 component、template、icon、illus、image、file"),
+    source_id: Optional[int] = Query(None, description="来源ID筛选"),
     db: Session = Depends(get_db),
 ):
     try:
@@ -33,10 +34,11 @@ def get_groups(
     except KeyError:
         raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
 
-    tree, type_name = group_service.get_group_tree(db, int(resource_type))
+    tree, type_name = group_service.get_group_tree(db, int(resource_type), source_id)
     return GroupTreeResponse(
         resource_type=int(resource_type),
         resource_type_name=type_name,
+        source_id=source_id,
         items=tree
     )
 
@@ -52,6 +54,7 @@ def create_group(body: GroupCreate, db: Session = Depends(get_db)):
         group = group_service.create_group(
             db,
             resource_type=int(resource_type),
+            source_id=body.source_id,
             name=body.name,
             parent_id=body.parent_id
         )
@@ -62,6 +65,7 @@ def create_group(body: GroupCreate, db: Session = Depends(get_db)):
         "id": group.id,
         "name": group.name,
         "parent_id": group.parent_id,
+        "source_id": group.source_id,
         "level": group.level,
         "real_path": group.real_path,
         "sort_order": group.sort_order,

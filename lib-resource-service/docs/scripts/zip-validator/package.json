@@ -1,0 +1,14 @@
+{
+  "name": "zip-upload-validator",
+  "version": "1.0.0",
+  "description": "ZIP 包构建验证工具",
+  "scripts": {
+    "build": "esbuild validate.js --bundle --platform=node --outfile=../zip-upload/validate.bundle.js"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.19.0"
+  }
+}

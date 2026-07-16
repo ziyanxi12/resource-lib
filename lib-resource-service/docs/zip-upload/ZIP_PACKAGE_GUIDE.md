@@ -8,13 +8,29 @@
 
 | 类型 | type 值 | 说明 |
 |------|---------|------|
+| 组件 | `component` | 组件集 |
 | 图标 | `icon` | SVG 图标 |
 | 插画 | `illus` | 插画素材 |
 | 模版 | `template` | 设计模版 |
 | 图片 | `image` | 图片素材 |
 | 文件 | `file` | 通用文件 |
 
-**组件集不支持 ZIP 上传**，需通过初始化接口导入。
+## 上传限制
+
+| 限制项 | 默认值 | 最大值 | 说明 |
+|--------|--------|--------|------|
+| 单次条目数 | 100 | 500 | 可通过环境变量配置，但有硬上限 |
+| ZIP 包大小 | 50MB | 100MB | 超过最大值拒绝上传 |
+| 单文件大小 | 10MB | 20MB | 防止异常大文件 |
+
+**环境变量配置**（后端 `.env`）：
+```env
+MAX_UPLOAD_COUNT=100
+MAX_ZIP_SIZE_MB=50
+MAX_FILE_SIZE_MB=10
+```
+
+**注意**：配置值不能超过硬上限（500 条 / 100MB ZIP / 20MB 单文件）。
 
 ## ZIP 包结构
 
@@ -64,7 +80,7 @@ icons-20240115.zip
       "description": "首页导航图标",
       "tags": ["导航", "首页"],
       "search_text": "home 首页 主页",
-      "meta_json": {}
+      "raw_data": {}
     }
   ]
 }
@@ -91,7 +107,7 @@ icons-20240115.zip
 | `description` | string | 否 | 资源描述 |
 | `tags` | string[] | 否 | 标签数组 |
 | `search_text` | string | 否 | 搜索关键词 |
-| `meta_json` | object | 否 | 自定义元数据，必须是对象 |
+| `raw_data` | object | 否 | 自定义元数据，必须是对象 |
 
 ## 前置准备
 
@@ -197,7 +213,7 @@ icons.zip
       "description": "向左箭头图标",
       "tags": ["箭头", "方向"],
       "search_text": "arrow left 左",
-      "meta_json": {}
+      "raw_data": {}
     },
     {
       "name": "右箭头",
@@ -210,7 +226,7 @@ icons.zip
       "description": "向右箭头图标",
       "tags": ["箭头", "方向"],
       "search_text": "arrow right 右",
-      "meta_json": {}
+      "raw_data": {}
     },
     {
       "name": "搜索",
@@ -223,7 +239,7 @@ icons.zip
       "description": "搜索图标",
       "tags": ["搜索", "查找"],
       "search_text": "search 搜索 查找",
-      "meta_json": {}
+      "raw_data": {}
     }
   ]
 }
@@ -252,7 +268,7 @@ icons.zip
       "description": "首页 Banner",
       "tags": [],
       "search_text": "",
-      "meta_json": {}
+      "raw_data": {}
     }
   ]
 }

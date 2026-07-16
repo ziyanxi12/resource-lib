@@ -304,6 +304,44 @@ def delete(vec_type: str, data_id: str) -> None:
         raise
 
 
+def batch_delete(vec_type: str, data_ids: List[str]) -> dict:
+    """
+    批量删除向量数据，每批最多 1000 条
+    
+    返回：{"deleted": [...], "not_found": [...], "total_deleted": N}
+    """
+    if not data_ids:
+        return {"deleted": [], "not_found": [], "total_deleted": 0}
+    
+    total_batches = (len(data_ids) + _BATCH_SIZE - 1) // _BATCH_SIZE
+    logger.info("[batch_delete] 开始批量删除: type=%s  总计=%d条  共%d批", vec_type, len(data_ids), total_batches)
+    
+    deleted, not_found = [], []
+    for i in range(0, len(data_ids), _BATCH_SIZE):
+        batch = data_ids[i: i + _BATCH_SIZE]
+        batch_num = i // _BATCH_SIZE + 1
+        logger.info("[batch_delete] 批次 %d/%d: type=%s  本批=%d条", batch_num, total_batches, vec_type, len(batch))
+        
+        try:
+            resp = httpx.post(
+                f"{settings.VECTOR_SERVICE_URL}/api/v1/items/delete",
+                json={"type": vec_type, "data_ids": batch},
+                timeout=60,
+                trust_env=False,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            deleted.extend(data.get("deleted", []))
+            not_found.extend(data.get("not_found", []))
+            logger.info("[batch_delete] 批次 %d/%d 完成: 删除=%d  未找到=%d", batch_num, total_batches, len(data.get("deleted", [])), len(data.get("not_found", [])))
+        except Exception as e:
+            logger.warning("[batch_delete] 批次 %d 删除失败: %s", batch_num, str(e))
+            logger.debug("[batch_delete] 批次 %d 删除详情: type=%s  ids=%s  error=%s", batch_num, vec_type, batch[:5], str(e), exc_info=True)
+    
+    logger.info("[batch_delete] 删除完成: type=%s  total_deleted=%d  total_not_found=%d", vec_type, len(deleted), len(not_found))
+    return {"deleted": deleted, "not_found": not_found, "total_deleted": len(deleted)}
+
+
 # ──────────────────────────────────────────────────────────────────
 # 向量库 ID 查询（精准补录用）
 # ──────────────────────────────────────────────────────────────────

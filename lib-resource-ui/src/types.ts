@@ -2,16 +2,20 @@ export interface Resource {
   id: number
   resource_type: number
   resource_type_name: string
+  source_id: number
   name: string
+  description: string | null
+  search_text: string | null
+  vector_text: string | null
   file_name: string | null
+  file_url: string | null
   file_path: string | null
-  thumbnail_path: string | null
   file_size: number | null
-  mime_type: string | null
+  file_type: string | null
   width: number | null
   height: number | null
-  description: string | null
-  raw_data: string | null
+  thumbnail_path: string | null
+  raw_data: Record<string, any> | null
   group_id: number | null
   created_by: string | null
   created_at: string | null
@@ -20,30 +24,7 @@ export interface Resource {
   vector_updated_at: string | null
   tags: string[]
   score?: number
-  vector_text?: string | null
-  icon_id?: number | null
-  icon_chinese_name?: string | null
-  icon_name?: string | null
-  icon_english_name?: string | null
-  icon_category?: string | null
-  icon_group?: string | null
-  illus_id?: string | null
-  illus_category?: string | null
-  illus_tags?: string[] | null
-  illus_version?: string | null
-  illus_theme?: string | null
-  cv_lib_file_key?: string | null
-  cv_lib_name?: string | null
-  cv_canvas_name?: string | null
-  cv_component_name?: string | null
-  cv_component_guid?: string | null
-  cv_component_key?: string | null
-  cv_variant_name?: string | null
-  cv_variant_guid?: string | null
-  cv_variant_key?: string | null
-  cv_component_props?: { name: string; type: string }[] | null
 }
-
 
 export interface ResourceListResponse {
   total: number
@@ -52,13 +33,14 @@ export interface ResourceListResponse {
   items: Resource[]
 }
 
-export interface ComponentMapItem {
-  fileKey: string
+export interface Source {
+  id: number
+  code: string
   name: string
-}
-
-export interface SyncResult {
-  added: number
-  updated: number
-  message: string
+  resource_type: number
+  is_sync_source: boolean
+  config: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
 }

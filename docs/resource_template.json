@@ -1,20 +1,39 @@
 {
-  "name": "资源名称",
-  "description": "资源描述",
-  "resource_type": 1,
-  "source_id": 1,
-  "group_id": 10,
-  "tags": ["标签1", "标签2"],
-  "search_text": "业务搜索关键词",
-  "file_name": "example.svg",
-  "file_url": "https://cdn.example.com/file.svg",
-  "file_path": "storage/icon/example.svg",
-  "file_size": 1024,
-  "file_type": "svg",
-  "width": 24,
-  "height": 24,
-  "thumbnail_path": "storage/thumbnail/example.png",
-  "meta_json": {
-    "custom_field": "value"
-  }
+  "meta": {
+    "type": "icon",
+    "source_id": 3
+  },
+  "data": [
+    {
+      "name": "首页图标",
+      "description": "房子图标，用于导航首页",
+      "group_id": 7,
+      "tags": ["导航", "常用"],
+      "search_text": "home 首页 导航",
+      "file_path": "home.svg",
+      "file_url": null,
+      "thumbnail_path": "home_thumb.png",
+      "width": 24,
+      "height": 24,
+      "raw_data": {
+        "english_name": "home",
+        "category": "navigation"
+      }
+    },
+    {
+      "name": "设置图标",
+      "description": "齿轮图标，用于系统设置",
+      "group_id": 6,
+      "tags": ["系统", "设置"],
+      "search_text": "settings 设置",
+      "file_path": "settings.svg",
+      "thumbnail_path": "settings_thumb.png",
+      "width": 24,
+      "height": 24,
+      "raw_data": {
+        "english_name": "settings",
+        "category": "system"
+      }
+    }
+  ]
 }

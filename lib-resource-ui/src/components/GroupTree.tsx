@@ -9,6 +9,7 @@ interface GroupTreeProps {
   selectedId?: number | null
   onSelect?: (id: number | null) => void
   width?: number
+  sourceId?: number | null
 }
 
 const RESOURCE_TYPE_MAP: Record<string, number> = {
@@ -28,7 +29,7 @@ function convertToTreeData(groups: GroupNode[]): TreeDataNode[] {
   }))
 }
 
-export default function GroupTree({ type, selectedId, onSelect, width = 240 }: GroupTreeProps) {
+export default function GroupTree({ type, selectedId, onSelect, width = 240, sourceId }: GroupTreeProps) {
   const [groups, setGroups] = useState<GroupNode[]>([])
   const [loading, setLoading] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -41,14 +42,14 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240 }: G
   const loadGroups = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await api.getGroups(type)
+      const data = await api.getGroups(type, sourceId)
       setGroups(data.items)
     } catch (e) {
       message.error('加载分组失败')
     } finally {
       setLoading(false)
     }
-  }, [type])
+  }, [type, sourceId])
 
   useEffect(() => {
     loadGroups()
@@ -81,6 +82,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240 }: G
         resource_type: RESOURCE_TYPE_MAP[type],
         name: newName.trim(),
         parent_id: addingParentId,
+        source_id: sourceId ?? undefined,
       })
       message.success('创建成功')
       setIsAdding(false)

@@ -6,10 +6,11 @@ from app.enums import ResourceType
 from app.schemas.group import GroupNode, GroupReorderItem
 
 
-def get_groups_by_type(db: Session, resource_type: int) -> List[ResourceGroup]:
-    return db.query(ResourceGroup).filter(
-        ResourceGroup.resource_type == resource_type
-    ).order_by(ResourceGroup.sort_order, ResourceGroup.id).all()
+def get_groups_by_type(db: Session, resource_type: int, source_id: Optional[int] = None) -> List[ResourceGroup]:
+    query = db.query(ResourceGroup).filter(ResourceGroup.resource_type == resource_type)
+    if source_id is not None:
+        query = query.filter(ResourceGroup.source_id == source_id)
+    return query.order_by(ResourceGroup.sort_order, ResourceGroup.id).all()
 
 
 def build_tree(groups: List[ResourceGroup]) -> List[GroupNode]:
@@ -34,8 +35,8 @@ def build_tree(groups: List[ResourceGroup]) -> List[GroupNode]:
     return root_nodes
 
 
-def get_group_tree(db: Session, resource_type: int) -> Tuple[List[GroupNode], str]:
-    groups = get_groups_by_type(db, resource_type)
+def get_group_tree(db: Session, resource_type: int, source_id: Optional[int] = None) -> Tuple[List[GroupNode], str]:
+    groups = get_groups_by_type(db, resource_type, source_id)
     tree = build_tree(groups)
     type_name = ResourceType(resource_type).name
     return tree, type_name
@@ -45,10 +46,12 @@ def get_group_by_id(db: Session, group_id: int) -> Optional[ResourceGroup]:
     return db.query(ResourceGroup).filter(ResourceGroup.id == group_id).first()
 
 
-def get_next_sort_order(db: Session, parent_id: Optional[int], resource_type: int) -> int:
+def get_next_sort_order(db: Session, parent_id: Optional[int], resource_type: int, source_id: Optional[int] = None) -> int:
     query = db.query(func.max(ResourceGroup.sort_order)).filter(
         ResourceGroup.resource_type == resource_type
     )
+    if source_id is not None:
+        query = query.filter(ResourceGroup.source_id == source_id)
     if parent_id is None:
         query = query.filter(ResourceGroup.parent_id.is_(None))
     else:
@@ -57,7 +60,7 @@ def get_next_sort_order(db: Session, parent_id: Optional[int], resource_type: in
     return (result or -1) + 1
 
 
-def create_group(db: Session, resource_type: int, name: str, parent_id: Optional[int] = None) -> ResourceGroup:
+def create_group(db: Session, resource_type: int, name: str, parent_id: Optional[int] = None, source_id: Optional[int] = None) -> ResourceGroup:
     if parent_id:
         parent = get_group_by_id(db, parent_id)
         if not parent:
@@ -68,10 +71,11 @@ def create_group(db: Session, resource_type: int, name: str, parent_id: Optional
         level = 0
         real_path = name
 
-    sort_order = get_next_sort_order(db, parent_id, resource_type)
+    sort_order = get_next_sort_order(db, parent_id, resource_type, source_id)
 
     group = ResourceGroup(
         resource_type=resource_type,
+        source_id=source_id,
         name=name,
         parent_id=parent_id,
         level=level,

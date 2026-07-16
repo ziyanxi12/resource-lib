@@ -9,17 +9,21 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import engine, Base
 from app.logger import setup_logging
 from app.version import __version__
+from app.enums import ResourceType
+from app.models.resource import ResourceSource
 
 # 导入所有 ORM 模型，确保 create_all 能扫描到表定义
 from app.models import resource  # noqa: F401
 
-from app.routers import resources, component, template, icon, image, file
-from app.routers import init_router, vector_router, group
+from app.routers import resources, upload
+from app.routers import vector_router, group
+from app.routers import sources, search, init_router
 
 
 logger = logging.getLogger(__name__)
@@ -27,10 +31,28 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用启动时：初始化日志 + 自动建表 + 创建文件存储子目录"""
+    """应用启动时：初始化日志 + 自动建表 + 创建默认来源 + 创建文件存储子目录"""
     setup_logging(settings.LOG_DIR, settings.LOG_LEVEL)
     logger.info("lib-resource-service v%s 启动", __version__)
     Base.metadata.create_all(bind=engine)
+    
+    # 创建默认来源
+    with Session(engine) as db:
+        for rt in ResourceType:
+            existing = db.query(ResourceSource).filter(
+                ResourceSource.resource_type == int(rt)
+            ).first()
+            if not existing:
+                source = ResourceSource(
+                    name=f"手动上传-{rt.label}",
+                    resource_type=int(rt),
+                    is_sync_source=0,
+                    is_active=1,
+                )
+                db.add(source)
+        db.commit()
+    
+    # 创建文件存储子目录
     for sub in ["component", "template", "icon", "illus", "image", "file"]:
         os.makedirs(os.path.join(settings.FILE_ROOT_DIR, sub), exist_ok=True)
     yield
@@ -55,14 +77,12 @@ app.add_middleware(
 
 # 注册各业务路由
 app.include_router(resources.router)
-app.include_router(component.router)
-app.include_router(template.router)
-app.include_router(icon.router)
-app.include_router(image.router)
-app.include_router(file.router)
-app.include_router(init_router.router)
+app.include_router(upload.router)
 app.include_router(vector_router.router)
 app.include_router(group.router)
+app.include_router(sources.router)
+app.include_router(search.router)
+app.include_router(init_router.router)
 
 # 静态文件服务：前端可通过 /static/{file_path} 直接访问上传文件
 if os.path.exists(settings.FILE_ROOT_DIR):

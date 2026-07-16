@@ -64,6 +64,25 @@ class Settings:
     SPLIT_API_URL:             str = os.getenv("SPLIT_API_URL", "")
     ICON_API_URL:              str = os.getenv("ICON_API_URL", "")
 
+    # ── 上传限制 ───────────────────────────────────────────────
+    # 默认值可通过环境变量配置，但有硬编码最大上限
+    MAX_UPLOAD_COUNT: int = int(os.getenv("MAX_UPLOAD_COUNT", "100"))
+    MAX_ZIP_SIZE_MB:   int = int(os.getenv("MAX_ZIP_SIZE_MB", "50"))
+    MAX_FILE_SIZE_MB:  int = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
+
+    # 硬编码最大上限（不可配置，保护系统）
+    MAX_UPLOAD_COUNT_LIMIT: int = 500
+    MAX_ZIP_SIZE_MB_LIMIT:   int = 100
+    MAX_FILE_SIZE_MB_LIMIT:  int = 20
+
+    def get_effective_upload_limit(self) -> tuple[int, int, int]:
+        """返回生效的上传限制（取配置值与硬上限的较小值）"""
+        return (
+            min(self.MAX_UPLOAD_COUNT, self.MAX_UPLOAD_COUNT_LIMIT),
+            min(self.MAX_ZIP_SIZE_MB, self.MAX_ZIP_SIZE_MB_LIMIT),
+            min(self.MAX_FILE_SIZE_MB, self.MAX_FILE_SIZE_MB_LIMIT),
+        )
+
 
 # 全局单例，其他模块 from app.config import settings 即可使用
 settings = Settings()

@@ -5,7 +5,7 @@ POST /api/vector/search        向量搜索（原版，返回完整字段）
 POST /api/vector/search/llm    LLM 精简版搜索（返回 data_id + vector_text + score）
 GET  /api/vector/detail        通过 data_id + type 获取全量数据
 GET  /api/vector/missing/{type} 检测缺失向量
-POST /api/vector/sync          精准补录向量
+POST /api/vector/rebuild       全量重建向量库
 """
 
 from typing import Any, Dict, List, Optional
@@ -17,17 +17,12 @@ from app.clients import vector_client
 from app.config import settings
 from app.database import get_db
 from app.enums import ResourceType
-from app.models.resource import ComponentVariant, Resource, ResourceIcon, ResourceIllus
+from app.models.resource import Resource
 from app.routers.resources import _fmt
-from app.services.vector_text_builder import get_registry
-from app.services.vector_sync_service import detect_missing_data_ids, sync_missing_vectors, rebuild_all_vectors
+from app.services.vector_sync_service import detect_missing_resources, sync_vectors_by_type
 
 router = APIRouter(prefix="/api/vector", tags=["向量管理"])
 
-
-# ──────────────────────────────────────────────────────────────────
-# 向量搜索基础功能（HEAD 版本）
-# ──────────────────────────────────────────────────────────────────
 
 class SearchRequest(BaseModel):
     type: str
@@ -40,58 +35,37 @@ class SearchRequest(BaseModel):
 
 def _resolve_vec_type(req_type: str) -> Optional[str]:
     """将前端传入的 type 字符串解析为向量服务集合名。"""
+    from app.enums import ResourceType as RT
+    vec_type_map = {
+        RT.component: "component",
+        RT.template: "template",
+        RT.icon: "icon",
+        RT.illus: "illustration",
+        RT.image: "image",
+        RT.file: "file",
+    }
+    
     try:
         rt = ResourceType[req_type]
-        spec = get_registry().get(rt)
-        if spec:
-            return spec.vec_type
+        return vec_type_map.get(rt)
     except KeyError:
         pass
-    all_vec_types = {spec.vec_type for spec in get_registry().values()}
-    if req_type in all_vec_types:
+    
+    if req_type in vec_type_map.values():
         return req_type
+    
     return None
 
 
 _LOAD_OPTS = [
     selectinload(Resource.tags),
-    selectinload(Resource.component_variant),
-    selectinload(Resource.icon_detail),
-    selectinload(Resource.illus_detail),
 ]
 
 
 def _lookup_resources(db: Session, vec_type: str, data_ids: List[str]) -> Dict[str, Any]:
-    """按 vec_type 用稳定业务 ID 反查 Resource，返回 {data_id: Resource}。"""
+    """按 vec_type 用资源 ID 反查 Resource，返回 {data_id: Resource}。"""
     if not data_ids:
         return {}
-
-    if vec_type == "component":
-        rows = db.query(Resource).join(
-            ComponentVariant, ComponentVariant.resource_id == Resource.id
-        ).options(*_LOAD_OPTS).filter(
-            ComponentVariant.variant_key.in_(data_ids),
-            Resource.is_deleted == 0,
-        ).all()
-        return {row.component_variant.variant_key: row for row in rows}
-
-    if vec_type == "icon":
-        rows = db.query(Resource).join(
-            ResourceIcon, ResourceIcon.resource_id == Resource.id
-        ).options(*_LOAD_OPTS).filter(
-            ResourceIcon.icon_id.in_(data_ids),
-            Resource.is_deleted == 0,
-        ).all()
-        return {row.icon_detail.icon_id: row for row in rows}
-
-    if vec_type == "illus":
-        rows = db.query(Resource).join(
-            ResourceIllus, ResourceIllus.resource_id == Resource.id
-        ).options(*_LOAD_OPTS).filter(
-            ResourceIllus.illus_id.in_(data_ids),
-            Resource.is_deleted == 0,
-        ).all()
-        return {row.illus_detail.illus_id: row for row in rows}
 
     int_ids = [int(d) for d in data_ids if d.isdigit()]
     rows = db.query(Resource).options(*_LOAD_OPTS).filter(
@@ -121,10 +95,6 @@ def _enrich(raw_results: List[dict], db: Session, vec_type: str) -> List[dict]:
         output.append(item)
     return output
 
-
-# ──────────────────────────────────────────────────────────────────
-# LLM 精简版专用（新增）
-# ──────────────────────────────────────────────────────────────────
 
 def _enrich_llm(raw_results: List[dict], db: Session, vec_type: str) -> List[dict]:
     """LLM 版 enrichment，补充 score"""
@@ -193,10 +163,6 @@ def get_resource_by_data_id(
     return _fmt(resource)
 
 
-# ──────────────────────────────────────────────────────────────────
-# 向量搜索（原版，HEAD 版本）
-# ──────────────────────────────────────────────────────────────────
-
 @router.post("/search")
 def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
     """向量搜索 - 原版（返回完整字段）"""
@@ -222,10 +188,6 @@ def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
     return {"results": results}
 
 
-# ──────────────────────────────────────────────────────────────────
-# 向量补录（工作区版本）
-# ──────────────────────────────────────────────────────────────────
-
 @router.get("/missing/{resource_type}")
 def get_missing(
     resource_type: int,
@@ -242,7 +204,7 @@ def get_missing(
         "db_count": 4523,
         "vector_count": 4518,
         "missing_count": 5,
-        "missing_ids": ["f884...", "3c44...", ...]
+        "missing_ids": [1, 2, 3, ...]
     }
     """
     try:
@@ -253,7 +215,7 @@ def get_missing(
             detail=f"未知 resource_type: {resource_type}，可选值: {[e.value for e in ResourceType]}"
         )
     
-    result = detect_missing_data_ids(db, rt)
+    result = detect_missing_resources(db, rt)
     result["resource_type"] = rt.name
     return result
 
@@ -261,11 +223,10 @@ def get_missing(
 @router.post("/rebuild")
 def rebuild_vectors(
     resource_type: int = Query(..., description="资源类型 ID：1=component 2=template 3=icon 4=illus 5=image"),
-    batch_size: int = Query(200, ge=50, le=500, description="每批处理数量（50-500）"),
     db: Session = Depends(get_db),
 ):
     """
-    全量重建向量库：从 DB 读取所有记录并入向量，适用于向量库清空后的完整恢复。
+    全量重建向量库：触发时间戳同步
 
     示例：POST /api/vector/rebuild?resource_type=3
 
@@ -274,8 +235,8 @@ def rebuild_vectors(
         "resource_type": "icon",
         "total": 800,
         "synced": 800,
-        "batch_count": 4,
-        "failed": []
+        "failed": 0,
+        "message": "同步完成：成功 800 条，失败 0 条"
     }
     """
     try:
@@ -286,7 +247,7 @@ def rebuild_vectors(
             detail=f"未知 resource_type: {resource_type}，可选值: {[e.value for e in ResourceType]}",
         )
 
-    result = rebuild_all_vectors(db, rt, batch_size=batch_size)
+    result = sync_vectors_by_type(db, rt)
     result["resource_type"] = rt.name
     return result
 
@@ -294,30 +255,21 @@ def rebuild_vectors(
 @router.post("/sync")
 def sync_vectors(
     resource_type: int = Query(..., description="资源类型 ID：1=component 2=template 3=icon 4=illus 5=image"),
-    batch_size: int = Query(200, ge=50, le=500, description="每批处理数量（50-500）"),
-    dry_run: bool = Query(False, description="只检测不实际补录"),
     db: Session = Depends(get_db)
 ):
     """
-    精准补录缺失的向量数据
+    精准补录缺失的向量数据（基于时间戳）
     
-    示例：POST /api/vector/sync?resource_type=1&batch_size=200
+    示例：POST /api/vector/sync?resource_type=1
     
     返回：
     {
         "resource_type": "component",
-        "detected_missing": 5,
-        "actual_synced": 5,
-        "batch_count": 1,
-        "failed": [],
-        "dry_run": false
+        "total": 10,
+        "synced": 10,
+        "failed": 0,
+        "message": "同步完成：成功 10 条，失败 0 条"
     }
-    
-    工作流程：
-    1. 检测数据库存在但向量库缺失的 data_id
-    2. 反查数据库完整记录
-    3. 构造向量文本和 metadata
-    4. 分批调用向量服务进行补录
     """
     try:
         rt = ResourceType(resource_type)
@@ -327,6 +279,6 @@ def sync_vectors(
             detail=f"未知 resource_type: {resource_type}，可选值: {[e.value for e in ResourceType]}"
         )
     
-    result = sync_missing_vectors(db, rt, batch_size=batch_size, dry_run=dry_run)
+    result = sync_vectors_by_type(db, rt)
     result["resource_type"] = rt.name
     return result

@@ -9,18 +9,19 @@
 ```
 resources (主表)
     │
-    ├─ 1:N ── resource_tags        resource_id → resources.id
-    ├─ 1:1 ── component_variants   resource_id → resources.id (仅 resource_type=1)
-    ├─ 1:1 ── resource_icons       resource_id → resources.id (仅 resource_type=3)
-    └─ 1:1 ── resource_illus      resource_id → resources.id (仅 resource_type=4)
+    ├─ N:1 ── resource_sources   source_id → resource_sources.id
+    ├─ N:1 ── resource_groups    group_id → resource_groups.id
+    └─ 1:N ── resource_tags      resource_id → resources.id
 ```
 
-**表数量：** 5 张表
-- `resources` - 资源主表（通用字段）
-- `resource_tags` - 标签表（多对多）
-- `component_variants` - 组件变体详情表
-- `resource_icons` - SVG图标详情表
-- `resource_illus` - 插画详情表
+**表数量：** 4 张表
+
+| 表名 | 说明 |
+|------|------|
+| `resources` | 资源主表（通用字段） |
+| `resource_tags` | 标签表（多对多） |
+| `resource_sources` | 来源表（数据来源管理） |
+| `resource_groups` | 分组表（树形分类结构） |
 
 ---
 
@@ -31,26 +32,32 @@ resources (主表)
 | 字段 | 类型 | 约束 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `id` | Integer | PK, 自增 | - | 主键，全局唯一 |
-| `resource_type` | SmallInteger | NOT NULL | - | 资源类型：1=组件 2=模版 3=图标 4=插画 5=图片 |
+| `resource_type` | SmallInteger | NOT NULL | - | 资源类型：1=组件 2=模版 3=图标 4=插画 5=图片 6=文件 |
+| `source_id` | Integer | FK, NOT NULL | - | 来源ID，关联 resource_sources.id |
 | `name` | String(255) | NOT NULL | - | 资源名称 |
+| `description` | Text | NULL | - | 描述文本 |
+| `search_text` | Text | NULL | - | 业务搜索关键词 |
+| `vector_text` | Text | NULL | - | 向量文本（四个字段拼接） |
 | `file_name` | String(255) | NULL | - | 文件名，如 abc.svg |
+| `file_url` | String(500) | NULL | - | 文件链接（外部） |
 | `file_path` | String(500) | NULL | - | 文件相对路径，如 icon/abc.svg |
 | `file_size` | Integer | NULL | - | 文件大小（bytes） |
-| `mime_type` | String(100) | NULL | - | MIME类型，如 image/png |
+| `file_type` | String(50) | NULL | - | 文件类型（后缀） |
+| `width` | Float | NULL | - | 资源宽度（px） |
+| `height` | Float | NULL | - | 资源高度（px） |
 | `thumbnail_path` | String(500) | NULL | - | 缩略图路径 |
-| `width` | Float | NULL | - | 资源宽度（px），可能为小数 |
-| `height` | Float | NULL | - | 资源高度（px），可能为小数 |
-| `description` | Text | NULL | - | 描述文本 |
-| `raw_data` | Text | NULL | - | 原始数据 JSON 字符串 |
+| `raw_data` | JSON | NULL | - | 原始数据 JSON |
+| `group_id` | Integer | FK | NULL | 所属分组ID，关联 resource_groups.id |
 | `created_by` | String(100) | NULL | - | 创建者 |
 | `is_deleted` | Integer | NOT NULL | 0 | 软删除标记：0=正常 1=已删除 |
 | `created_at` | DateTime | NOT NULL | 当前时间 | 创建时间 |
 | `updated_at` | DateTime | NOT NULL | 自动更新 | 更新时间 |
+| `data_updated_at` | DateTime | NULL | - | 业务数据更新时间，用于向量同步判断 |
+| `vector_updated_at` | DateTime | NULL | - | 向量库更新时间 |
 
-**说明：**
-- 使用 `resource_type` 字段区分五种资源类型
-- 通用字段都在主表，特有字段在详情表
-- `raw_data` 存储外部 API 返回的原始 JSON，用于向量构造等场景
+**外键关系：**
+- `source_id` → `resource_sources.id`（RESTRICT：禁止删除有资源的来源）
+- `group_id` → `resource_groups.id`（SET NULL：删除分组时置空）
 
 ---
 
@@ -69,80 +76,61 @@ resources (主表)
 
 ---
 
-### 3. `component_variants` - 组件变体详情表
+### 3. `resource_sources` - 来源表
 
 | 字段 | 类型 | 约束 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `variant_key` | String(100) | PK | - | 变体key，来自Figma，全局唯一 |
-| `resource_id` | Integer | FK, NOT NULL, UNIQUE | - | 外键→resources.id，级联删除，唯一约束 |
-| `lib_file_key` | String(100) | NULL | - | **组件库文件key**（来自 component_map.json） |
-| `lib_name` | String(255) | NULL | - | **组件库名称**（来自 component_map.json） |
-| `canvas_name` | String(255) | NULL | - | 画布分组名，如"1.基础类" |
-| `component_name` | String(255) | NULL | - | 组件集名称 |
-| `component_guid` | String(100) | NULL | - | 组件集guid |
-| `component_key` | String(100) | NULL | - | 组件集key，即parentKey |
-| `name` | String(500) | NOT NULL | - | 变体属性字符串 |
-| `guid` | String(100) | NULL, UNIQUE | - | 变体guid，唯一约束 |
-| `component_props` | JSON | NULL | - | 变体属性列表，[{name, type}, ...] |
+| `id` | Integer | PK, 自增 | - | 主键 |
+| `code` | String(50) | UNIQUE, NOT NULL | - | 来源代码，如 figma, manual, api_sync |
+| `name` | String(255) | NOT NULL | - | 来源名称 |
+| `resource_type` | SmallInteger | NOT NULL | - | 关联资源类型 |
+| `is_sync_source` | Integer | NOT NULL | 0 | 是否同步来源：0=否 1=是 |
+| `config` | JSON | NULL | - | 来源配置（API 地址、认证信息等） |
+| `is_active` | Integer | NOT NULL | 1 | 是否启用：0=否 1=是 |
 | `created_at` | DateTime | NOT NULL | 当前时间 | 创建时间 |
 | `updated_at` | DateTime | NOT NULL | 自动更新 | 更新时间 |
 
 **说明：**
-- 仅用于 `resource_type=1`（组件）的资源
-- 一个组件集可以有多个变体，按 `component_key` 分组
-- `lib_file_key` 和 `lib_name` 来自 `component_map.json`，标识组件库来源
+- 管理数据来源（Figma、手工上传、API 同步等）
+- 每个来源关联一种资源类型
+- `is_sync_source=1` 表示该来源支持自动同步
 
 ---
 
-### 4. `resource_icons` - SVG图标详情表
+### 4. `resource_groups` - 分组表
 
 | 字段 | 类型 | 约束 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `icon_id` | String(100) | PK | - | 图标原始id（来自JSON数据） |
-| `resource_id` | Integer | FK, NOT NULL, UNIQUE | - | 外键→resources.id，级联删除，唯一约束 |
-| `chinese_name` | String(255) | NULL | - | 中文名称 |
-| `name` | String(255) | NULL | - | 英文全称，如 it_home |
-| `english_name` | String(255) | NULL | - | 英文短名，如 home |
-| `category` | String(100) | NULL | - | 分类，如 navigation, system |
-| `group` | String(100) | NULL | - | 领域/分组 |
+| `id` | Integer | PK, 自增 | - | 主键 |
+| `resource_type` | SmallInteger | NOT NULL | - | 资源类型：1-6 对应六类资源 |
+| `source_id` | Integer | FK | NULL | 来源ID（分组按来源独立） |
+| `name` | String(255) | NOT NULL | - | 分组名称 |
+| `parent_id` | Integer | FK | NULL | 父分组ID，NULL表示根节点 |
+| `level` | SmallInteger | NOT NULL | 0 | 层级深度：0=根节点 |
+| `real_path` | String(500) | NOT NULL | - | 完整路径：根分组/一级分组/二级分组 |
+| `sort_order` | Integer | NOT NULL | 0 | 同级排序序号 |
 | `created_at` | DateTime | NOT NULL | 当前时间 | 创建时间 |
 | `updated_at` | DateTime | NOT NULL | 自动更新 | 更新时间 |
 
 **说明：**
-- 仅用于 `resource_type=3`（SVG图标）的资源
-- `icon_id` 来自 `icons.json` 的原始数据
+- 树形结构，每种资源类型+来源有独立的分组树
+- `parent_id` 自引用实现树形结构
+- `real_path` 存储完整路径便于查询展示
 
 ---
 
-### 5. `resource_illus` - 插画详情表
+## 三、资源类型枚举
 
-| 字段 | 类型 | 约束 | 默认值 | 说明 |
-|------|------|------|--------|------|
-| `illus_id` | String(100) | PK | - | 插画原始id（来自JSON数据） |
-| `resource_id` | Integer | FK, NOT NULL, UNIQUE | - | 外键→resources.id，级联删除，唯一约束 |
-| `category` | String(100) | NULL | - | 分类 |
-| `tags` | JSON | NULL | - | 标签列表，["空状态", "反馈"] |
-| `version` | String(50) | NULL | - | 版本号 |
-| `theme` | String(100) | NULL | - | 主题 |
-| `created_at` | DateTime | NOT NULL | 当前时间 | 创建时间 |
-| `updated_at` | DateTime | NOT NULL | 自动更新 | 更新时间 |
+定义位置：`app/enums.py`
 
-**说明：**
-- 仅用于 `resource_type=4`（插画）的资源
-- `illus_id` 来自 `illus.json` 的原始数据
-- `tags` 是 JSON 数组，不同于 `resource_tags` 表（用于前端筛选）
-
----
-
-## 三、主键策略
-
-| 表 | 主键字段 | 策略 | 说明 |
-|------|---------|------|------|
-| `resources` | `id` | 自增 Integer | 全局唯一，用于关联 |
-| `resource_tags` | `id` | 自增 Integer | 简单自增 |
-| `component_variants` | `variant_key` | String(100) | 来自Figma，业务主键 |
-| `resource_icons` | `icon_id` | String(100) | 来自JSON，业务主键 |
-| `resource_illus` | `illus_id` | String(100) | 来自JSON，业务主键 |
+| 值 | 名称 | 中文标签 |
+|----|------|----------|
+| 1 | component | 组件集 |
+| 2 | template | 模版 |
+| 3 | icon | SVG |
+| 4 | illus | 插画 |
+| 5 | image | 图片 |
+| 6 | file | 文件 |
 
 ---
 
@@ -150,145 +138,119 @@ resources (主表)
 
 ### 主表索引
 ```sql
--- 隐式索引
 PRIMARY KEY (id)
-
--- 应用层创建（SQLAlchemy auto create）
 INDEX idx_resource_type (resource_type)
+INDEX idx_source_id (source_id)
+INDEX idx_group_id (group_id)
 INDEX idx_is_deleted (is_deleted)
 ```
 
-### 详情表索引
+### 标签表索引
 ```sql
--- component_variants
-PRIMARY KEY (variant_key)
-UNIQUE INDEX idx_resource_id (resource_id)
-UNIQUE INDEX idx_guid (guid)
+PRIMARY KEY (id)
+INDEX idx_resource_id (resource_id)
+```
 
--- resource_icons
-PRIMARY KEY (icon_id)
-UNIQUE INDEX idx_resource_id (resource_id)
+### 来源表索引
+```sql
+PRIMARY KEY (id)
+UNIQUE INDEX idx_code (code)
+INDEX idx_resource_type (resource_type)
+```
 
--- resource_illus
-PRIMARY KEY (illus_id)
-UNIQUE INDEX idx_resource_id (resource_id)
+### 分组表索引
+```sql
+PRIMARY KEY (id)
+INDEX idx_resource_type (resource_type)
+INDEX idx_source_id (source_id)
+INDEX idx_parent_id (parent_id)
 ```
 
 ---
 
-## 五、字段使用说明
+## 五、数据 API 返回格式
 
-### 5.1 通用字段（所有资源类型）
+### 5.1 数据流转链路
 
-| 字段 | 组件 | 模版 | SVG | 插画 | 图片 | 说明 |
-|------|------|------|-----|------|------|------|
-| `name` | ✓ | ✓ | ✓ | ✓ | ✓ | 资源名称（必填） |
-| `file_name` | ✓ | ✓ | - | - | ✓ | 文件名 |
-| `file_path` | ✓ | ✓ | ✗ | ✗ | ✓ | 文件相对路径（SVG/插画可空） |
-| `file_size` | ✓ | ✓ | - | - | ✓ | 文件大小 |
-| `mime_type` | ✓ | ✓ | - | - | ✓ | MIME类型 |
-| `thumbnail_path` | ✓ | ✓ | ✓ | ✓ | ✓ | 缩略图路径 |
-| `width` | - | - | ✓ | ✓ | ✓ | 资源宽度 |
-| `height` | - | - | ✓ | ✓ | ✓ | 资源高度 |
-| `description` | ✓ | ✓ | ✓ | ✓ | ✓ | 描述文本 |
-| `raw_data` | ✓ | - | ✓ | ✓ | - | 原始JSON数据 |
-| `created_by` | ✓ | ✓ | ✓ | ✓ | ✓ | 创建者 |
+```
+数据库 (resources表)
+    ↓ SQLAlchemy ORM查询
+Resource 对象 (models/resource.py)
+    ↓ _fmt() 函数处理 (routers/resources.py:177-203)
+JSON 响应
+    ↓ 前端 api.ts 请求
+前端 item 对象
+```
 
-**符号说明：**
-- ✓ = 必填或有值
-- ✗ = 可空（字段存在，值可为NULL）
-- - = 不使用或不适用
+### 5.2 `_fmt()` 函数字段映射
 
-### 5.2 file_path 字段使用说明
+位置：`app/routers/resources.py:177-203`
 
-#### 字段语义
+| 前端字段 | 数据来源 | 处理方式 |
+|----------|----------|----------|
+| `id` | `r.id` | 直接取值 |
+| `resource_type` | `r.resource_type` | 直接取值 |
+| `resource_type_name` | `r.resource_type` | `ResourceType(r.resource_type).name` 枚举转名称 |
+| `source_id` | `r.source_id` | 直接取值 |
+| `name` | `r.name` | 直接取值 |
+| `description` | `r.description` | 直接取值 |
+| `search_text` | `r.search_text` | 直接取值 |
+| `vector_text` | `r.vector_text` | 直接取值 |
+| `file_name` | `r.file_name` | 直接取值 |
+| `file_url` | `r.file_url` | 直接取值 |
+| `file_path` | `r.file_path` | 直接取值 |
+| `file_size` | `r.file_size` | 直接取值 |
+| `file_type` | `r.file_type` | 直接取值 |
+| `width` | `r.width` | 直接取值 |
+| `height` | `r.height` | 直接取值 |
+| `thumbnail_path` | `r.thumbnail_path` | 直接取值 |
+| `raw_data` | `r.raw_data` | 直接取值 |
+| `group_id` | `r.group_id` | 直接取值 |
+| `created_by` | `r.created_by` | 直接取值 |
+| `created_at` | `r.created_at` | `.isoformat()` 转 ISO 字符串 |
+| `updated_at` | `r.updated_at` | `.isoformat()` 转 ISO 字符串 |
+| `data_updated_at` | `r.data_updated_at` | `.isoformat()` 转 ISO 字符串 |
+| `vector_updated_at` | `r.vector_updated_at` | `.isoformat()` 转 ISO 字符串 |
+| `tags` | `r.tags` | `[t.tag for t in r.tags]` 提取标签名列表 |
 
-- `file_path` 存储资源的文件相对路径（相对于 FILE_ROOT_DIR）
-- 前端可通过 `/static/{file_path}` 访问实际文件
-- `file_path` 可为 NULL，表示该资源无本地存储的文件
+### 5.3 处理逻辑总结
 
-#### 各资源类型的 file_path 使用情况
+**直接取值字段**：大部分字段直接从 ORM 对象取值，不做转换
 
-| 类型 | file_path | 说明 |
-|------|-----------|------|
-| 组件集 | ✅ 必有 | 存储 hex 文件路径，用于 DSL 实例化 |
-| 模版 | ✅ 必有 | 存储 hex 文件路径，用于 DSL 应用 |
-| SVG图标 | ❌ 可空 | 仅存储元数据，SVG 文件可能在外部系统管理 |
-| 插画 | ❌ 可空 | 仅存储元数据，插画文件可能在外部系统管理 |
-| 图片 | ✅ 必有 | 存储图片文件路径，用于缩略图和原图展示 |
-
-#### 设计理念
-
-- **有文件需求的资源**（组件、模版、图片）→ `file_path` 必须存储
-- **纯元数据检索的资源**（SVG图标、插画）→ `file_path` 可为空
-- 前端应根据 `resource_type` + `file_path` 判断是否可访问静态文件
-
-### 5.3 详情表字段（按类型）
-
-**组件（resource_type=1）：**
-- 使用 `component_variants` 表
-- 关键字段：`lib_file_key`, `lib_name`, `canvas_name`, `component_name`
-
-**SVG图标（resource_type=3）：**
-- 使用 `resource_icons` 表
-- 关键字段：`chinese_name`, `english_name`, `category`
-
-**插画（resource_type=4）：**
-- 使用 `resource_illus` 表
-- 关键字段：`category`, `tags`, `version`
+**特殊处理字段**：
+1. `resource_type_name`：枚举值转名称（如 `1` → `component`）
+2. `tags`：从关联表 `resource_tags` 提取标签名字符串列表
+3. 时间字段：`datetime` 对象通过 `.isoformat()` 转为 ISO 8601 格式字符串
 
 ---
 
-## 六、数据流程说明
+## 六、向量文本构建
 
-### 6.1 组件集入库流程
+`vector_text` 字段由以下四个字段拼接而成：
 
-```
-读取 component_map.json
-  └─ 提取 lib_file_key 和 lib_name
-    ↓
-读取 component_index.json
-  └─ 提取 canvas_name, component_name 等组件集信息
-    ↓
-遍历所有变体（variants）
-  └─ 写 resources 主表（通用字段）
-  └─ 写 component_variants 详情表（包含 lib_file_key, lib_name）
-    ↓
-入向量库（metadata 包含 lib_name）
-```
+1. `name` - 资源名称
+2. `description` - 描述文本
+3. `tags` - 标签列表（拼接为字符串）
+4. `search_text` - 业务搜索关键词
 
-### 6.2 SVG/插画入库流程
-
-```
-读取 icons.json / illus.json
-  └─ 提取 icon_id, chinese_name, english_name 等
-    ↓
-写 resources 主表（通用字段）
-  └─ 写 resource_icons / resource_illus 详情表
-    ↓
-入向量库（metadata 包含分类、标签等）
-```
+构建逻辑位于：`app/services/resource_service.py` 中的 `build_vector_text()` 函数
 
 ---
 
-## 七、修改历史
-
-| 日期 | 修改内容 | 影响表 |
-|------|---------|--------|
-| 2026-07-08 | 新增 `lib_file_key`, `lib_name` 字段 | component_variants |
-| 2026-07-08 | 删除 `domain` 字段 | component_variants |
-| 2026-07-08 | 删除 `sort_order` 字段 | resources |
-| 2026-07-08 | 补充 `file_path` 字段使用说明 | 文档更新 |
-
----
-
-## 八、ORM 定义位置
+## 七、ORM 定义位置
 
 所有表结构定义位于：`app/models/resource.py`
 
 **对应关系：**
 - `Resource` 类 → `resources` 表
 - `ResourceTag` 类 → `resource_tags` 表
-- `ComponentVariant` 类 → `component_variants` 表
-- `ResourceIcon` 类 → `resource_icons` 表
-- `ResourceIllus` 类 → `resource_illus` 表
+- `ResourceSource` 类 → `resource_sources` 表
+- `ResourceGroup` 类 → `resource_groups` 表
+
+---
+
+## 八、修改历史
+
+| 日期 | 修改内容 |
+|------|---------|
+| 2026-07-15 | 重写文档，反映 v2.0 数据库结构（新增 source/group 表，移除详情表） |
