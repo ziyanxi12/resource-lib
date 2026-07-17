@@ -58,6 +58,15 @@ const getImageDimensions = (file: Blob): Promise<{ width: number; height: number
   })
 }
 
+const withTimeout = <T extends unknown>(promise: Promise<T>, timeoutMs: number, errorMsg: string): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMsg)), timeoutMs)
+    )
+  ])
+}
+
 export default function ResourceUpload() {
   const { type = 'image' } = useParams<{ type: string }>()
   const [searchParams] = useSearchParams()
@@ -69,6 +78,8 @@ export default function ResourceUpload() {
   const [uploading, setUploading] = useState(false)
   const [progress, setProgress] = useState(0)
   const zipInputRef = useRef<HTMLInputElement>(null)
+  const [zipLoading, setZipLoading] = useState(false)
+  const [zipProgress, setZipProgress] = useState('')
 
   const [sources, setSources] = useState<Source[]>([])
   const [sourceId, setSourceId] = useState<number | null>(null)
@@ -193,16 +204,49 @@ export default function ResourceUpload() {
       return
     }
 
+    // 大文件警告（> 50MB）
+    const SIZE_WARNING_MB = 50
+    if (zipFile.size > SIZE_WARNING_MB * 1024 * 1024) {
+      const confirmed = window.confirm(
+        `文件较大（${(zipFile.size / 1024 / 1024).toFixed(1)}MB），解析可能需要较长时间。\n\n` +
+        `建议：\n` +
+        `1. 确保浏览器内存充足（建议 > 4GB 可用内存）\n` +
+        `2. 关闭其他标签页以释放内存\n` +
+        `3. 如果解析失败，请尝试拆分成多个小 ZIP 包\n\n` +
+        `是否继续？`
+      )
+      if (!confirmed) return
+    }
+
+    setZipLoading(true)
+    setZipProgress('正在加载 ZIP 文件...')
+
     try {
-      const zip = await JSZip.loadAsync(zipFile)
-      
+      // 30 秒超时加载 ZIP
+      const zip = await withTimeout(
+        JSZip.loadAsync(zipFile),
+        30000,
+        'ZIP 文件加载超时（30秒），请尝试：\n' +
+        '1. 检查文件是否损坏\n' +
+        '2. 使用更小的 ZIP 包（< 50MB）\n' +
+        '3. 刷新页面后重试'
+      )
+
+      setZipProgress('正在解析配置文件...')
+
       const configFile = zip.file('config.json')
       if (!configFile) {
         setZipError('ZIP 包中缺少 config.json 文件')
         return
       }
 
-      const configText = await configFile.async('string')
+      // 10 秒超时读取 config.json
+      const configText = await withTimeout(
+        configFile.async('string'),
+        10000,
+        'config.json 解析超时，文件可能过大'
+      )
+
       const config = JSON.parse(configText)
 
       if (!config.meta || !config.data) {
@@ -243,20 +287,25 @@ export default function ResourceUpload() {
       }
 
       const parsedItems: ZipItem[] = []
-      for (const item of config.data) {
+      const totalItems = config.data.length
+
+      for (let idx = 0; idx < config.data.length; idx++) {
+        const item = config.data[idx]
+        setZipProgress(`正在解析第 ${idx + 1}/${totalItems} 个资源...`)
+
         const uid = `${Date.now()}-${Math.random().toString(36).slice(2)}`
-        
+
         let thumbnailBlob: Blob | null = null
         let thumbnailPreview = ''
         let width: number | null = null
         let height: number | null = null
-        
+
         if (item.thumbnail_path) {
           const thumbFile = zip.file(item.thumbnail_path)
           if (thumbFile) {
             thumbnailBlob = await thumbFile.async('blob')
             thumbnailPreview = URL.createObjectURL(thumbnailBlob)
-            
+
             // 从缩略图读取宽高
             try {
               const dims = await getImageDimensions(thumbnailBlob)
@@ -284,7 +333,7 @@ export default function ResourceUpload() {
         const rawDataString = JSON.stringify(rawData, null, 2)
 
         const fileName = item.file_name || (item.file_path ? item.file_path.split('/').pop()?.replace(/\.[^/.]+$/, '') : '')
-        
+
         parsedItems.push({
           uid,
           name: item.name || '',
@@ -306,11 +355,19 @@ export default function ResourceUpload() {
         })
       }
 
+      setZipProgress('解析完成')
       setItems(parsedItems)
       setConfigLoaded(true)
 
     } catch (e) {
-      setZipError('ZIP 解析失败：' + (e instanceof Error ? e.message : '未知错误'))
+      if (e instanceof Error) {
+        setZipError(e.message)
+      } else {
+        setZipError('ZIP 解析失败：' + String(e))
+      }
+    } finally {
+      setZipLoading(false)
+      setZipProgress('')
     }
   }
 
@@ -620,7 +677,7 @@ export default function ResourceUpload() {
           <Button
             icon={<FileZipOutlined />}
             onClick={() => zipInputRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || zipLoading}
           >
             ZIP上传
           </Button>
@@ -660,7 +717,7 @@ export default function ResourceUpload() {
             <Button
               icon={<FileZipOutlined />}
               onClick={() => zipInputRef.current?.click()}
-              disabled={uploading}
+              disabled={uploading || zipLoading}
             >
               选择ZIP包
             </Button>
@@ -668,8 +725,36 @@ export default function ResourceUpload() {
               ZIP包最大100MB，单次最多500条
             </span>
           </div>
+
+          {/* 加载进度提示 */}
+          {zipLoading && (
+            <div style={{
+              marginTop: 12,
+              padding: 12,
+              background: '#eff6ff',
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}>
+              <span style={{ color: '#1e40af', fontSize: 14 }}>
+                {zipProgress || '正在解析 ZIP 文件...'}
+              </span>
+            </div>
+          )}
+
           {zipError && (
-            <div style={{ marginTop: 12, color: '#ef4444', fontSize: 13 }}>{zipError}</div>
+            <div style={{
+              marginTop: 12,
+              padding: 12,
+              background: '#fef2f2',
+              borderRadius: 6,
+              color: '#ef4444',
+              fontSize: 13,
+              whiteSpace: 'pre-wrap',
+            }}>
+              {zipError}
+            </div>
           )}
         </div>
       )}

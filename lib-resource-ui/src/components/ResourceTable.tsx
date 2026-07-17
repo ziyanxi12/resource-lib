@@ -147,7 +147,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
 
   if (!item) return null
 
-  const isInDefaultGroup = groupTreeData.some(node => 
+  const isInDefaultGroup = groupTreeData?.some(node => 
     node.value === item.group_id && node.disabled
   )
 
