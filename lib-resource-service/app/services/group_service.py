@@ -61,6 +61,15 @@ def get_next_sort_order(db: Session, parent_id: Optional[int], resource_type: in
 
 
 def create_group(db: Session, resource_type: int, name: str, parent_id: Optional[int] = None, source_id: Optional[int] = None) -> ResourceGroup:
+    if parent_id is None:
+        existing_root = db.query(ResourceGroup).filter(
+            ResourceGroup.resource_type == resource_type,
+            ResourceGroup.source_id == source_id,
+            ResourceGroup.parent_id.is_(None)
+        ).first()
+        if existing_root:
+            raise ValueError("该来源下已存在默认分组")
+    
     if parent_id:
         parent = get_group_by_id(db, parent_id)
         if not parent:

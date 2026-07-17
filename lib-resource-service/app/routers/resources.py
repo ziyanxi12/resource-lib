@@ -35,6 +35,7 @@ def get_categories(db: Session = Depends(get_db)):
 @router.post("/sync-vectors")
 def sync_vectors(
     type: str = Query(..., description="资源类型名，如 component、icon、illus、template、image、file"),
+    source_id: Optional[int] = Query(None, description="来源ID筛选"),
     db: Session = Depends(get_db),
 ):
     """
@@ -46,7 +47,7 @@ def sync_vectors(
     except KeyError:
         raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
     
-    result = vector_sync_service.sync_vectors_by_type(db, resource_type)
+    result = vector_sync_service.sync_vectors_by_type(db, resource_type, source_id)
     return result
 
 
@@ -225,7 +226,6 @@ def _fmt(r) -> dict:
         "search_text": r.search_text,
         "vector_text": r.vector_text,
         "file_name": r.file_name,
-        "file_url": r.file_url,
         "file_path": r.file_path,
         "file_size": r.file_size,
         "file_type": r.file_type,

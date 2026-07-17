@@ -96,23 +96,16 @@ async def batch_upload(
             raise HTTPException(status_code=400, detail=f"第 {i + 1} 条名称不能为空")
         if item.get("group_id") is None:
             raise HTTPException(status_code=400, detail=f"第 {i + 1} 条分组ID不能为空")
-        if item.get("width") is None:
-            raise HTTPException(status_code=400, detail=f"第 {i + 1} 条宽度不能为空")
-        if item.get("height") is None:
-            raise HTTPException(status_code=400, detail=f"第 {i + 1} 条高度不能为空")
         
-        # 校验宽高为正数
-        try:
-            w = float(item.get("width", 0))
-            h = float(item.get("height", 0))
-            if w <= 0 or h <= 0:
-                raise ValueError()
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail=f"第 {i + 1} 条宽高必须为正数")
-
-        # 校验文件路径或链接至少有一个
-        if not item.get("file_path") and not item.get("file_url"):
-            raise HTTPException(status_code=400, detail=f"第 {i + 1} 条文件路径或链接至少填一个")
+        # 校验宽高（如果提供了）
+        if item.get("width") is not None or item.get("height") is not None:
+            try:
+                w = float(item.get("width", 0))
+                h = float(item.get("height", 0))
+                if w <= 0 or h <= 0:
+                    raise ValueError()
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail=f"第 {i + 1} 条宽高必须为正数")
 
     # 调用统一上传服务
     result = await upload_service.batch_upload(

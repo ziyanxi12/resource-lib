@@ -31,26 +31,10 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用启动时：初始化日志 + 自动建表 + 创建默认来源 + 创建文件存储子目录"""
+    """应用启动时：初始化日志 + 自动建表 + 创建文件存储子目录"""
     setup_logging(settings.LOG_DIR, settings.LOG_LEVEL)
     logger.info("lib-resource-service v%s 启动", __version__)
     Base.metadata.create_all(bind=engine)
-    
-    # 创建默认来源
-    with Session(engine) as db:
-        for rt in ResourceType:
-            existing = db.query(ResourceSource).filter(
-                ResourceSource.resource_type == int(rt)
-            ).first()
-            if not existing:
-                source = ResourceSource(
-                    name=f"手动上传-{rt.label}",
-                    resource_type=int(rt),
-                    is_sync_source=0,
-                    is_active=1,
-                )
-                db.add(source)
-        db.commit()
     
     # 创建文件存储子目录
     for sub in ["component", "template", "icon", "illus", "image", "file"]:

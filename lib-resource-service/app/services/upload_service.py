@@ -125,13 +125,13 @@ async def batch_upload(
 
         # 提取元数据
         name = item.get("name", "")
+        display_file_name = item.get("file_name")
         description = item.get("description")
         group_id = item.get("group_id")
         tags = item.get("tags", [])
         search_text = item.get("search_text")
         width = item.get("width")
         height = item.get("height")
-        file_url = item.get("file_url")
         raw_data = item.get("raw_data") or item.get("meta_json")
 
         # 构建资源数据
@@ -139,9 +139,8 @@ async def batch_upload(
             "resource_type": int(resource_type),
             "source_id": source_id,
             "name": name,
-            "file_name": file_name,
+            "file_name": display_file_name,
             "file_path": file_relative_path,
-            "file_url": file_url,
             "file_size": file_size,
             "file_type": file_type,
             "width": width,

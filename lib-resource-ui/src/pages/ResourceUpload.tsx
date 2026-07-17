@@ -1,21 +1,21 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Button, Input, Select, message, Progress, Image, InputNumber, Tooltip, Upload, TreeSelect } from 'antd'
-import { ArrowLeftOutlined, DeleteOutlined, FileZipOutlined, PlusOutlined, UploadOutlined } from '@ant-design/icons'
+import { Button, Input, Select, message, Progress, Image, Tooltip, Upload } from 'antd'
+import { ArrowLeftOutlined, DeleteOutlined, FileZipOutlined, PlusOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons'
 import JSZip from 'jszip'
 import { api, Source, GroupNode } from '../api'
 
 interface ZipItem {
   uid: string
   name: string
+  file_name: string
   description: string
   group_id: number | null
   tags: string[]
   search_text: string
-  width: number
-  height: number
+  width: number | null
+  height: number | null
   file_path: string
-  file_url: string
   thumbnail_path: string
   thumbnailPreview: string
   raw_data: Record<string, unknown>
@@ -43,6 +43,21 @@ const TYPE_LABELS: Record<string, string> = {
   illus: '插画',
 }
 
+const getImageDimensions = (file: Blob): Promise<{ width: number; height: number }> => {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image()
+    img.onload = () => {
+      resolve({ width: img.width, height: img.height })
+      URL.revokeObjectURL(img.src)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src)
+      reject(new Error('Failed to load image'))
+    }
+    img.src = URL.createObjectURL(file)
+  })
+}
+
 export default function ResourceUpload() {
   const { type = 'image' } = useParams<{ type: string }>()
   const [searchParams] = useSearchParams()
@@ -58,7 +73,8 @@ export default function ResourceUpload() {
   const [sources, setSources] = useState<Source[]>([])
   const [sourceId, setSourceId] = useState<number | null>(null)
   const [sourceName, setSourceName] = useState<string>('')
-  const [groups, setGroups] = useState<GroupNode[]>([])
+  const [groupId, setGroupId] = useState<number | null>(null)
+  const [groupName, setGroupName] = useState<string>('')
   const [configLoaded, setConfigLoaded] = useState(false)
   const [zipError, setZipError] = useState<string>('')
 
@@ -66,50 +82,75 @@ export default function ResourceUpload() {
   const typeLabel = TYPE_LABELS[type] || '文件'
 
   const sourceIdParam = searchParams.get('sourceId')
-
-  const convertToTreeData = (nodes: GroupNode[]): any[] =>
-    nodes.map(node => ({
-      value: node.id,
-      title: node.name,
-      children: node.children?.length ? convertToTreeData(node.children) : []
-    }))
+  const groupIdParam = searchParams.get('groupId')
 
   useEffect(() => {
+    if (!sourceIdParam) {
+      message.error('请从资源管理页面进入')
+      navigate(`/${type}`)
+      return
+    }
+    
     api.getSources()
       .then(data => {
         const filtered = data.items.filter(s => s.resource_type === typeNum)
         setSources(filtered)
-        if (sourceIdParam) {
-          const s = filtered.find(x => x.id === Number(sourceIdParam))
-          if (s) {
-            setSourceId(s.id)
-            setSourceName(s.name)
-          }
+        const s = filtered.find(x => x.id === Number(sourceIdParam))
+        if (s) {
+          setSourceId(s.id)
+          setSourceName(s.name)
+        } else {
+          message.error('来源不存在')
+          navigate(`/${type}`)
         }
       })
       .catch(() => message.error('加载来源失败'))
-  }, [typeNum, sourceIdParam])
+  }, [typeNum, sourceIdParam, type, navigate])
 
   useEffect(() => {
-    if (sourceId) {
-      api.getGroups(type, sourceId)
-        .then(data => {
-          if (data.items.length === 0) {
-            return api.createGroup({
-              resource_type: typeNum,
-              source_id: sourceId,
-              name: '默认分组',
-              parent_id: null
-            }).then(group => {
-              setGroups([{ ...group, children: [], level: 0, real_path: '默认分组', sort_order: 0 }])
-              setItems(prev => prev.map(item => ({ ...item, group_id: group.id, errors: { ...item.errors, group_id: '' } })))
-            })
+    if (!sourceId) return
+    
+    api.getGroups(type, sourceId)
+      .then(data => {
+        if (data.items.length === 0) {
+          return api.createGroup({
+            resource_type: typeNum,
+            source_id: sourceId,
+            name: '默认分组',
+            parent_id: null
+          }).then(group => {
+            setGroupId(group.id)
+            setGroupName('默认分组')
+          })
+        }
+        
+        // 查找分组名称的辅助函数
+        const findGroupName = (nodes: typeof data.items, targetId: number): string | null => {
+          for (const node of nodes) {
+            if (node.id === targetId) return node.name
+            if (node.children) {
+              const found = findGroupName(node.children, targetId)
+              if (found) return found
+            }
           }
-          setGroups(data.items)
-        })
-        .catch(() => message.error('加载分组失败'))
-    }
-  }, [type, sourceId, typeNum])
+          return null
+        }
+        
+        if (groupIdParam) {
+          const id = Number(groupIdParam)
+          setGroupId(id)
+          const name = findGroupName(data.items, id)
+          if (name) setGroupName(name)
+        } else {
+          const rootGroup = data.items.find(item => item.parent_id === null)
+          if (rootGroup) {
+            setGroupId(rootGroup.id)
+            setGroupName(rootGroup.name)
+          }
+        }
+      })
+      .catch(() => message.error('加载分组失败'))
+  }, [type, sourceId, typeNum, groupIdParam])
 
   const handleBack = () => {
     items.forEach(item => {
@@ -161,15 +202,19 @@ export default function ResourceUpload() {
         return
       }
 
-      // 校验来源ID（当前不需要校验，使用 URL 参数传递的 sourceId）
-      // const metaSourceId = config.meta.source_id
-      // const source = sources.find(s => s.id === metaSourceId)
-      // if (!source) {
-      //   setZipError(`来源ID ${metaSourceId} 不存在`)
-      //   return
-      // }
-      // setSourceId(metaSourceId)
-      // setSourceName(source.name)
+      // 验证来源ID一致性
+      const metaSourceId = config.meta.source_id
+      if (metaSourceId !== Number(sourceIdParam)) {
+        setZipError(`来源ID不一致：config.json 中 source_id=${metaSourceId}，当前页面 sourceId=${sourceIdParam}`)
+        return
+      }
+
+      // 验证分组ID一致性（如果有）
+      const metaGroupId = config.meta.group_id
+      if (metaGroupId && groupIdParam && metaGroupId !== Number(groupIdParam)) {
+        setZipError(`分组ID不一致：config.json 中 group_id=${metaGroupId}，当前页面 groupId=${groupIdParam}`)
+        return
+      }
 
       if (!sourceId) {
         setZipError('请从资源管理页面进入上传')
@@ -182,12 +227,23 @@ export default function ResourceUpload() {
         
         let thumbnailBlob: Blob | null = null
         let thumbnailPreview = ''
+        let width: number | null = null
+        let height: number | null = null
         
         if (item.thumbnail_path) {
           const thumbFile = zip.file(item.thumbnail_path)
           if (thumbFile) {
             thumbnailBlob = await thumbFile.async('blob')
             thumbnailPreview = URL.createObjectURL(thumbnailBlob)
+            
+            // 从缩略图读取宽高
+            try {
+              const dims = await getImageDimensions(thumbnailBlob)
+              width = dims.width
+              height = dims.height
+            } catch {
+              // 忽略错误，宽高保持 null
+            }
           }
         }
 
@@ -201,30 +257,28 @@ export default function ResourceUpload() {
 
         const errors: Record<string, string> = {}
         if (!item.name?.trim()) errors.name = '名称不能为空'
-        if (!item.group_id) errors.group_id = '分组不能为空'
-        if (!item.width || item.width <= 0) errors.width = '宽度必须为正数'
-        if (!item.height || item.height <= 0) errors.height = '高度必须为正数'
-        if (!item.file_path && !item.file_url) errors.file = '文件路径或链接至少填一个'
         if (!thumbnailBlob) errors.thumbnail_path = '缩略图文件不存在或未上传'
 
-        const metaJson = item.raw_data || {}
-        const metaJsonString = JSON.stringify(metaJson, null, 2)
+        const rawData = item.raw_data || {}
+        const rawDataString = JSON.stringify(rawData, null, 2)
 
+        const fileName = item.file_name || (item.file_path ? item.file_path.split('/').pop()?.replace(/\.[^/.]+$/, '') : '')
+        
         parsedItems.push({
           uid,
           name: item.name || '',
+          file_name: fileName,
           description: item.description || '',
-          group_id: item.group_id || null,
+          group_id: groupId,
           tags: item.tags || [],
           search_text: item.search_text || '',
-          width: item.width || 0,
-          height: item.height || 0,
+          width,
+          height,
           file_path: item.file_path || '',
-          file_url: item.file_url || '',
           thumbnail_path: item.thumbnail_path || '',
           thumbnailPreview,
-          raw_data: metaJson,
-          raw_data_string: metaJsonString,
+          raw_data: rawData,
+          raw_data_string: rawDataString,
           fileBlob,
           thumbnailBlob,
           errors,
@@ -267,10 +321,6 @@ export default function ResourceUpload() {
       
       const errors: Record<string, string> = {}
       if (!item.name?.trim()) errors.name = '名称不能为空'
-      if (!item.group_id) errors.group_id = '分组不能为空'
-      if (!item.width || item.width <= 0) errors.width = '宽度必须为正数'
-      if (!item.height || item.height <= 0) errors.height = '高度必须为正数'
-      if (!item.file_path && !item.file_url) errors.file = '文件路径或链接至少填一个'
       if (!item.thumbnailBlob) errors.thumbnail_path = '请上传缩略图'
       if (metaJsonError) errors.raw_data = metaJsonError
       
@@ -285,10 +335,6 @@ export default function ResourceUpload() {
       
       const errors: Record<string, string> = {}
       if (!updated.name?.trim()) errors.name = '名称不能为空'
-      if (!updated.group_id) errors.group_id = '分组不能为空'
-      if (!updated.width || updated.width <= 0) errors.width = '宽度必须为正数'
-      if (!updated.height || updated.height <= 0) errors.height = '高度必须为正数'
-      if (!updated.file_path && !updated.file_url) errors.file = '文件路径或链接至少填一个'
       if (!updated.thumbnailBlob) errors.thumbnail_path = '请上传缩略图'
       
       return { ...updated, errors }
@@ -300,10 +346,6 @@ export default function ResourceUpload() {
     setItems(prev => prev.map(item => {
       const errors: Record<string, string> = {}
       if (!item.name?.trim()) { errors.name = '名称不能为空'; valid = false }
-      if (!item.group_id) { errors.group_id = '分组不能为空'; valid = false }
-      if (!item.width || item.width <= 0) { errors.width = '宽度必须为正数'; valid = false }
-      if (!item.height || item.height <= 0) { errors.height = '高度必须为正数'; valid = false }
-      if (!item.file_path && !item.file_url) { errors.file = '文件路径或链接至少填一个'; valid = false }
       if (!item.thumbnailBlob) { errors.thumbnail_path = '请上传缩略图'; valid = false }
       
       if (item.raw_data_string?.trim()) {
@@ -388,6 +430,7 @@ export default function ResourceUpload() {
 
       formData.append('items', JSON.stringify(items.map(item => ({
         name: item.name.trim(),
+        file_name: item.file_name?.trim() || null,
         description: item.description.trim(),
         group_id: item.group_id,
         tags: item.tags,
@@ -395,7 +438,6 @@ export default function ResourceUpload() {
         width: item.width,
         height: item.height,
         file_path: item.file_path || null,
-        file_url: item.file_url.trim() || null,
         raw_data: item.raw_data,
       }))))
       formData.append('source_id', String(sourceId))
@@ -424,14 +466,14 @@ export default function ResourceUpload() {
     setItems(prev => [...prev, {
       uid,
       name: '',
+      file_name: '',
       description: '',
-      group_id: null,
+      group_id: groupId,
       tags: [],
       search_text: '',
-      width: undefined as unknown as number,
-      height: undefined as unknown as number,
+      width: null,
+      height: null,
       file_path: '',
-      file_url: '',
       thumbnail_path: '',
       thumbnailPreview: '',
       raw_data: {},
@@ -440,24 +482,146 @@ export default function ResourceUpload() {
       thumbnailBlob: null,
       errors: {},
     }])
-    if (!sourceId && sources.length > 0) {
-      setSourceId(sources[0].id)
-      setSourceName(sources[0].name)
+  }
+
+  const downloadTemplate = async () => {
+    const zip = new JSZip()
+    
+    const config = {
+      meta: {
+        type: type,
+        source_id: sourceId,
+        group_id: groupId
+      },
+      data: [
+        {
+          name: "示例资源",
+          file_name: "example.svg",
+          file_path: "data/example.svg",
+          thumbnail_path: "image/example.png",
+          description: "示例描述",
+          tags: ["示例"],
+          search_text: "关键词",
+          raw_data: {}
+        }
+      ]
     }
+    
+    zip.file("config.json", JSON.stringify(config, null, 2))
+    
+    // 创建 README.md
+    const readme = `# ZIP 上传模板说明
+
+## 文件结构
+\`\`\`
+├── config.json      # 配置文件（必填）
+├── image/           # 缩略图目录
+│   └── example.png
+└── data/            # 资源文件目录
+    └── example.svg
+\`\`\`
+
+## config.json 字段说明
+
+### meta 字段（元信息）
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| type | string | 是 | 资源类型：component/icon/illus/template/image/file |
+| source_id | number | 是 | 来源ID（已自动填充，请勿修改） |
+| group_id | number | 否 | 分组ID（已自动填充，请勿修改） |
+
+### data 字段（资源列表）
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 是 | 资源名称 |
+| file_name | string | 否 | 展示文件名（用于前端显示） |
+| file_path | string | 否 | 文件在ZIP中的相对路径 |
+| thumbnail_path | string | 是 | 缩略图在ZIP中的相对路径（PNG格式，宽高自动读取） |
+| description | string | 否 | 资源描述 |
+| tags | array | 否 | 标签数组 |
+| search_text | string | 否 | 搜索关键词 |
+| raw_data | object | 否 | 自定义元数据 |
+
+## 上传限制
+- 单次条目数：最多 500 条
+- ZIP 包大小：最大 100 MB
+- 单文件大小：最大 20 MB
+
+## 注意事项
+1. meta.source_id 和 meta.group_id 已根据当前页面自动填充，请勿修改
+2. 缩略图仅支持 PNG 格式，宽高会自动读取
+3. file_path 可选，如果不上传文件可以留空
+`
+    zip.file("README.md", readme)
+    
+    // 创建最小的示例 PNG 文件（1x1 像素）
+    const minPNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    const pngBlob = await fetch(minPNG).then(r => r.blob())
+    zip.file("image/example.png", pngBlob)
+    
+    // 创建最小的示例 SVG 文件
+    const minSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="#ccc"/></svg>'
+    zip.file("data/example.svg", minSVG)
+    
+    const blob = await zip.generateAsync({ type: 'blob' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${type}_template.zip`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 16,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         marginBottom: 20, paddingBottom: 16, borderBottom: '1px solid #e2e8f0',
       }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={handleBack} disabled={uploading}>
-          返回
-        </Button>
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1e293b' }}>
-          {isZipMode ? 'ZIP上传' : '批量上传'}{typeLabel}
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Button icon={<ArrowLeftOutlined />} onClick={handleBack} disabled={uploading}>
+            返回
+          </Button>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1e293b' }}>
+            {isZipMode ? 'ZIP上传' : '批量上传'}{typeLabel}
+          </h2>
+          <span style={{ color: '#64748b', fontSize: 14 }}>
+            来源：{sourceName} | 分组：{groupName}
+          </span>
+        </div>
+        
+        <div style={{ display: 'flex', gap: 8 }}>
+          {!isZipMode && (
+            <Button onClick={handleAddItem} disabled={uploading || !sourceId}>
+              新增数据
+            </Button>
+          )}
+          <Button
+            icon={<FileZipOutlined />}
+            onClick={() => zipInputRef.current?.click()}
+            disabled={uploading}
+          >
+            ZIP上传
+          </Button>
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={downloadTemplate}
+            disabled={uploading}
+          >
+            下载模板
+          </Button>
+          <Button onClick={handleBack} disabled={uploading}>
+            取消
+          </Button>
+          <Button
+            type="primary"
+            onClick={handleSubmit}
+            loading={uploading}
+            disabled={items.length === 0}
+          >
+            {uploading ? '上传中...' : `提交 ${items.length} 个`}
+          </Button>
+        </div>
       </div>
 
       <input
@@ -467,29 +631,6 @@ export default function ResourceUpload() {
         style={{ display: 'none' }}
         onChange={e => handleZipSelect(e.target.files)}
       />
-
-      {/* 来源选择 */}
-      <div style={{ marginBottom: 16, padding: 12, background: '#f8fafc', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span style={{ color: '#64748b', fontSize: 12 }}>来源：</span>
-        <Select
-          value={sourceId}
-          onChange={val => {
-            const s = sources.find(x => x.id === val)
-            setSourceId(val)
-            setSourceName(s?.name || '')
-          }}
-          options={sources.map(s => ({ value: s.id, label: s.name }))}
-          size="small"
-          style={{ width: 200 }}
-          placeholder="选择来源"
-          disabled={uploading}
-        />
-        {!isZipMode && (
-          <Button type="primary" size="small" icon={<PlusOutlined />} onClick={handleAddItem} disabled={uploading || !sourceId}>
-            新增数据
-          </Button>
-        )}
-      </div>
 
       {/* ZIP上传区域 */}
       {isZipMode && !configLoaded && (
@@ -505,15 +646,6 @@ export default function ResourceUpload() {
             <span style={{ marginLeft: 12, color: '#64748b', fontSize: 13 }}>
               ZIP包最大100MB，单次最多500条
             </span>
-          </div>
-          <div style={{ fontSize: 12 }}>
-            <a 
-              href="/template.zip" 
-              download
-              style={{ color: '#3b82f6' }}
-            >
-              下载模板
-            </a>
           </div>
           {zipError && (
             <div style={{ marginTop: 12, color: '#ef4444', fontSize: 13 }}>{zipError}</div>
@@ -537,14 +669,11 @@ export default function ResourceUpload() {
             <div style={{ width: 44, flexShrink: 0 }}>缩略图</div>
             <div style={{ flex: 1, minWidth: 80 }}>名称 *</div>
             <div style={{ flex: 1, minWidth: 80 }}>描述</div>
-            <div style={{ width: 100, flexShrink: 0 }}>分组 *</div>
-            <div style={{ width: 50, flexShrink: 0 }}>宽 *</div>
-            <div style={{ width: 50, flexShrink: 0 }}>高 *</div>
-            <div style={{ flex: 1, minWidth: 80 }}>文件路径</div>
-            <div style={{ flex: 1, minWidth: 100 }}>文件链接</div>
             <div style={{ flex: 1, minWidth: 80 }}>标签</div>
-            <div style={{ flex: 1, minWidth: 80 }}>搜索词</div>
+            <div style={{ flex: 1, minWidth: 80 }}>关键词</div>
             <div style={{ flex: 1, minWidth: 100 }}>元数据</div>
+            <div style={{ flex: 1, minWidth: 80 }}>文件</div>
+            <div style={{ flex: 1, minWidth: 80 }}>文件名</div>
             <div style={{ width: 28, flexShrink: 0 }}></div>
           </div>
           {/* 数据行 */}
@@ -575,7 +704,28 @@ export default function ResourceUpload() {
                         if (file && file.type === 'image/png') {
                           const preview = URL.createObjectURL(file)
                           if (item.thumbnailPreview) URL.revokeObjectURL(item.thumbnailPreview)
-                          setItems(prev => prev.map(i => i.uid === item.uid ? { ...i, thumbnailBlob: file, thumbnailPreview: preview, thumbnail_path: file.name, errors: { ...i.errors, thumbnail_path: '' } } : i))
+                          
+                          getImageDimensions(file)
+                            .then(({ width, height }) => {
+                              setItems(prev => prev.map(i => i.uid === item.uid ? { 
+                                ...i, 
+                                thumbnailBlob: file, 
+                                thumbnailPreview: preview, 
+                                thumbnail_path: file.name,
+                                width,
+                                height,
+                                errors: { ...i.errors, thumbnail_path: '' } 
+                              } : i))
+                            })
+                            .catch(() => {
+                              setItems(prev => prev.map(i => i.uid === item.uid ? { 
+                                ...i, 
+                                thumbnailBlob: file, 
+                                thumbnailPreview: preview, 
+                                thumbnail_path: file.name,
+                                errors: { ...i.errors, thumbnail_path: '' } 
+                              } : i))
+                            })
                         } else if (file) {
                           message.error('缩略图仅支持 PNG 格式')
                         }
@@ -600,7 +750,28 @@ export default function ResourceUpload() {
                         const file = e.target.files?.[0]
                         if (file && file.type === 'image/png') {
                           const preview = URL.createObjectURL(file)
-                          setItems(prev => prev.map(i => i.uid === item.uid ? { ...i, thumbnailBlob: file, thumbnailPreview: preview, thumbnail_path: file.name, errors: { ...i.errors, thumbnail_path: '' } } : i))
+                          
+                          getImageDimensions(file)
+                            .then(({ width, height }) => {
+                              setItems(prev => prev.map(i => i.uid === item.uid ? { 
+                                ...i, 
+                                thumbnailBlob: file, 
+                                thumbnailPreview: preview, 
+                                thumbnail_path: file.name,
+                                width,
+                                height,
+                                errors: { ...i.errors, thumbnail_path: '' } 
+                              } : i))
+                            })
+                            .catch(() => {
+                              setItems(prev => prev.map(i => i.uid === item.uid ? { 
+                                ...i, 
+                                thumbnailBlob: file, 
+                                thumbnailPreview: preview, 
+                                thumbnail_path: file.name,
+                                errors: { ...i.errors, thumbnail_path: '' } 
+                              } : i))
+                            })
                         } else if (file) {
                           message.error('缩略图仅支持 PNG 格式')
                         }
@@ -626,107 +797,6 @@ export default function ResourceUpload() {
                   size="small"
                   disabled={uploading}
                 />
-              </div>
-              <div style={{ width: 100, flexShrink: 0 }}>
-                <TreeSelect
-                  value={item.group_id}
-                  onChange={val => updateItem(item.uid, 'group_id', val)}
-                  treeData={convertToTreeData(groups)}
-                  size="small"
-                  style={{ width: '100%' }}
-                  placeholder="选择分组"
-                  status={item.errors.group_id ? 'error' : undefined}
-                  disabled={uploading}
-                />
-              </div>
-              <div style={{ width: 50, flexShrink: 0 }}>
-                <InputNumber
-                  value={item.width}
-                  onChange={val => updateItem(item.uid, 'width', val)}
-                  size="small"
-                  min={0}
-                  style={{ width: '100%' }}
-                  status={item.errors.width ? 'error' : undefined}
-                  disabled={uploading}
-                />
-              </div>
-              <div style={{ width: 50, flexShrink: 0 }}>
-                <InputNumber
-                  value={item.height}
-                  onChange={val => updateItem(item.uid, 'height', val)}
-                  size="small"
-                  min={0}
-                  style={{ width: '100%' }}
-                  status={item.errors.height ? 'error' : undefined}
-                  disabled={uploading}
-                />
-              </div>
-              <div style={{ flex: 1, minWidth: 80 }}>
-                <div style={{ position: 'relative' }}>
-                  <Tooltip title={item.file_path || '点击上传文件'}>
-                    <div style={{
-                      display: 'flex', alignItems: 'center', gap: 4,
-                      padding: '4px 8px', background: '#f8fafc', borderRadius: 4, cursor: 'pointer',
-                      fontSize: 11, color: item.file_path ? '#1e293b' : '#94a3b8',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      border: item.errors.file ? '1px solid #ef4444' : 'none',
-                    }}>
-                      {item.fileBlob ? (
-                        <UploadOutlined style={{ fontSize: 10 }} />
-                      ) : null}
-                      {item.file_path || '上传文件'}
-                    </div>
-                  </Tooltip>
-                  <input
-                    type="file"
-                    accept={type === 'image' ? 'image/png,image/svg+xml,image/jpeg,image/webp' : undefined}
-                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
-                    onChange={e => {
-                      const file = e.target.files?.[0]
-                      if (file) {
-                        const isPng = file.type === 'image/png'
-                        const isImageType = type === 'image'
-                        setItems(prev => prev.map(i => {
-                          if (i.uid !== item.uid) return i
-                          const updates: Partial<ZipItem> = { 
-                            fileBlob: file, 
-                            file_path: file.name, 
-                            errors: { ...i.errors, file: '' } 
-                          }
-                          if (isImageType && isPng) {
-                            updates.thumbnailBlob = file
-                            updates.thumbnailPreview = URL.createObjectURL(file)
-                            updates.thumbnail_path = file.name
-                            if (updates.errors) updates.errors.thumbnail_path = ''
-                          }
-                          return { ...i, ...updates }
-                        }))
-                      }
-                    }}
-                    disabled={uploading}
-                  />
-                </div>
-              </div>
-              <div style={{ flex: 1, minWidth: 100 }}>
-                <Input
-                  value={item.file_url}
-                  onChange={e => {
-                    const val = e.target.value
-                    setItems(prev => prev.map(i => {
-                      if (i.uid !== item.uid) return i
-                      const errors = { ...i.errors }
-                      if (val.trim() || i.file_path) errors.file = ''
-                      return { ...i, file_url: val, errors }
-                    }))
-                  }}
-                  size="small"
-                  placeholder="https://"
-                  status={item.errors.file ? 'error' : undefined}
-                  disabled={uploading}
-                />
-                {item.errors.file && (
-                  <div style={{ color: '#ef4444', fontSize: 10, marginTop: 2 }}>{item.errors.file}</div>
-                )}
               </div>
               <div style={{ flex: 1, minWidth: 80 }}>
                 <Select
@@ -762,6 +832,60 @@ export default function ResourceUpload() {
                   <div style={{ color: '#ef4444', fontSize: 10, marginTop: 2 }}>{item.errors.raw_data}</div>
                 )}
               </div>
+              <div style={{ flex: 1, minWidth: 80 }}>
+                <div style={{ position: 'relative' }}>
+                  <Tooltip title={item.file_path || '点击上传文件'}>
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 4,
+                      padding: '4px 8px', background: '#f8fafc', borderRadius: 4, cursor: 'pointer',
+                      fontSize: 11, color: item.file_path ? '#1e293b' : '#94a3b8',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {item.fileBlob ? (
+                        <UploadOutlined style={{ fontSize: 10 }} />
+                      ) : null}
+                      {item.file_path || '上传文件'}
+                    </div>
+                  </Tooltip>
+                  <input
+                    type="file"
+                    accept={type === 'image' ? 'image/png,image/svg+xml,image/jpeg,image/webp' : undefined}
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
+onChange={e => {
+                       const file = e.target.files?.[0]
+                       if (file) {
+                         const isPng = file.type === 'image/png'
+                         const isImageType = type === 'image'
+                         const fileName = file.name.replace(/\.[^/.]+$/, "")
+                         setItems(prev => prev.map(i => {
+                           if (i.uid !== item.uid) return i
+                           const updates: Partial<ZipItem> = { 
+                             fileBlob: file, 
+                             file_path: file.name,
+                             file_name: i.file_name || fileName,
+                           }
+                           if (isImageType && isPng) {
+                             updates.thumbnailBlob = file
+                             updates.thumbnailPreview = URL.createObjectURL(file)
+                             updates.thumbnail_path = file.name
+                           }
+                           return { ...i, ...updates }
+                         }))
+                       }
+                     }}
+                    disabled={uploading}
+                  />
+                </div>
+              </div>
+              <div style={{ flex: 1, minWidth: 80 }}>
+                <Input
+                  value={item.file_name}
+                  onChange={e => updateItem(item.uid, 'file_name', e.target.value)}
+                  size="small"
+                  placeholder="展示文件名"
+                  disabled={uploading}
+                />
+              </div>
               <div style={{ width: 28, flexShrink: 0 }}>
                 <Button
                   type="text"
@@ -784,23 +908,6 @@ export default function ResourceUpload() {
           format={() => `上传进度：${progress}%`}
           style={{ marginBottom: 12 }}
         />
-      )}
-
-      {items.length > 0 && sourceId && (
-        <div style={{
-          display: 'flex', justifyContent: 'flex-end', gap: 8,
-          paddingTop: 16, borderTop: '1px solid #f1f5f9',
-        }}>
-          <Button onClick={handleBack} disabled={uploading}>取消</Button>
-          <Button
-            type="primary"
-            onClick={handleSubmit}
-            loading={uploading}
-            disabled={items.length === 0}
-          >
-            {uploading ? '上传中...' : `提交 ${items.length} 个`}
-          </Button>
-        </div>
       )}
     </div>
   )

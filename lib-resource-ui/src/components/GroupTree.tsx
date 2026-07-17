@@ -38,6 +38,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
   const [addingParentId, setAddingParentId] = useState<number | null>(null)
   const [newName, setNewName] = useState('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
 
   const loadGroups = useCallback(async () => {
     setLoading(true)
@@ -54,6 +55,20 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
   useEffect(() => {
     loadGroups()
   }, [loadGroups])
+
+  useEffect(() => {
+    const getAllKeys = (nodes: GroupNode[]): React.Key[] => {
+      const keys: React.Key[] = []
+      nodes.forEach(node => {
+        keys.push(node.id)
+        if (node.children?.length) {
+          keys.push(...getAllKeys(node.children))
+        }
+      })
+      return keys
+    }
+    setExpandedKeys(getAllKeys(groups))
+  }, [groups])
 
   const handleSelect: TreeProps['onSelect'] = (selectedKeys) => {
     const key = selectedKeys[0]
@@ -178,6 +193,8 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
   const titleRender = (node: TreeDataNode) => {
     const id = Number(node.key)
     const name = String(node.title)
+    const group = groups.find(g => g.id === id)
+    const isRoot = group?.parent_id === null || group?.parent_id === undefined
 
     if (editingId === id) {
       return (
@@ -195,11 +212,14 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
       )
     }
 
-    const menuItems = [
+    const menuItems: Array<{ key: string; label: string; icon: React.ReactNode; danger?: boolean }> = [
       { key: 'add', label: '新增子分组', icon: <PlusOutlined /> },
       { key: 'edit', label: '编辑名称', icon: <EditOutlined /> },
-      { key: 'delete', label: '删除分组', icon: <DeleteOutlined />, danger: true },
     ]
+    
+    if (!isRoot) {
+      menuItems.push({ key: 'delete', label: '删除分组', icon: <DeleteOutlined />, danger: true })
+    }
 
     return (
       <div
@@ -248,39 +268,8 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
 
   return (
     <div style={{ width, background: '#fff', borderRadius: 8, padding: 12, height: '100%', overflow: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <div style={{ marginBottom: 12 }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>分组</span>
-        <Button size="small" icon={<PlusOutlined />} onClick={handleAddRoot}>
-          新增
-        </Button>
-      </div>
-
-      <div
-        style={{
-          height: 28,
-          lineHeight: '28px',
-          padding: '0 6px',
-          borderRadius: 4,
-          cursor: 'pointer',
-          marginBottom: 4,
-          fontWeight: selectedId === null ? 600 : 400,
-          color: selectedId === null ? '#6366f1' : '#475569',
-          background: selectedId === null ? '#eef2ff' : 'transparent',
-          transition: 'background 0.15s',
-        }}
-        onClick={() => onSelect?.(null)}
-        onMouseEnter={e => {
-          if (selectedId !== null) {
-            e.currentTarget.style.background = '#f1f5f9'
-          }
-        }}
-        onMouseLeave={e => {
-          if (selectedId !== null) {
-            e.currentTarget.style.background = 'transparent'
-          }
-        }}
-      >
-        全部
       </div>
 
       <style>{`
@@ -310,12 +299,13 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
         <Tree
           treeData={treeData}
           selectedKeys={selectedId ? [selectedId] : []}
+          expandedKeys={expandedKeys}
+          onExpand={setExpandedKeys}
           onSelect={handleSelect}
           titleRender={titleRender}
           draggable
           onDrop={handleDrop}
           blockNode
-          defaultExpandAll
           style={{ fontSize: 13 }}
         />
       </div>

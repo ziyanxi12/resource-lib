@@ -59,7 +59,6 @@ def _build_complete_response(resource: Resource, score: float) -> dict:
         "tags": [t.tag for t in resource.tags],
         "search_text": resource.search_text,
         "file_name": resource.file_name,
-        "file_url": resource.file_url,
         "file_path": resource.file_path,
         "file_size": resource.file_size,
         "file_type": resource.file_type,

@@ -13,7 +13,6 @@ class ResourceOut(BaseModel):
     search_text: Optional[str] = None
     vector_text: Optional[str] = None
     file_name: Optional[str] = None
-    file_url: Optional[str] = None
     file_path: Optional[str] = None
     file_size: Optional[int] = None
     file_type: Optional[str] = None

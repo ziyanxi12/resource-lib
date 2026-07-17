@@ -148,13 +148,13 @@ def update_tags(db: Session, resource_id: int, tags: List[str]) -> None:
     db.commit()
 
 
-def get_resources_need_sync(db: Session, resource_type: int) -> Tuple[List[Resource], int]:
+def get_resources_need_sync(db: Session, resource_type: int, source_id: int = None) -> Tuple[List[Resource], int]:
     """
     获取需要同步向量的资源（vector_updated_at < data_updated_at 或 vector_updated_at 为空）
     返回：(待同步资源列表, 总数)
     """
-    logger.debug("查询待同步资源: type=%d, 条件=vector_updated_at < data_updated_at OR NULL", resource_type)
-    resources = (
+    logger.debug("查询待同步资源: type=%d, source_id=%s, 条件=vector_updated_at < data_updated_at OR NULL", resource_type, source_id)
+    query = (
         db.query(Resource)
         .filter(
             Resource.resource_type == resource_type,
@@ -164,9 +164,12 @@ def get_resources_need_sync(db: Session, resource_type: int) -> Tuple[List[Resou
                 Resource.vector_updated_at < Resource.data_updated_at
             )
         )
-        .order_by(Resource.data_updated_at.asc())
-        .all()
     )
+    
+    if source_id is not None:
+        query = query.filter(Resource.source_id == source_id)
+    
+    resources = query.order_by(Resource.data_updated_at.asc()).all()
     logger.debug("查询到 %d 条待同步资源: ids=%s", len(resources), [r.id for r in resources])
     return resources, len(resources)
 

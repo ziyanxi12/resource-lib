@@ -96,11 +96,16 @@ def detect_missing_resources(
 _SYNC_BATCH_SIZE = 100
 
 
-def sync_vectors_by_type(db: Session, resource_type: ResourceType) -> dict:
+def sync_vectors_by_type(db: Session, resource_type: ResourceType, source_id: int = None) -> dict:
     """
     同步指定类型的向量数据（基于时间戳）
     
     仅同步 vector_updated_at < data_updated_at 的数据
+    
+    参数：
+        db: 数据库会话
+        resource_type: 资源类型
+        source_id: 来源ID（可选，用于筛选）
     
     返回：
     {
@@ -115,7 +120,7 @@ def sync_vectors_by_type(db: Session, resource_type: ResourceType) -> dict:
         logger.info("向量服务未启用，跳过同步")
         return {"total": 0, "synced": 0, "failed": 0, "skipped": 0, "message": "向量服务未启用"}
 
-    resources, total = resource_service.get_resources_need_sync(db, int(resource_type))
+    resources, total = resource_service.get_resources_need_sync(db, int(resource_type), source_id)
     
     if not resources:
         logger.info("类型 %s 无待同步数据", resource_type.name)

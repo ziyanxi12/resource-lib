@@ -154,14 +154,18 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  syncVectors: (type: string): Promise<{
+  syncVectors: (type: string, sourceId?: number | null): Promise<{
     total: number
     synced: number
     failed: number
     skipped: number
     message: string
-  }> =>
-    request(`/api/resources/sync-vectors?type=${type}`, { method: 'POST' }),
+  }> => {
+    const q = new URLSearchParams()
+    q.set('type', type)
+    if (sourceId) q.set('source_id', String(sourceId))
+    return request(`/api/resources/sync-vectors?${q}`, { method: 'POST' })
+  },
 
   clearResources: (type: string, sourceId?: number | null, groupId?: number | null): Promise<{ deleted: number }> => {
     const q = new URLSearchParams()

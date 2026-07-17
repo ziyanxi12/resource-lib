@@ -137,7 +137,6 @@ function DetailDrawer({ item, open, onClose, onSaved }: {
           </Field>
           <Field label="文件名">{item.file_name || emptyCell}</Field>
           <Field label="文件路径">{item.file_path || emptyCell}</Field>
-          <Field label="文件链接">{item.file_url || emptyCell}</Field>
           <Field label="文件类型">{item.file_type || emptyCell}</Field>
           <Field label="文件大小">{item.file_size ? formatSize(item.file_size) : emptyCell}</Field>
           <Field label="资源宽度">{item.width ?? emptyCell}</Field>
@@ -277,7 +276,6 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
   })
 
   const columns: ColumnsType<Resource> = [
-    { title: 'ID', dataIndex: 'id', width: 68 },
     {
       title: '缩略图',
       width: 80,
@@ -319,10 +317,11 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
       },
     },
     {
-      title: '创建时间',
-      dataIndex: 'created_at',
+      title: '关键词',
+      dataIndex: 'search_text',
       width: 160,
-      render: (v: string) => v ? v.slice(0, 19).replace('T', ' ') : '-',
+      ellipsis: { showTitle: false },
+      render: (v: string | null) => v ? <Tooltip title={v}>{v}</Tooltip> : emptyCell,
     },
   ]
 
@@ -335,15 +334,6 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-      <div style={{ marginBottom: 16, flexShrink: 0 }}>
-        <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>
-          {type === 'component' ? '组件' : type === 'template' ? '模版' : type === 'icon' ? '图标' : type === 'illus' ? '插画' : type === 'image' ? '图片' : '文件'}
-        </h1>
-        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>
-          {searchMode ? `搜索到 ${total} 条结果` : `共 ${total} 条数据`}
-        </p>
-      </div>
-
       <div style={{
         background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0',
         padding: '12px 16px', marginBottom: 14, display: 'flex',

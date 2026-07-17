@@ -14,6 +14,7 @@ import json
 import logging
 import os
 from datetime import datetime
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
@@ -26,26 +27,7 @@ from app.services.vector_text_builder import ingest_vectors
 logger = logging.getLogger(__name__)
 
 
-def _get_or_create_default_source(db: Session, resource_type: ResourceType) -> int:
-    """获取或创建默认来源，返回 source_id"""
-    existing = db.query(ResourceSource).filter(
-        ResourceSource.resource_type == int(resource_type)
-    ).first()
-    if existing:
-        return existing.id
-    
-    source = ResourceSource(
-        name=f"手动上传-{resource_type.label}",
-        resource_type=int(resource_type),
-        is_sync_source=0,
-        is_active=1,
-    )
-    db.add(source)
-    db.flush()
-    return source.id
-
-
-def import_components(db: Session, skip_vector: bool = False) -> dict:
+def import_components(db: Session, source_id: Optional[int] = None, skip_vector: bool = False) -> dict:
     component_map_path = os.path.join(settings.FILE_ROOT_DIR, "component", "component_map.json")
     if not os.path.exists(component_map_path):
         return {"added": 0, "error": "component_map.json 不存在"}
@@ -53,7 +35,17 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
     with open(component_map_path, "r", encoding="utf-8") as f:
         component_map = json.load(f)
 
-    source_id = _get_or_create_default_source(db, ResourceType.component)
+    if source_id is None:
+        source = db.query(ResourceSource).filter(
+            ResourceSource.resource_type == int(ResourceType.component)
+        ).first()
+        if not source:
+            return {"added": 0, "error": "请先手动创建组件类型的来源"}
+        source_id = source.id
+    else:
+        source = db.query(ResourceSource).filter(ResourceSource.id == source_id).first()
+        if not source:
+            return {"added": 0, "error": f"来源ID {source_id} 不存在"}
     
     all_meta = []
     for entry in component_map:
@@ -145,10 +137,10 @@ def import_components(db: Session, skip_vector: bool = False) -> dict:
     return {"added": added}
 
 
-def run_init_import(db: Session, skip_vector: bool = False) -> dict:
+def run_init_import(db: Session, source_id: Optional[int] = None, skip_vector: bool = False) -> dict:
     """初始化入库，仅支持组件集"""
     try:
-        return {"component": import_components(db, skip_vector=skip_vector)}
+        return {"component": import_components(db, source_id=source_id, skip_vector=skip_vector)}
     except Exception as e:
         logger.exception("component 入库失败")
         return {"component": {"added": 0, "error": str(e)}}

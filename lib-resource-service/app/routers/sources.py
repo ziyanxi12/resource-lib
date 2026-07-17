@@ -66,7 +66,6 @@ def create_source(data: dict, db: Session = Depends(get_db)):
         source = source_service.create_source(db, data)
         return {
             "id": source.id,
-            "code": source.code,
             "name": source.name,
             "resource_type": source.resource_type,
             "is_sync_source": source.is_sync_source,
@@ -88,7 +87,6 @@ def update_source(source_id: int, data: dict, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="来源不存在")
         return {
             "id": source.id,
-            "code": source.code,
             "name": source.name,
             "resource_type": source.resource_type,
             "is_sync_source": source.is_sync_source,
