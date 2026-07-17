@@ -190,8 +190,14 @@ async def batch_upload(
     }
 
 
-def understand_image(db: Session, resource_id: int) -> str:
-    """调用图片语义理解模块，对资源的预览图生成中文语义描述"""
+def understand_image(db: Session, resource_id: int, prompt: Optional[str] = None) -> str:
+    """调用图片语义理解模块，对资源的预览图生成中文语义描述
+    
+    Args:
+        db: 数据库会话
+        resource_id: 资源ID
+        prompt: 用户提示词（可选），用于引导生成方向
+    """
     from app.services.resource_service import get_resource_by_id
     from app.clients import external
     from fastapi import HTTPException
@@ -212,7 +218,7 @@ def understand_image(db: Session, resource_id: int) -> str:
         raise HTTPException(status_code=404, detail=f"预览图文件不存在: {rel_path}")
 
     try:
-        return external.understand_image(abs_path)
+        return external.understand_image(abs_path, prompt)
     except HTTPException:
         raise
     except Exception as e:

@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Table, Input, Button, Drawer, Tooltip, Image, message, Select } from 'antd'
+import { Table, Input, Button, Drawer, Tooltip, Image, message, Select, TreeSelect, Modal, Upload } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import type { TreeSelectProps } from 'antd'
 import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
+import type { GroupNode } from '../api'
 import SemanticUnderstand from './SemanticUnderstand'
 
 const DEFAULT_PAGE_SIZE = 20
@@ -13,6 +15,11 @@ const emptyCell = <span style={{ color: '#cbd5e1' }}>-</span>
 function formatSize(bytes: number) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(2)} MB`
   return `${(bytes / 1024).toFixed(1)} KB`
+}
+
+function formatDateTime(dt: string | null | undefined): string {
+  if (!dt) return '-'
+  return dt.slice(0, 19).replace('T', ' ')
 }
 
 function SectionHeader({ title }: { title: string }) {
@@ -36,29 +43,75 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-function DetailDrawer({ item, open, onClose, onSaved }: {
+function DetailDrawer({ item, open, onClose, onSaved, type }: {
   item: Resource | null
   open: boolean
   onClose: () => void
   onSaved?: () => void
+  type: string
 }) {
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [tags, setTags] = useState<string[]>([])
+  const [searchText, setSearchText] = useState('')
+  const [fileName, setFileName] = useState('')
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  
+  const [prompt, setPrompt] = useState('')
+  const [semanticText, setSemanticText] = useState('')
+  
+  const [newThumbnail, setNewThumbnail] = useState<File | null>(null)
+  const [newFile, setNewFile] = useState<File | null>(null)
+  
+  const [groupTreeData, setGroupTreeData] = useState<TreeSelectProps['treeData']>([])
+  const thumbnailInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!item) return
     setName(item.name ?? '')
     setDescription(item.description ?? '')
     setTags(item.tags ?? [])
+    setSearchText(item.search_text ?? '')
+    setFileName(item.file_name ?? '')
+    setSelectedGroupId(item.group_id)
+    setSemanticText('')
+    setPrompt('')
+    setNewThumbnail(null)
+    setNewFile(null)
   }, [item])
+
+  useEffect(() => {
+    if (!open || !item) return
+    api.getGroups(type, item.source_id, false).then(data => {
+      const convertToTreeData = (nodes: GroupNode[]): TreeSelectProps['treeData'] => 
+        nodes.map(node => ({
+          value: node.id,
+          title: node.is_default ? `${node.name}（默认）` : node.name,
+          disabled: node.is_default === 1,
+          children: node.children ? convertToTreeData(node.children) : undefined,
+        }))
+      setGroupTreeData(convertToTreeData(data.items))
+    })
+  }, [open, item, type])
 
   const handleSave = async () => {
     if (!item) return
     setSaving(true)
     try {
-      await api.updateResource(item.id, { name, description, tags })
+      const formData = new FormData()
+      formData.append('name', name)
+      formData.append('description', description)
+      formData.append('tags', JSON.stringify(tags))
+      formData.append('search_text', searchText)
+      formData.append('file_name', fileName)
+      if (selectedGroupId) formData.append('group_id', String(selectedGroupId))
+      if (newThumbnail) formData.append('thumbnail', newThumbnail)
+      if (newFile) formData.append('file', newFile)
+      
+      await api.updateResource(item.id, formData)
       message.success('保存成功')
       onSaved?.()
       onClose()
@@ -69,7 +122,34 @@ function DetailDrawer({ item, open, onClose, onSaved }: {
     }
   }
 
+  const handleDelete = () => {
+    if (!item) return
+    Modal.confirm({
+      title: '确认删除',
+      content: `确定删除资源 "${item.name}" 吗？`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        setDeleting(true)
+        try {
+          await api.deleteResource(item.id)
+          message.success('删除成功')
+          onSaved?.()
+          onClose()
+        } catch (e) {
+          message.error('删除失败：' + (e instanceof Error ? e.message : '未知错误'))
+        } finally {
+          setDeleting(false)
+        }
+      },
+    })
+  }
+
   if (!item) return null
+
+  const isInDefaultGroup = groupTreeData.some(node => 
+    node.value === item.group_id && node.disabled
+  )
 
   return (
     <Drawer
@@ -77,40 +157,117 @@ function DetailDrawer({ item, open, onClose, onSaved }: {
       onClose={onClose}
       width="clamp(720px, 70%, 2000px)"
       destroyOnClose
-      footer={
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <Button onClick={onClose}>取消</Button>
-          <Button type="primary" loading={saving} onClick={handleSave}>保存</Button>
+      closable={false}
+      title={
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 8,
+        }}>
+          <TreeSelect
+            size="small"
+            style={{ width: 160 }}
+            value={selectedGroupId}
+            onChange={setSelectedGroupId}
+            treeData={groupTreeData}
+            placeholder="切换分组"
+            treeDefaultExpandAll
+          />
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+            <Button type="primary" size="small" loading={saving} onClick={handleSave} disabled={isInDefaultGroup}>保存</Button>
+            {isInDefaultGroup && <span style={{ color: '#ef4444', fontSize: 11 }}>请切换分组</span>}
+            <Button size="small" onClick={onClose}>取消</Button>
+            <Button danger size="small" loading={deleting} onClick={handleDelete}>删除</Button>
+          </div>
         </div>
       }
     >
       <div style={{ display: 'flex', gap: 24 }}>
-        {/* 左侧：预览图 + 语义生成 */}
         <div style={{ width: '42%', flexShrink: 0 }}>
-          {item.thumbnail_path ? (
-            <Image
-              src={staticUrl(item.thumbnail_path)}
-              width="100%"
-              style={{ borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc' }}
+          <div style={{ position: 'relative' }}>
+            {newThumbnail ? (
+              <img 
+                src={URL.createObjectURL(newThumbnail)} 
+                alt="new thumbnail"
+                style={{ width: '100%', borderRadius: 8, border: '1px solid #e2e8f0' }}
+              />
+            ) : item.thumbnail_path ? (
+              <Image
+                src={staticUrl(item.thumbnail_path)}
+                width="100%"
+                style={{ borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc' }}
+              />
+            ) : (
+              <div style={{
+                aspectRatio: '4 / 3', borderRadius: 8, border: '1px dashed #e2e8f0',
+                background: '#f8fafc', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', color: '#cbd5e1', fontSize: 13,
+              }}>
+                暂无预览图
+              </div>
+            )}
+            <input
+              ref={thumbnailInputRef}
+              type="file"
+              accept="image/png"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files?.[0]
+                if (file) setNewThumbnail(file)
+              }}
             />
-          ) : (
-            <div style={{
-              aspectRatio: '4 / 3', borderRadius: 8, border: '1px dashed #e2e8f0',
-              background: '#f8fafc', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', color: '#cbd5e1', fontSize: 13,
-            }}>
-              暂无预览图
-            </div>
-          )}
+          </div>
+          
+          <Button 
+            size="small" 
+            block 
+            style={{ marginTop: 8 }}
+            onClick={() => thumbnailInputRef.current?.click()}
+          >
+            {newThumbnail ? `已选择: ${newThumbnail.name}` : '更新缩略图'}
+          </Button>
+          
+          <Input.TextArea
+            placeholder="输入提示词（可选）"
+            value={prompt}
+            onChange={e => setPrompt(e.target.value)}
+            rows={2}
+            style={{ marginTop: 12 }}
+          />
+          
           <SemanticUnderstand
             resourceId={item.id}
-            onFill={text => setDescription(prev => prev ? `${prev}\n${text}` : text)}
+            prompt={prompt}
+            onGenerated={setSemanticText}
           />
+          
+          {semanticText && (
+            <div style={{ 
+              marginTop: 12, 
+              padding: 12, 
+              background: '#f8fafc', 
+              border: '1px solid #e2e8f0', 
+              borderRadius: 8,
+              fontSize: 13,
+              color: '#334155',
+              lineHeight: 1.6,
+            }}>
+              {semanticText}
+              <div style={{ marginTop: 8, textAlign: 'right' }}>
+                <Button
+                  size="small"
+                  type="link"
+                  style={{ padding: 0, height: 'auto' }}
+                  onClick={() => setDescription(prev => prev ? `${prev}\n${semanticText}` : semanticText)}
+                >
+                  追加到描述
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* 右侧：基础信息 + 向量映射 + 原始数据 */}
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
-          {/* 基础信息 */}
           <SectionHeader title="基础信息" />
           <Field label="ID">{item.id}</Field>
           <Field label="名称">
@@ -135,27 +292,55 @@ function DetailDrawer({ item, open, onClose, onSaved }: {
               tokenSeparators={[',']}
             />
           </Field>
-          <Field label="文件名">{item.file_name || emptyCell}</Field>
-          <Field label="文件路径">{item.file_path || emptyCell}</Field>
-          <Field label="文件类型">{item.file_type || emptyCell}</Field>
-          <Field label="文件大小">{item.file_size ? formatSize(item.file_size) : emptyCell}</Field>
+          <Field label="关键词">
+            <Input value={searchText} onChange={e => setSearchText(e.target.value)} size="small" />
+          </Field>
+          <Field label="文件名">
+            <Input value={fileName} onChange={e => setFileName(e.target.value)} size="small" />
+          </Field>
+
+          <SectionHeader title="文件信息" />
+          <Field label="缩略图路径">{item.thumbnail_path || emptyCell}</Field>
           <Field label="资源宽度">{item.width ?? emptyCell}</Field>
           <Field label="资源高度">{item.height ?? emptyCell}</Field>
-          <Field label="缩略图">{item.thumbnail_path || emptyCell}</Field>
-          <Field label="创建时间">{item.created_at?.slice(0, 19).replace('T', ' ') || emptyCell}</Field>
-          <Field label="更新时间">{item.updated_at?.slice(0, 19).replace('T', ' ') || emptyCell}</Field>
-
-          {/* 向量库映射 */}
-          <SectionHeader title="向量库映射" />
-          <Field label="向量文本">
-            <div style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{item.vector_text || emptyCell}</div>
+          <Field label="文件路径">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: 1 }}>{newFile ? <span style={{ color: '#059669' }}>{newFile.name}</span> : (item.file_path || emptyCell)}</span>
+              <Button size="small" onClick={() => fileInputRef.current?.click()}>
+                更新文件
+              </Button>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const file = e.target.files?.[0]
+                if (file) setNewFile(file)
+              }}
+            />
           </Field>
-          <Field label="名称">{item.name || emptyCell}</Field>
-          <Field label="描述">{item.description || emptyCell}</Field>
-          <Field label="标签">{item.tags?.length > 0 ? item.tags.join('、') : emptyCell}</Field>
-          <Field label="搜索词">{item.search_text || emptyCell}</Field>
+          <Field label="文件类型">{item.file_type || emptyCell}</Field>
+          <Field label="文件大小">{item.file_size ? formatSize(item.file_size) : emptyCell}</Field>
+          <Field label="创建时间">{formatDateTime(item.created_at)}</Field>
+          <Field label="数据库更新时间">{formatDateTime(item.updated_at)}</Field>
+          <Field label="向量库更新时间">{formatDateTime(item.vector_updated_at)}</Field>
 
-          {/* 原始数据 */}
+          <SectionHeader title="向量文本" />
+          <div style={{ 
+            padding: 12, 
+            background: '#f8fafc', 
+            borderRadius: 6, 
+            wordBreak: 'break-all', 
+            whiteSpace: 'pre-wrap',
+            maxHeight: 200,
+            overflowY: 'auto',
+            fontSize: 12,
+            color: '#334155',
+          }}>
+            {item.vector_text || emptyCell}
+          </div>
+
           {item.raw_data && (
             <>
               <SectionHeader title="原始数据 (raw_data)" />
@@ -383,7 +568,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
         />
       </div>
 
-      <DetailDrawer item={detailItem} open={detailOpen} onClose={() => setDetailOpen(false)} onSaved={refresh} />
+      <DetailDrawer item={detailItem} open={detailOpen} onClose={() => setDetailOpen(false)} onSaved={refresh} type={type} />
     </div>
   )
 }

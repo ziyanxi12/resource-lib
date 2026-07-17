@@ -6,10 +6,17 @@ from app.enums import ResourceType
 from app.schemas.group import GroupNode, GroupReorderItem
 
 
-def get_groups_by_type(db: Session, resource_type: int, source_id: Optional[int] = None) -> List[ResourceGroup]:
+def get_groups_by_type(
+    db: Session, 
+    resource_type: int, 
+    source_id: Optional[int] = None,
+    exclude_default: bool = False
+) -> List[ResourceGroup]:
     query = db.query(ResourceGroup).filter(ResourceGroup.resource_type == resource_type)
     if source_id is not None:
         query = query.filter(ResourceGroup.source_id == source_id)
+    if exclude_default:
+        query = query.filter(ResourceGroup.is_default == 0)
     return query.order_by(ResourceGroup.sort_order, ResourceGroup.id).all()
 
 
@@ -21,6 +28,7 @@ def build_tree(groups: List[ResourceGroup]) -> List[GroupNode]:
         level=g.level,
         real_path=g.real_path,
         sort_order=g.sort_order,
+        is_default=g.is_default,
         children=[]
     ) for g in groups}
 
@@ -35,8 +43,13 @@ def build_tree(groups: List[ResourceGroup]) -> List[GroupNode]:
     return root_nodes
 
 
-def get_group_tree(db: Session, resource_type: int, source_id: Optional[int] = None) -> Tuple[List[GroupNode], str]:
-    groups = get_groups_by_type(db, resource_type, source_id)
+def get_group_tree(
+    db: Session, 
+    resource_type: int, 
+    source_id: Optional[int] = None,
+    exclude_default: bool = False
+) -> Tuple[List[GroupNode], str]:
+    groups = get_groups_by_type(db, resource_type, source_id, exclude_default)
     tree = build_tree(groups)
     type_name = ResourceType(resource_type).name
     return tree, type_name
@@ -76,9 +89,11 @@ def create_group(db: Session, resource_type: int, name: str, parent_id: Optional
             raise ValueError(f"Parent group {parent_id} not found")
         level = parent.level + 1
         real_path = f"{parent.real_path}/{name}"
+        is_default = 0
     else:
         level = 0
         real_path = name
+        is_default = 1 if name == "默认分组" else 0
 
     sort_order = get_next_sort_order(db, parent_id, resource_type, source_id)
 
@@ -89,7 +104,8 @@ def create_group(db: Session, resource_type: int, name: str, parent_id: Optional
         parent_id=parent_id,
         level=level,
         real_path=real_path,
-        sort_order=sort_order
+        sort_order=sort_order,
+        is_default=is_default,
     )
     db.add(group)
     db.commit()

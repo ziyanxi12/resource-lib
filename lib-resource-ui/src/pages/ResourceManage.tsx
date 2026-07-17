@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Select, message, Modal, Input } from 'antd'
 import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import ResourceTable, { type ResourceTableHandle } from '../components/ResourceTable'
 import GroupTree from '../components/GroupTree'
-import { api, Source } from '../api'
+import { api, Source, GroupNode } from '../api'
 
 const RESOURCE_TYPE_MAP: Record<string, number> = {
   component: 1,
@@ -18,8 +18,12 @@ const RESOURCE_TYPE_MAP: Record<string, number> = {
 export default function ResourceManage() {
   const { type = 'component' } = useParams<{ type: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const sourceIdParam = searchParams.get('sourceId')
+  const groupIdParam = searchParams.get('groupId')
   const tableRef = useRef<ResourceTableHandle | null>(null)
   const [groupId, setGroupId] = useState<number | null>(null)
+  const [groups, setGroups] = useState<GroupNode[]>([])
   const [sources, setSources] = useState<Source[]>([])
   const [sourceId, setSourceId] = useState<number | null>(null)
   const [syncing, setSyncing] = useState(false)
@@ -37,8 +41,18 @@ export default function ResourceManage() {
         const typeNum = RESOURCE_TYPE_MAP[type]
         const filtered = data.items.filter(s => s.resource_type === typeNum)
         setSources(filtered)
+        
         if (filtered.length > 0) {
-          setSourceId(filtered[0].id)
+          if (sourceIdParam) {
+            const s = filtered.find(x => x.id === Number(sourceIdParam))
+            if (s) {
+              setSourceId(s.id)
+            } else {
+              setSourceId(filtered[0].id)
+            }
+          } else {
+            setSourceId(filtered[0].id)
+          }
         } else {
           setSourceId(null)
         }
@@ -46,20 +60,41 @@ export default function ResourceManage() {
       .catch(() => message.error('加载来源失败'))
   }, [type])
 
+  const findGroup = (nodes: GroupNode[], targetId: number): GroupNode | null => {
+    for (const node of nodes) {
+      if (node.id === targetId) return node
+      if (node.children) {
+        const found = findGroup(node.children, targetId)
+        if (found) return found
+      }
+    }
+    return null
+  }
+  
   useEffect(() => {
     if (!sourceId) {
       setGroupId(null)
+      setGroups([])
       return
     }
     
-    api.getGroups(type, sourceId)
+    api.getGroups(type, sourceId, false)
       .then(data => {
+        setGroups(data.items)
+        
         if (data.items.length > 0) {
-          const rootGroup = data.items.find(item => item.parent_id === null)
-          if (rootGroup) {
-            setGroupId(rootGroup.id)
+          if (groupIdParam) {
+            const id = Number(groupIdParam)
+            const group = findGroup(data.items, id)
+            if (group && group.is_default !== 1) {
+              setGroupId(id)
+            } else {
+              const nonDefault = data.items.find(item => item.is_default !== 1)
+              setGroupId(nonDefault ? nonDefault.id : null)
+            }
           } else {
-            setGroupId(data.items[0].id)
+            const nonDefault = data.items.find(item => item.is_default !== 1)
+            setGroupId(nonDefault ? nonDefault.id : null)
           }
         } else {
           setGroupId(null)
@@ -67,8 +102,25 @@ export default function ResourceManage() {
       })
       .catch(() => {
         setGroupId(null)
+        setGroups([])
       })
   }, [type, sourceId])
+
+  useEffect(() => {
+    if (sourceId && groupId) {
+      const currentSourceId = searchParams.get('sourceId')
+      const currentGroupId = searchParams.get('groupId')
+      
+      if (currentSourceId !== String(sourceId) || currentGroupId !== String(groupId)) {
+        setSearchParams({ sourceId: String(sourceId), groupId: String(groupId) }, { replace: true })
+      }
+    } else if (sourceId) {
+      const currentSourceId = searchParams.get('sourceId')
+      if (currentSourceId !== String(sourceId)) {
+        setSearchParams({ sourceId: String(sourceId) }, { replace: true })
+      }
+    }
+  }, [sourceId, groupId, setSearchParams, searchParams])
 
   const handleSyncVectors = async () => {
     setSyncing(true)
@@ -154,6 +206,8 @@ export default function ResourceManage() {
     }
   }
 
+  const isInDefaultGroup = groups.some(g => g.id === groupId && g.is_default === 1)
+  
   return (
     <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0 }}>
       {/* 左侧栏：来源选择 + 分组树 */}
@@ -222,10 +276,11 @@ export default function ResourceManage() {
                     : `/${type}/upload?sourceId=${sourceId}`
                   navigate(url)
                 }}
-                disabled={!sourceId}
+                disabled={!sourceId || isInDefaultGroup}
               >
                 批量上传
               </Button>
+              {isInDefaultGroup && <span style={{ color: '#ef4444', fontSize: 12, marginLeft: 8 }}>请选择其他分组</span>}
               <Button
                 danger
                 icon={<DeleteOutlined />}

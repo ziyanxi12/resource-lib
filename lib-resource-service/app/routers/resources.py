@@ -10,7 +10,7 @@ POST /api/resources/{id}/understand  对资源预览图生成语义描述
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -18,7 +18,6 @@ from app.database import get_db
 from app.enums import ResourceType
 from app.models.resource import Resource
 from app.services import resource_service, upload_service
-from app.schemas.resource import ResourceUpdateRequest
 from app.services import vector_sync_service
 
 logger = logging.getLogger(__name__)
@@ -97,27 +96,121 @@ def get_resource(resource_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{resource_id}")
-def update_resource(
+async def update_resource(
     resource_id: int,
-    body: ResourceUpdateRequest,
     db: Session = Depends(get_db),
+    name: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    tags: Optional[str] = Form(None),
+    group_id: Optional[int] = Form(None),
+    search_text: Optional[str] = Form(None),
+    file_name: Optional[str] = Form(None),
+    thumbnail: Optional[UploadFile] = File(None),
+    file: Optional[UploadFile] = File(None),
 ):
-    """更新资源元数据（名称、描述、标签等）"""
+    """更新资源元数据（名称、描述、标签等）及文件"""
+    import json
+    import os
+    import uuid
     from datetime import datetime
+    from app.config import settings
+    from app.enums import ResourceType
     
-    update_data = body.model_dump(exclude_none=True)
-    tags = update_data.pop("tags", None)
-    
-    update_data["data_updated_at"] = datetime.utcnow()
-
-    logger.debug("用户修改数据: resource_id=%d, fields=%s", resource_id, list(update_data.keys()))
-
-    resource = resource_service.update_resource(db, resource_id, update_data)
+    resource = resource_service.get_resource_by_id(db, resource_id)
     if not resource:
         raise HTTPException(status_code=404, detail="资源不存在")
-
+    
+    update_data = {}
+    if name is not None:
+        update_data["name"] = name
+    if description is not None:
+        update_data["description"] = description
+    if search_text is not None:
+        update_data["search_text"] = search_text
+    if file_name is not None:
+        update_data["file_name"] = file_name
+    if group_id is not None:
+        update_data["group_id"] = group_id
+    
+    tags_list = None
     if tags is not None:
-        resource_service.update_tags(db, resource_id, tags)
+        try:
+            tags_list = json.loads(tags)
+        except:
+            tags_list = None
+    
+    if thumbnail:
+        ext = thumbnail.filename.rsplit(".", 1)[-1].lower() if "." in thumbnail.filename else "png"
+        thumb_uuid = str(uuid.uuid4())
+        thumb_name = f"{thumb_uuid}_thumb.{ext}"
+        
+        resource_type = ResourceType(resource.resource_type)
+        if resource_type == ResourceType.image:
+            thumb_dir = os.path.join(settings.FILE_ROOT_DIR, "image")
+            thumb_relative_path = f"image/{thumb_name}"
+        else:
+            type_dir_map = {
+                ResourceType.component: "component",
+                ResourceType.icon: "icon",
+                ResourceType.illus: "illus",
+                ResourceType.template: "template",
+                ResourceType.file: "file",
+            }
+            type_dir = type_dir_map.get(resource_type, "file")
+            thumb_dir = os.path.join(settings.FILE_ROOT_DIR, type_dir, "image")
+            thumb_relative_path = f"{type_dir}/image/{thumb_name}"
+        
+        os.makedirs(thumb_dir, exist_ok=True)
+        thumb_abs_path = os.path.join(thumb_dir, thumb_name)
+        
+        content = await thumbnail.read()
+        with open(thumb_abs_path, "wb") as f:
+            f.write(content)
+        
+        update_data["thumbnail_path"] = thumb_relative_path
+        logger.info("更新缩略图: resource_id=%d, path=%s", resource_id, thumb_relative_path)
+    
+    if file:
+        ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "bin"
+        file_uuid = str(uuid.uuid4())
+        file_name_new = f"{file_uuid}.{ext}"
+        
+        resource_type = ResourceType(resource.resource_type)
+        type_dir_map = {
+            ResourceType.component: "component",
+            ResourceType.icon: "icon",
+            ResourceType.illus: "illus",
+            ResourceType.template: "template",
+            ResourceType.image: "image",
+            ResourceType.file: "file",
+        }
+        type_dir = type_dir_map.get(resource_type, "file")
+        file_dir = os.path.join(settings.FILE_ROOT_DIR, type_dir)
+        file_relative_path = f"{type_dir}/{file_name_new}"
+        
+        os.makedirs(file_dir, exist_ok=True)
+        file_abs_path = os.path.join(file_dir, file_name_new)
+        
+        content = await file.read()
+        with open(file_abs_path, "wb") as f:
+            f.write(content)
+        
+        update_data["file_path"] = file_relative_path
+        update_data["file_type"] = ext
+        update_data["file_size"] = len(content)
+        logger.info("更新文件: resource_id=%d, path=%s, size=%d", resource_id, file_relative_path, len(content))
+    
+    if update_data:
+        update_data["data_updated_at"] = datetime.utcnow()
+        logger.debug("用户修改数据: resource_id=%d, fields=%s", resource_id, list(update_data.keys()))
+        
+        for key, value in update_data.items():
+            setattr(resource, key, value)
+        db.commit()
+        db.refresh(resource)
+    
+    if tags_list is not None:
+        resource_service.update_tags(db, resource_id, tags_list)
         resource = resource_service.get_resource_by_id(db, resource_id)
     
     if resource:
@@ -130,13 +223,21 @@ def update_resource(
 
 
 @router.post("/{resource_id}/understand")
-def understand_resource(resource_id: int, db: Session = Depends(get_db)):
+def understand_resource(
+    resource_id: int,
+    db: Session = Depends(get_db),
+    prompt: Optional[str] = Query(None, description="用户提示词，引导语义生成方向"),
+):
     """
     对资源的预览图生成语义描述（图片类型用原图，其他类型用缩略图）。
     同步调用图片理解模块，单张耗时约 10~30 秒；
     定义为 def（非 async）使 FastAPI 将其放入线程池，不阻塞事件循环。
+    
+    Args:
+        resource_id: 资源ID
+        prompt: 用户提示词（可选），用于引导生成方向
     """
-    description = upload_service.understand_image(db, resource_id)
+    description = upload_service.understand_image(db, resource_id, prompt)
     return {"id": resource_id, "description": description}
 
 

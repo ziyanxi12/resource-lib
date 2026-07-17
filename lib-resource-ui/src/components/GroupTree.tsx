@@ -43,7 +43,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
   const loadGroups = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await api.getGroups(type, sourceId)
+      const data = await api.getGroups(type, sourceId, false)
       setGroups(data.items)
     } catch (e) {
       message.error('加载分组失败')

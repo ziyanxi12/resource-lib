@@ -75,6 +75,7 @@ class ResourceGroup(Base):
     level         = Column(SmallInteger, default=0, comment="层级深度：0=根节点")
     real_path     = Column(String(500), nullable=False, comment="完整路径：根分组/一级分组/二级分组")
     sort_order    = Column(Integer, default=0, comment="同级排序序号")
+    is_default    = Column(Integer, default=0, comment="是否默认分组")
     created_at    = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at    = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

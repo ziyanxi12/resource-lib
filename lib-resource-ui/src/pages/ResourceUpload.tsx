@@ -87,7 +87,7 @@ export default function ResourceUpload() {
   useEffect(() => {
     if (!sourceIdParam) {
       message.error('请从资源管理页面进入')
-      navigate(`/${type}`)
+      navigateToManage()
       return
     }
     
@@ -101,7 +101,7 @@ export default function ResourceUpload() {
           setSourceName(s.name)
         } else {
           message.error('来源不存在')
-          navigate(`/${type}`)
+          navigateToManage()
         }
       })
       .catch(() => message.error('加载来源失败'))
@@ -110,53 +110,74 @@ export default function ResourceUpload() {
   useEffect(() => {
     if (!sourceId) return
     
-    api.getGroups(type, sourceId)
+    api.getGroups(type, sourceId, false)
       .then(data => {
         if (data.items.length === 0) {
-          return api.createGroup({
-            resource_type: typeNum,
-            source_id: sourceId,
-            name: '默认分组',
-            parent_id: null
-          }).then(group => {
-            setGroupId(group.id)
-            setGroupName('默认分组')
-          })
+          message.error('请先创建分组')
+          navigate(`/${type}`)
+          return
         }
         
-        // 查找分组名称的辅助函数
-        const findGroupName = (nodes: typeof data.items, targetId: number): string | null => {
+        const findGroup = (nodes: GroupNode[], targetId: number): GroupNode | null => {
           for (const node of nodes) {
-            if (node.id === targetId) return node.name
+            if (node.id === targetId) return node
             if (node.children) {
-              const found = findGroupName(node.children, targetId)
+              const found = findGroup(node.children, targetId)
               if (found) return found
             }
           }
           return null
         }
         
+        const findGroupName = (nodes: GroupNode[], targetId: number): string | null => {
+          const group = findGroup(nodes, targetId)
+          return group?.name || null
+        }
+        
         if (groupIdParam) {
           const id = Number(groupIdParam)
+          const group = findGroup(data.items, id)
+          
+          if (!group) {
+            message.error('分组不存在')
+            navigateToManage()
+            return
+          }
+          
+          if (group.is_default === 1) {
+            message.error('默认分组不允许上传')
+            navigateToManage()
+            return
+          }
+          
           setGroupId(id)
-          const name = findGroupName(data.items, id)
-          if (name) setGroupName(name)
+          setGroupName(group.name)
         } else {
-          const rootGroup = data.items.find(item => item.parent_id === null)
-          if (rootGroup) {
-            setGroupId(rootGroup.id)
-            setGroupName(rootGroup.name)
+          const nonDefaultGroup = data.items.find(item => item.is_default !== 1)
+          if (nonDefaultGroup) {
+            setGroupId(nonDefaultGroup.id)
+            setGroupName(nonDefaultGroup.name)
+          } else {
+            message.error('请先创建分组')
+            navigateToManage()
           }
         }
       })
       .catch(() => message.error('加载分组失败'))
-  }, [type, sourceId, typeNum, groupIdParam])
+  }, [type, sourceId, typeNum, groupIdParam, navigate])
+
+  const navigateToManage = () => {
+    const params = new URLSearchParams()
+    if (sourceIdParam) params.set('sourceId', sourceIdParam)
+    if (groupIdParam) params.set('groupId', groupIdParam)
+    navigate(params.toString() ? `/${type}?${params.toString()}` : `/${type}`)
+  }
 
   const handleBack = () => {
     items.forEach(item => {
       if (item.thumbnailPreview) URL.revokeObjectURL(item.thumbnailPreview)
     })
-    navigate(`/${type}`)
+    navigateToManage()
   }
 
   const handleZipSelect = async (files: FileList | null) => {
@@ -452,7 +473,7 @@ export default function ResourceUpload() {
       items.forEach(item => {
         if (item.thumbnailPreview) URL.revokeObjectURL(item.thumbnailPreview)
       })
-      navigate(`/${type}`)
+      navigateToManage()
     } catch (e) {
       message.error('上传失败：' + (e instanceof Error ? e.message : '未知错误'))
     } finally {

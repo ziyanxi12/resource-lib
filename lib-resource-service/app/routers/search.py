@@ -97,7 +97,6 @@ def search_resources(request: SearchRequest, db: Session = Depends(get_db)):
     
     try:
         from app.clients import vector_client
-        from app.enums import ResourceType
         
         vec_type_map = {
             ResourceType.component: "component",
@@ -122,15 +121,15 @@ def search_resources(request: SearchRequest, db: Session = Depends(get_db)):
         
         results = vector_client.search(
             vec_type=vec_type,
-            query_text=request.text,
+            query=request.text,
             top_k=request.top_k,
-            filter_dict=filter_dict if filter_dict else None,
+            filters=filter_dict if filter_dict else None,
         )
         
         if not results:
             return {"data": []}
         
-        resource_ids = [int(r["id"]) for r in results]
+        resource_ids = [int(r["data_id"]) for r in results]
         resources_map = {
             r.id: r
             for r in db.query(Resource).filter(Resource.id.in_(resource_ids)).all()
@@ -144,7 +143,7 @@ def search_resources(request: SearchRequest, db: Session = Depends(get_db)):
         
         data = []
         for result in results:
-            resource_id = int(result["id"])
+            resource_id = int(result["data_id"])
             resource = resources_map.get(resource_id)
             if resource:
                 data.append(response_builder(resource, result.get("score", 0.0)))

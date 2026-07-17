@@ -63,12 +63,19 @@ export const api = {
     return request(`/api/resources?${q}`)
   },
 
-  updateResource: (id: number, data: Record<string, unknown>) =>
-    request(`/api/resources/${id}`, {
+  updateResource: (id: number, data: Record<string, unknown> | FormData) => {
+    if (data instanceof FormData) {
+      return request(`/api/resources/${id}`, {
+        method: 'PUT',
+        body: data,
+      })
+    }
+    return request(`/api/resources/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    }),
+    })
+  },
 
   deleteResource: (id: number) =>
     request(`/api/resources/${id}`, { method: 'DELETE' }),
@@ -84,8 +91,28 @@ export const api = {
       body: formData,
     }),
 
-  understandImage: (id: number): Promise<{ id: number; description: string }> =>
-    request(`/api/resources/${id}/understand`, { method: 'POST' }),
+  understandImage: (id: number, prompt?: string): Promise<{ id: number; description: string }> => {
+    if (prompt) {
+      return request(`/api/resources/${id}/understand`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt }),
+      })
+    }
+    return request(`/api/resources/${id}/understand`, { method: 'POST' })
+  },
+
+  updateThumbnail: (id: number, formData: FormData): Promise<{ message: string }> =>
+    request(`/api/resources/${id}/thumbnail`, {
+      method: 'PUT',
+      body: formData,
+    }),
+
+  updateFile: (id: number, formData: FormData): Promise<{ message: string }> =>
+    request(`/api/resources/${id}/file`, {
+      method: 'PUT',
+      body: formData,
+    }),
 
   vectorSearch: async (params: {
     query: string
@@ -106,7 +133,7 @@ export const api = {
     return (data.results?.[0]) ?? []
   },
 
-  getGroups: (type: string, sourceId?: number | null): Promise<{
+  getGroups: (type: string, sourceId?: number | null, excludeDefault?: boolean): Promise<{
     resource_type: number
     resource_type_name: string
     items: GroupNode[]
@@ -114,6 +141,7 @@ export const api = {
     const q = new URLSearchParams()
     q.set('type', type)
     if (sourceId) q.set('source_id', String(sourceId))
+    if (excludeDefault !== undefined) q.set('exclude_default', String(excludeDefault))
     return request(`/api/groups?${q}`)
   },
 
@@ -183,5 +211,6 @@ export interface GroupNode {
   level: number
   real_path: string
   sort_order: number
+  is_default: number
   children: GroupNode[]
 }

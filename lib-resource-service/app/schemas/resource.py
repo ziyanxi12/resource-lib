@@ -44,3 +44,4 @@ class ResourceUpdateRequest(BaseModel):
     tags: Optional[List[str]] = None
     group_id: Optional[int] = None
     search_text: Optional[str] = None
+    file_name: Optional[str] = None
