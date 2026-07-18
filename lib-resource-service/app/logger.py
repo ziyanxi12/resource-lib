@@ -49,7 +49,12 @@ def setup_logging(log_dir: str, log_level: str = "INFO") -> None:
     root.addHandler(debug_handler)
     
     # 抑制第三方库的 DEBUG/INFO 日志，只保留 WARNING 以上
-    for lib in ["httpx", "httpcore", "httpx._client", "httpcore._backends", "hpack", "hpack.hpack"]:
+    for lib in [
+        "httpx", "httpcore", "httpx._client", "httpcore._backends",
+        "hpack", "hpack.hpack",
+        "multipart", "multipart.multipart",
+        "urllib3",
+    ]:
         logging.getLogger(lib).setLevel(logging.WARNING)
 
 

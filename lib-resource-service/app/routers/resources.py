@@ -11,6 +11,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -21,6 +22,9 @@ from app.services import resource_service, upload_service
 from app.services import vector_sync_service
 
 logger = logging.getLogger(__name__)
+
+class UnderstandRequest(BaseModel):
+    prompt: Optional[str] = None
 
 router = APIRouter(prefix="/api/resources", tags=["资源管理"])
 
@@ -226,7 +230,7 @@ async def update_resource(
 def understand_resource(
     resource_id: int,
     db: Session = Depends(get_db),
-    prompt: Optional[str] = Query(None, description="用户提示词，引导语义生成方向"),
+    request: Optional[UnderstandRequest] = None,
 ):
     """
     对资源的预览图生成语义描述（图片类型用原图，其他类型用缩略图）。
@@ -235,8 +239,9 @@ def understand_resource(
     
     Args:
         resource_id: 资源ID
-        prompt: 用户提示词（可选），用于引导生成方向
+        request: 请求体，包含 prompt 字段（可选），用于引导生成方向
     """
+    prompt = request.prompt if request else None
     description = upload_service.understand_image(db, resource_id, prompt)
     return {"id": resource_id, "description": description}
 

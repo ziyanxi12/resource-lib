@@ -43,6 +43,8 @@ const TYPE_LABELS: Record<string, string> = {
   illus: '插画',
 }
 
+const MAX_UPLOAD_COUNT = 500
+
 const getImageDimensions = (file: Blob): Promise<{ width: number; height: number }> => {
   return new Promise((resolve, reject) => {
     const img = new window.Image()
@@ -310,7 +312,6 @@ export default function ResourceUpload() {
       console.log('✓ meta and data exist')
 
       // 校验条目数量（前端限制 500 条）
-      const MAX_UPLOAD_COUNT = 500
       if (config.data.length > MAX_UPLOAD_COUNT) {
         setZipError(`单次上传最多 ${MAX_UPLOAD_COUNT} 条，当前 ${config.data.length} 条`)
         console.log('❌ ERROR: Too many items')
@@ -639,6 +640,10 @@ export default function ResourceUpload() {
   }
 
   const handleAddItem = () => {
+    if (items.length >= MAX_UPLOAD_COUNT) {
+      message.warning(`最多添加 ${MAX_UPLOAD_COUNT} 条数据`)
+      return
+    }
     const uid = `${Date.now()}-${Math.random().toString(36).slice(2)}`
     setItems(prev => [...prev, {
       uid,
@@ -768,7 +773,7 @@ export default function ResourceUpload() {
         </div>
         
         <div style={{ display: 'flex', gap: 8 }}>
-          <Button onClick={handleAddItem} disabled={uploading || !sourceId}>
+          <Button onClick={handleAddItem} disabled={uploading || !sourceId || items.length >= MAX_UPLOAD_COUNT}>
             新增数据
           </Button>
           <Button

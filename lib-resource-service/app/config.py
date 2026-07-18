@@ -66,7 +66,7 @@ class Settings:
 
     # ── 上传限制 ───────────────────────────────────────────────
     # 默认值可通过环境变量配置，但有硬编码最大上限
-    MAX_UPLOAD_COUNT: int = int(os.getenv("MAX_UPLOAD_COUNT", "100"))
+    MAX_UPLOAD_COUNT: int = int(os.getenv("MAX_UPLOAD_COUNT", "500"))
     MAX_ZIP_SIZE_MB:   int = int(os.getenv("MAX_ZIP_SIZE_MB", "50"))
     MAX_FILE_SIZE_MB:  int = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
 

@@ -5,10 +5,13 @@
 
 import os
 import uuid
+import logging
 from datetime import datetime
 from typing import Optional, List, Dict
 from sqlalchemy.orm import Session
 from fastapi import UploadFile
+
+logger = logging.getLogger(__name__)
 
 from app.config import settings
 from app.enums import ResourceType
@@ -199,7 +202,7 @@ def understand_image(db: Session, resource_id: int, prompt: Optional[str] = None
         prompt: 用户提示词（可选），用于引导生成方向
     """
     from app.services.resource_service import get_resource_by_id
-    from app.clients import external
+    from app.clients import image_understanding
     from fastapi import HTTPException
 
     resource = get_resource_by_id(db, resource_id)
@@ -218,8 +221,12 @@ def understand_image(db: Session, resource_id: int, prompt: Optional[str] = None
         raise HTTPException(status_code=404, detail=f"预览图文件不存在: {rel_path}")
 
     try:
-        return external.understand_image(abs_path, prompt)
+        logger.debug("LLM调用入参: resource_id=%d, image_path=%s, prompt=%s", resource_id, abs_path, prompt)
+        result = image_understanding.understand_image(abs_path, prompt)
+        logger.debug("LLM调用输出: resource_id=%d, result=%s", resource_id, result)
+        return result
     except HTTPException:
         raise
     except Exception as e:
+        logger.error("LLM调用失败: resource_id=%d, error=%s", resource_id, str(e))
         raise HTTPException(status_code=502, detail=f"图片语义生成失败: {e}")
