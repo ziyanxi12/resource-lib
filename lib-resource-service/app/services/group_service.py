@@ -39,6 +39,8 @@ def build_tree(groups: List[ResourceGroup]) -> List[GroupNode]:
             root_nodes.append(node)
         elif g.parent_id in group_map:
             group_map[g.parent_id].children.append(node)
+        else:
+            root_nodes.append(node)
 
     return root_nodes
 

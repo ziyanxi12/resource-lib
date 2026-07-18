@@ -70,8 +70,6 @@ const withTimeout = <T extends unknown>(promise: Promise<T>, timeoutMs: number, 
 export default function ResourceUpload() {
   const { type = 'image' } = useParams<{ type: string }>()
   const [searchParams] = useSearchParams()
-  const mode = searchParams.get('mode')
-  const isZipMode = mode === 'zip'
   const navigate = useNavigate()
 
   const [items, setItems] = useState<ZipItem[]>([])
@@ -88,6 +86,16 @@ export default function ResourceUpload() {
   const [groupName, setGroupName] = useState<string>('')
   const [configLoaded, setConfigLoaded] = useState(false)
   const [zipError, setZipError] = useState<string>('')
+
+  // 监听关键状态变化
+  useEffect(() => {
+    console.log('=== State changed ===')
+    console.log('configLoaded:', configLoaded)
+    console.log('zipLoading:', zipLoading)
+    console.log('zipError:', zipError)
+    console.log('zipProgress:', zipProgress)
+    console.log('items.length:', items.length)
+  }, [configLoaded, zipLoading, zipError, zipProgress, items.length])
 
   const typeNum = RESOURCE_TYPE_MAP[type]
   const typeLabel = TYPE_LABELS[type] || '文件'
@@ -192,8 +200,30 @@ export default function ResourceUpload() {
   }
 
   const handleZipSelect = async (files: FileList | null) => {
-    if (!files || files.length === 0) return
+    console.log('=== handleZipSelect called ===')
+    console.log('files:', files)
+    
+    if (!files || files.length === 0) {
+      console.log('No files selected')
+      return
+    }
+    
     const zipFile = files[0]
+    console.log('ZIP file:', {
+      name: zipFile.name,
+      size: zipFile.size,
+      type: zipFile.type
+    })
+    
+    console.log('Initial state:', {
+      configLoaded,
+      zipLoading,
+      zipError,
+      sourceId,
+      sourceIdParam,
+      groupIdParam
+    })
+    
     setZipError('')
     setConfigLoaded(false)
 
@@ -218,10 +248,14 @@ export default function ResourceUpload() {
       if (!confirmed) return
     }
 
+    console.log('File size check passed, starting to load ZIP')
+    
     setZipLoading(true)
     setZipProgress('正在加载 ZIP 文件...')
+    console.log('State updated: zipLoading=true, zipProgress set')
 
     try {
+      console.log('Calling JSZip.loadAsync...')
       // 30 秒超时加载 ZIP
       const zip = await withTimeout(
         JSZip.loadAsync(zipFile),
@@ -231,66 +265,121 @@ export default function ResourceUpload() {
         '2. 使用更小的 ZIP 包（< 50MB）\n' +
         '3. 刷新页面后重试'
       )
+      console.log('ZIP loaded successfully')
 
       setZipProgress('正在解析配置文件...')
+      console.log('Parsing config.json...')
 
       const configFile = zip.file('config.json')
+      console.log('Config file found:', !!configFile)
+      
       if (!configFile) {
         setZipError('ZIP 包中缺少 config.json 文件')
+        console.log('ERROR: config.json not found')
         return
       }
 
       // 10 秒超时读取 config.json
+      console.log('Reading config.json content...')
       const configText = await withTimeout(
         configFile.async('string'),
         10000,
         'config.json 解析超时，文件可能过大'
       )
+      console.log('Config text length:', configText.length)
 
       const config = JSON.parse(configText)
+      console.log('Config parsed:', {
+        meta: config.meta,
+        dataLength: config.data?.length
+      })
 
+      console.log('=== Starting validations ===')
+      console.log('config.meta:', config.meta)
+      console.log('config.data.length:', config.data.length)
+      console.log('type from URL:', type)
+      console.log('sourceIdParam:', sourceIdParam)
+      console.log('groupIdParam:', groupIdParam)
+      console.log('sourceId state:', sourceId)
+      
       if (!config.meta || !config.data) {
         setZipError('config.json 格式错误，缺少 meta 或 data 字段')
+        console.log('❌ ERROR: Missing meta or data')
         return
       }
+      console.log('✓ meta and data exist')
 
       // 校验条目数量（前端限制 500 条）
       const MAX_UPLOAD_COUNT = 500
       if (config.data.length > MAX_UPLOAD_COUNT) {
         setZipError(`单次上传最多 ${MAX_UPLOAD_COUNT} 条，当前 ${config.data.length} 条`)
+        console.log('❌ ERROR: Too many items')
         return
       }
+      console.log(`✓ Items count OK: ${config.data.length}`)
 
       const metaType = config.meta.type
+      console.log('Type check:', { metaType, currentType: type })
       if (metaType !== type) {
+        console.log('=== Validation failed ===')
+        console.log('Setting zipError:', `类型不匹配：config.json 中 type="${metaType}"，但当前页面是 "${type}"`)
+        console.log('Current zipError before set:', zipError)
         setZipError(`类型不匹配：config.json 中 type="${metaType}"，但当前页面是 "${type}"`)
+        console.log('zipError set, returning from try block')
         return
       }
+      console.log('✓ Type matches')
 
       // 验证来源ID一致性
       const metaSourceId = config.meta.source_id
+      console.log('Source ID check:', { 
+        metaSourceId, 
+        sourceIdParam, 
+        sourceIdParamNumber: Number(sourceIdParam),
+        isEqual: metaSourceId === Number(sourceIdParam)
+      })
       if (metaSourceId !== Number(sourceIdParam)) {
         setZipError(`来源ID不一致：config.json 中 source_id=${metaSourceId}，当前页面 sourceId=${sourceIdParam}`)
+        console.log('❌ ERROR: Source ID mismatch')
         return
       }
+      console.log('✓ Source ID matches')
 
       // 验证分组ID一致性（如果有）
       const metaGroupId = config.meta.group_id
+      console.log('Group ID check:', { 
+        metaGroupId, 
+        groupIdParam, 
+        groupIdParamNumber: Number(groupIdParam),
+        shouldCheck: metaGroupId && groupIdParam,
+        isEqual: metaGroupId === Number(groupIdParam)
+      })
       if (metaGroupId && groupIdParam && metaGroupId !== Number(groupIdParam)) {
         setZipError(`分组ID不一致：config.json 中 group_id=${metaGroupId}，当前页面 groupId=${groupIdParam}`)
+        console.log('❌ ERROR: Group ID mismatch')
         return
       }
+      console.log('✓ Group ID matches')
 
+      console.log('sourceId state check:', sourceId)
       if (!sourceId) {
         setZipError('请从资源管理页面进入上传')
+        console.log('❌ ERROR: sourceId is null')
         return
       }
+      console.log('✓ sourceId state OK')
 
+      console.log('All validations passed, starting to parse items...')
+      
       const parsedItems: ZipItem[] = []
       const totalItems = config.data.length
+      console.log(`Total items to parse: ${totalItems}`)
 
       for (let idx = 0; idx < config.data.length; idx++) {
         const item = config.data[idx]
+        if (idx % 10 === 0) {
+          console.log(`Parsing item ${idx + 1}/${totalItems}`)
+        }
         setZipProgress(`正在解析第 ${idx + 1}/${totalItems} 个资源...`)
 
         const uid = `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -327,7 +416,7 @@ export default function ResourceUpload() {
 
         const errors: Record<string, string> = {}
         if (!item.name?.trim()) errors.name = '名称不能为空'
-        if (!thumbnailBlob) errors.thumbnail_path = '缩略图文件不存在或未上传'
+        // 缩略图可选，不强制验证
 
         const rawData = item.raw_data || {}
         const rawDataString = JSON.stringify(rawData, null, 2)
@@ -356,18 +445,31 @@ export default function ResourceUpload() {
       }
 
       setZipProgress('解析完成')
+      console.log('All items parsed, total:', parsedItems.length)
+      
       setItems(parsedItems)
       setConfigLoaded(true)
+      console.log('State updated: items set, configLoaded=true')
 
     } catch (e) {
+      console.error('Error in handleZipSelect:', e)
       if (e instanceof Error) {
         setZipError(e.message)
+        console.log('Error message:', e.message)
       } else {
         setZipError('ZIP 解析失败：' + String(e))
+        console.log('Unknown error:', String(e))
       }
     } finally {
+      console.log('=== Finally block ===')
+      console.log('Before setState:', {
+        zipLoading,
+        zipError,
+        configLoaded
+      })
       setZipLoading(false)
       setZipProgress('')
+      console.log('After setState (will trigger re-render)')
     }
   }
 
@@ -399,7 +501,6 @@ export default function ResourceUpload() {
       
       const errors: Record<string, string> = {}
       if (!item.name?.trim()) errors.name = '名称不能为空'
-      if (!item.thumbnailBlob) errors.thumbnail_path = '请上传缩略图'
       if (metaJsonError) errors.raw_data = metaJsonError
       
       return { ...item, raw_data_string: value, raw_data: metaJson, errors }
@@ -413,7 +514,6 @@ export default function ResourceUpload() {
       
       const errors: Record<string, string> = {}
       if (!updated.name?.trim()) errors.name = '名称不能为空'
-      if (!updated.thumbnailBlob) errors.thumbnail_path = '请上传缩略图'
       
       return { ...updated, errors }
     }))
@@ -424,7 +524,6 @@ export default function ResourceUpload() {
     setItems(prev => prev.map(item => {
       const errors: Record<string, string> = {}
       if (!item.name?.trim()) { errors.name = '名称不能为空'; valid = false }
-      if (!item.thumbnailBlob) { errors.thumbnail_path = '请上传缩略图'; valid = false }
       
       if (item.raw_data_string?.trim()) {
         try {
@@ -614,7 +713,7 @@ export default function ResourceUpload() {
 | name | string | 是 | 资源名称 |
 | file_name | string | 否 | 展示文件名（用于前端显示） |
 | file_path | string | 否 | 文件在ZIP中的相对路径 |
-| thumbnail_path | string | 是 | 缩略图在ZIP中的相对路径（PNG格式，宽高自动读取） |
+| thumbnail_path | string | 否 | 缩略图在ZIP中的相对路径（PNG格式，宽高自动读取），可选 |
 | description | string | 否 | 资源描述 |
 | tags | array | 否 | 标签数组 |
 | search_text | string | 否 | 搜索关键词 |
@@ -661,7 +760,7 @@ export default function ResourceUpload() {
             返回
           </Button>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600, color: '#1e293b' }}>
-            {isZipMode ? 'ZIP上传' : '批量上传'}{typeLabel}
+            批量上传{typeLabel}
           </h2>
           <span style={{ color: '#64748b', fontSize: 14 }}>
             来源：{sourceName} | 分组：{groupName}
@@ -669,11 +768,9 @@ export default function ResourceUpload() {
         </div>
         
         <div style={{ display: 'flex', gap: 8 }}>
-          {!isZipMode && (
-            <Button onClick={handleAddItem} disabled={uploading || !sourceId}>
-              新增数据
-            </Button>
-          )}
+          <Button onClick={handleAddItem} disabled={uploading || !sourceId}>
+            新增数据
+          </Button>
           <Button
             icon={<FileZipOutlined />}
             onClick={() => zipInputRef.current?.click()}
@@ -710,52 +807,35 @@ export default function ResourceUpload() {
         onChange={e => handleZipSelect(e.target.files)}
       />
 
-      {/* ZIP上传区域 */}
-      {isZipMode && !configLoaded && (
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 12 }}>
-            <Button
-              icon={<FileZipOutlined />}
-              onClick={() => zipInputRef.current?.click()}
-              disabled={uploading || zipLoading}
-            >
-              选择ZIP包
-            </Button>
-            <span style={{ marginLeft: 12, color: '#64748b', fontSize: 13 }}>
-              ZIP包最大100MB，单次最多500条
-            </span>
-          </div>
+      {/* 进度提示 */}
+      {zipLoading && (
+        <div style={{
+          marginBottom: 16,
+          padding: 12,
+          background: '#eff6ff',
+          borderRadius: 6,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}>
+          <span style={{ color: '#1e40af', fontSize: 14 }}>
+            {zipProgress || '正在解析 ZIP 文件...'}
+          </span>
+        </div>
+      )}
 
-          {/* 加载进度提示 */}
-          {zipLoading && (
-            <div style={{
-              marginTop: 12,
-              padding: 12,
-              background: '#eff6ff',
-              borderRadius: 6,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}>
-              <span style={{ color: '#1e40af', fontSize: 14 }}>
-                {zipProgress || '正在解析 ZIP 文件...'}
-              </span>
-            </div>
-          )}
-
-          {zipError && (
-            <div style={{
-              marginTop: 12,
-              padding: 12,
-              background: '#fef2f2',
-              borderRadius: 6,
-              color: '#ef4444',
-              fontSize: 13,
-              whiteSpace: 'pre-wrap',
-            }}>
-              {zipError}
-            </div>
-          )}
+      {/* 错误提示 */}
+      {zipError && (
+        <div style={{
+          marginBottom: 16,
+          padding: 12,
+          background: '#fef2f2',
+          borderRadius: 6,
+          color: '#ef4444',
+          fontSize: 13,
+          whiteSpace: 'pre-wrap',
+        }}>
+          {zipError}
         </div>
       )}
 
@@ -800,6 +880,7 @@ export default function ResourceUpload() {
                       width={36}
                       height={36}
                       style={{ borderRadius: 4, objectFit: 'cover' }}
+                      fallback="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzYiIGhlaWdodD0iMzYiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjM2IiBoZWlnaHQ9IjM2IiBmaWxsPSIjZjFmNWY5Ii8+PHRleHQgeD0iMTgiIHk9IjE4IiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iOCIgZmlsbD0iIzk0YTNiOCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPuengeWKoOiKseeDn+iKseeBhjwvdGV4dD48L3N2Zz4="
                     />
                     <input
                       type="file"
