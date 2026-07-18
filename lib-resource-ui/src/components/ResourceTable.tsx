@@ -397,7 +397,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
     const update = () => {
       const thead = el.querySelector<HTMLElement>('.ant-table-header')
       const pager = el.querySelector<HTMLElement>('.ant-table-pagination')
-      setScrollY(Math.max(100, el.clientHeight - (thead?.offsetHeight ?? 48) - (pager?.offsetHeight ?? 56)))
+      setScrollY(Math.max(100, el.clientHeight - (thead?.offsetHeight ?? 48) - (pager?.offsetHeight ?? 56) - 8))
     }
     update()
     const obs = new ResizeObserver(update)
@@ -548,7 +548,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
 
       <div ref={tableRef} style={{
         flex: 1, minHeight: 0, background: '#fff',
-        borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'auto',
+        borderRadius: 12, border: '1px solid #e2e8f0',
       }}>
         <Table
           rowKey="id"

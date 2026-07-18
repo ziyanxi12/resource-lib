@@ -1,7 +1,7 @@
 # 向量搜索接口极限压测报告
 
 **测试时间**: 2026-07-17 16:00:00  
-**测试接口**: POST /api/resources/search  
+**测试接口**: POST /api/vector/search  
 **服务地址**: http://localhost:8009
 
 ---

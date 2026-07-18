@@ -1,7 +1,7 @@
 """
 向量管理路由（包含搜索、补录、LLM API）
 
-POST /api/vector/search        向量搜索（原版，返回完整字段）
+POST /api/vector/search        向量搜索（支持批量、三种响应模式）
 POST /api/vector/search/llm    LLM 精简版搜索（返回 data_id + vector_text + score）
 GET  /api/vector/detail        通过 data_id + type 获取全量数据
 GET  /api/vector/missing/{type} 检测缺失向量
@@ -30,6 +30,7 @@ class SearchRequest(BaseModel):
     mode: str = Field(default_factory=lambda: settings.VECTOR_SEARCH_MODE)
     top_k: int = 10
     filters: Optional[Dict[str, Any]] = None
+    response_mode: str = Field(default="complete", description="响应模式：basic/normal/complete")
     hybrid_weight: float = 0.7
 
 
@@ -75,27 +76,6 @@ def _lookup_resources(db: Session, vec_type: str, data_ids: List[str]) -> Dict[s
     return {str(row.id): row for row in rows}
 
 
-def _enrich(raw_results: List[dict], db: Session, vec_type: str) -> List[dict]:
-    """将向量服务返回的单组结果补充 DB 资源信息。"""
-    data_ids = [r["data_id"] for r in raw_results if r.get("data_id") is not None]
-    if not data_ids:
-        return []
-
-    resources_by_data_id = _lookup_resources(db, vec_type, data_ids)
-
-    output = []
-    for r in raw_results:
-        data_id = r.get("data_id")
-        res_row = resources_by_data_id.get(str(data_id)) if data_id is not None else None
-        if res_row is None:
-            continue
-        item = _fmt(res_row)
-        item["vector_text"] = r.get("text")
-        item["score"] = r.get("score")
-        output.append(item)
-    return output
-
-
 def _enrich_llm(raw_results: List[dict], db: Session, vec_type: str) -> List[dict]:
     """LLM 版 enrichment，补充 score"""
     data_ids = [r["data_id"] for r in raw_results if r.get("data_id")]
@@ -116,6 +96,33 @@ def _enrich_llm(raw_results: List[dict], db: Session, vec_type: str) -> List[dic
             }
             output.append(item)
     return output
+
+
+def _build_basic_response(resource: Resource, raw_result: dict) -> dict:
+    """basic 模式：id, vector_text, score"""
+    return {
+        "id": resource.id,
+        "vector_text": raw_result.get("text", ""),
+        "score": raw_result.get("score", 0.0),
+    }
+
+
+def _build_normal_response(resource: Resource, raw_result: dict) -> dict:
+    """normal 模式：id, vector_text, score, raw_data"""
+    return {
+        "id": resource.id,
+        "vector_text": raw_result.get("text", ""),
+        "score": raw_result.get("score", 0.0),
+        "raw_data": resource.raw_data,
+    }
+
+
+def _build_complete_response(resource: Resource, raw_result: dict) -> dict:
+    """complete 模式：全量数据"""
+    item = _fmt(resource)
+    item["vector_text"] = raw_result.get("text")
+    item["score"] = raw_result.get("score")
+    return item
 
 
 @router.post("/search/llm")
@@ -165,12 +172,32 @@ def get_resource_by_data_id(
 
 @router.post("/search")
 def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
-    """向量搜索 - 原版（返回完整字段）"""
+    """
+    向量搜索接口（支持批量、三种响应模式）
+    
+    参数说明：
+    - type: 资源类型名（component/template/icon/illus/image/file）
+    - queries: 批量搜索文本数组
+    - mode: 搜索模式（hybrid/sparse/dense）
+    - top_k: 每个 query 返回的数量
+    - filters: 可选过滤条件（如 { source_id: 1, group_id: 2 }）
+    - response_mode: 响应模式（basic/normal/complete）
+    - hybrid_weight: 混合搜索权重
+    
+    响应模式：
+    - basic: 返回 id, vector_text, score（LLM 专用）
+    - normal: 返回 id, vector_text, score, raw_data（外部系统调用）
+    - complete: 返回全量数据（前端展示，默认）
+    """
     vec_type = _resolve_vec_type(req.type)
     if vec_type is None:
         raise HTTPException(status_code=400, detail=f"不支持的 type：{req.type}")
+    
     if not req.queries:
         raise HTTPException(status_code=422, detail="queries 不能为空")
+    
+    if req.response_mode not in ["basic", "normal", "complete"]:
+        raise HTTPException(status_code=400, detail=f"无效的 response_mode: {req.response_mode}，可选值: basic/normal/complete")
 
     try:
         batch_raw = vector_client.batch_search(
@@ -184,7 +211,30 @@ def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"向量服务调用失败：{e}")
 
-    results = [_enrich(group, db, vec_type) for group in batch_raw]
+    response_builder = {
+        "basic": _build_basic_response,
+        "normal": _build_normal_response,
+        "complete": _build_complete_response,
+    }[req.response_mode]
+
+    results = []
+    for group in batch_raw:
+        data_ids = [r["data_id"] for r in group if r.get("data_id")]
+        if not data_ids:
+            results.append([])
+            continue
+        
+        resources_by_data_id = _lookup_resources(db, vec_type, data_ids)
+        
+        group_results = []
+        for r in group:
+            data_id = r.get("data_id")
+            res_row = resources_by_data_id.get(str(data_id)) if data_id else None
+            if res_row:
+                group_results.append(response_builder(res_row, r))
+        
+        results.append(group_results)
+
     return {"results": results}
 
 

@@ -1,7 +1,7 @@
 # 向量搜索接口性能测试报告
 
 **测试时间**: 2026-07-17 15:56:42
-**测试接口**: POST /api/resources/search
+**测试接口**: POST /api/vector/search
 **服务地址**: http://localhost:8009
 
 ## 测试概览

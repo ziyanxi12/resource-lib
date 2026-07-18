@@ -227,10 +227,10 @@ async def run_benchmark(
 async def run_concurrent_tests(base_url: str, concurrencies: List[int], requests_list: List[int]) -> List[BenchmarkResult]:
     """并发梯度测试"""
     results = []
-    search_url = f"{base_url}/api/resources/search"
+    search_url = f"{base_url}/api/vector/search"
     payload = {
-        "text": "按钮",
-        "resource_type": 2,
+        "type": "template",
+        "queries": ["按钮"],
         "top_k": 10,
         "response_mode": "basic"
     }
@@ -254,19 +254,19 @@ async def run_concurrent_tests(base_url: str, concurrencies: List[int], requests
 async def run_mode_tests(base_url: str) -> List[BenchmarkResult]:
     """响应模式对比测试"""
     results = []
-    search_url = f"{base_url}/api/resources/search"
+    search_url = f"{base_url}/api/vector/search"
     
     modes = [
-        ("basic", "基础模式 - 仅返回 id/text/score"),
-        ("normal", "普通模式 - 返回 id/text/score/raw_data"),
+        ("basic", "基础模式 - 仅返回 id/vector_text/score"),
+        ("normal", "普通模式 - 返回 id/vector_text/score/raw_data"),
         ("complete", "完整模式 - 返回全量数据")
     ]
     
     for mode, desc in modes:
         name = f"响应模式测试 - {mode}"
         payload = {
-            "text": "按钮",
-            "resource_type": 2,
+            "type": "template",
+            "queries": ["按钮"],
             "top_k": 10,
             "response_mode": mode
         }
@@ -286,7 +286,7 @@ def generate_report(results: List[BenchmarkResult], base_url: str) -> str:
     lines.append("# 向量搜索接口压测报告")
     lines.append("")
     lines.append(f"**测试时间**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"**测试接口**: POST {base_url}/api/resources/search")
+    lines.append(f"**测试接口**: POST {base_url}/api/vector/search")
     lines.append(f"**服务地址**: {base_url}")
     lines.append("")
     

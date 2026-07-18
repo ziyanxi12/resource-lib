@@ -282,31 +282,32 @@ db.commit()
 
 **接口定义：**
 ```
-POST /api/resources/search
+POST /api/vector/search
 ```
 
 **请求参数：**
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `text` | String | ✓ | - | 搜索文本 |
-| `resource_type` | Int | ✓ | - | 资源类型（1-6） |
-| `source_id` | Int | | - | 来源ID（筛选） |
-| `group_id` | Int | | - | 分组ID（筛选） |
-| `top_k` | Int | | 10 | 返回最相似的 K 条结果（最大50） |
-| `response_mode` | String | | `basic` | 响应模式 |
+| `type` | String | ✓ | - | 资源类型名（component/template/icon/illus/image/file） |
+| `queries` | Array[String] | ✓ | - | 批量搜索文本数组 |
+| `mode` | String | | `hybrid` | 搜索模式（hybrid/sparse/dense） |
+| `top_k` | Int | | 10 | 每个 query 返回数量 |
+| `filters` | Object | | - | 过滤条件（如 { source_id: 1, group_id: 2 }） |
+| `response_mode` | String | | `complete` | 响应模式（basic/normal/complete） |
+| `hybrid_weight` | Float | | 0.7 | 混合搜索权重 |
 
 ### 2. 三种响应模式
 
 #### basic 模式（LLM 专用）
 
-**返回字段：** `id`, `text`, `score`
+**返回字段：** `id`, `vector_text`, `score`
 
 **使用场景：** LLM 工具调用、API 集成
 
 ```json
 {
-  "data": [
+  "results": [
     {
       "id": 1001,
       "text": "主按钮 主要操作按钮 表单 确认",
@@ -596,7 +597,7 @@ PUT    /api/resources/{id}               # 更新资源
 DELETE /api/resources/{id}               # 删除资源（软删除）
 GET    /api/resources/{id}               # 获取资源详情
 GET    /api/resources                    # 资源列表（支持筛选）
-POST   /api/resources/search             # 向量搜索
+POST   /api/vector/search                # 向量搜索（支持批量、三种响应模式）
 POST   /api/resources/batch              # 批量创建
 ```
 

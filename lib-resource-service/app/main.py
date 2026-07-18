@@ -23,7 +23,7 @@ from app.models import resource  # noqa: F401
 
 from app.routers import resources, upload
 from app.routers import vector_router, group
-from app.routers import sources, search, init_router
+from app.routers import sources, init_router
 from app.routers import resource_types
 
 
@@ -66,7 +66,6 @@ app.include_router(upload.router)
 app.include_router(vector_router.router)
 app.include_router(group.router)
 app.include_router(sources.router)
-app.include_router(search.router)
 app.include_router(init_router.router)
 app.include_router(resource_types.router)
 
