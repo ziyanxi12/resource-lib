@@ -85,6 +85,65 @@ def create_resource(db: Session, data: dict) -> Resource:
     return resource
 
 
+def batch_create_resources(db: Session, resources_data: List[dict]) -> List[Resource]:
+    """
+    批量创建资源
+    
+    Args:
+        db: 数据库会话
+        resources_data: 资源数据列表
+    
+    Returns:
+        插入的 Resource 对象列表（含 id）
+    """
+    if not resources_data:
+        return []
+    
+    for data in resources_data:
+        if "source_id" not in data:
+            raise ValueError("source_id is required")
+    
+    db.bulk_insert_mappings(Resource, resources_data)
+    db.commit()
+    
+    source_ids = {d["source_id"] for d in resources_data}
+    names = [d["name"] for d in resources_data]
+    query = db.query(Resource).filter(
+        Resource.source_id.in_(source_ids),
+        Resource.name.in_(names),
+        Resource.is_deleted == 0,
+    ).order_by(Resource.id.desc()).limit(len(resources_data))
+    
+    return query.all()
+
+
+def batch_insert_tags(db: Session, resource_tags: List[Tuple[int, List[str]]]) -> None:
+    """
+    批量插入标签
+    
+    Args:
+        db: 数据库会话
+        resource_tags: [(resource_id, ["tag1", "tag2"]), ...]
+    """
+    if not resource_tags:
+        return
+    
+    resource_ids = [rid for rid, _ in resource_tags]
+    db.query(ResourceTag).filter(ResourceTag.resource_id.in_(resource_ids)).delete()
+    
+    tag_mappings = []
+    for resource_id, tags in resource_tags:
+        for tag in tags:
+            tag_mappings.append({
+                "resource_id": resource_id,
+                "tag": tag.strip(),
+            })
+    
+    if tag_mappings:
+        db.bulk_insert_mappings(ResourceTag, tag_mappings)
+        db.commit()
+
+
 def update_resource(db: Session, resource_id: int, data: dict) -> Optional[Resource]:
     resource = get_resource_by_id(db, resource_id)
     if not resource:

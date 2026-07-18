@@ -176,16 +176,15 @@ export default function ResourceManage() {
     
     setCreatingSource(true)
     try {
-      const typeNum = RESOURCE_TYPE_MAP[type]
       const source = await api.createSource({
         name: newSourceName.trim(),
-        resource_type: typeNum,
+        type: type,
         is_sync_source: 0,
         is_active: 1,
       })
       
       await api.createGroup({
-        resource_type: typeNum,
+        type: type,
         source_id: source.id,
         name: '默认分组',
         parent_id: null,
@@ -196,6 +195,7 @@ export default function ResourceManage() {
       setNewSourceName('')
       
       const data = await api.getSources()
+      const typeNum = RESOURCE_TYPE_MAP[type]
       const filtered = data.items.filter(s => s.resource_type === typeNum)
       setSources(filtered)
       setSourceId(source.id)
@@ -276,11 +276,10 @@ export default function ResourceManage() {
                     : `/${type}/upload?sourceId=${sourceId}`
                   navigate(url)
                 }}
-                disabled={!sourceId || isInDefaultGroup}
+                disabled={!sourceId}
               >
                 批量上传
               </Button>
-              {isInDefaultGroup && <span style={{ color: '#ef4444', fontSize: 12, marginLeft: 8 }}>请选择其他分组</span>}
               <Button
                 danger
                 icon={<DeleteOutlined />}

@@ -18,9 +18,8 @@ class SourceOut(BaseModel):
 
 
 class SourceCreate(BaseModel):
-    code: str
+    type: str
     name: str
-    resource_type: int
     is_sync_source: Optional[int] = 0
     config: Optional[Dict[str, Any]] = None
     is_active: Optional[int] = 1

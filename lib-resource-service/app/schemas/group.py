@@ -23,7 +23,7 @@ class GroupTreeResponse(BaseModel):
 
 
 class GroupCreate(BaseModel):
-    resource_type: int
+    type: str
     source_id: Optional[int] = None
     name: str
     parent_id: Optional[int] = None

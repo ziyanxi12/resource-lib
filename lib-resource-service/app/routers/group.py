@@ -47,9 +47,9 @@ def get_groups(
 @router.post("")
 def create_group(body: GroupCreate, db: Session = Depends(get_db)):
     try:
-        resource_type = ResourceType(body.resource_type)
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"无效的 resource_type: {body.resource_type}")
+        resource_type = ResourceType.from_name(body.type)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"未知资源类型: {body.type}")
 
     try:
         group = group_service.create_group(

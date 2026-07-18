@@ -24,6 +24,7 @@ from app.models import resource  # noqa: F401
 from app.routers import resources, upload
 from app.routers import vector_router, group
 from app.routers import sources, search, init_router
+from app.routers import resource_types
 
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ app.include_router(group.router)
 app.include_router(sources.router)
 app.include_router(search.router)
 app.include_router(init_router.router)
+app.include_router(resource_types.router)
 
 # 静态文件服务：前端可通过 /static/{file_path} 直接访问上传文件
 if os.path.exists(settings.FILE_ROOT_DIR):

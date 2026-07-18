@@ -94,7 +94,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
     }
     try {
       await api.createGroup({
-        resource_type: RESOURCE_TYPE_MAP[type],
+        type: type,
         name: newName.trim(),
         parent_id: addingParentId,
         source_id: sourceId ?? undefined,

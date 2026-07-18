@@ -431,7 +431,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
     setSearchMode(true)
     setLoading(true)
     try {
-      const filters: Record<string, unknown> = { resource_type: type }
+      const filters: Record<string, unknown> = {}
       if (sourceId) filters.source_id = sourceId
       if (groupId) filters.group_id = groupId
       const results = await api.vectorSearch({
@@ -539,6 +539,10 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
             返回全量
           </Button>
         )}
+        <div style={{ display: 'flex', gap: 16, marginLeft: 12, color: '#64748b', fontSize: 13 }}>
+          <span>来源ID: <span style={{ color: '#1e293b', fontWeight: 500 }}>{sourceId ?? 'null'}</span></span>
+          <span>分组ID: <span style={{ color: '#1e293b', fontWeight: 500 }}>{groupId ?? 'null'}</span></span>
+        </div>
         {extraActions && <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>{extraActions}</div>}
       </div>
 

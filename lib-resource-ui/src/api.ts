@@ -22,13 +22,26 @@ export interface Source {
   updated_at: string
 }
 
+export interface ResourceTypeItem {
+  id: number
+  name: string
+  label: string
+}
+
 export const api = {
-  getSources: (): Promise<{ items: Source[] }> =>
-    request('/api/sources'),
+  getResourceTypes: (): Promise<{ items: ResourceTypeItem[] }> =>
+    request('/api/resource-types'),
+
+  getSources: (params?: { type?: string; is_active?: number }): Promise<{ items: Source[] }> => {
+    const q = new URLSearchParams()
+    if (params?.type) q.set('type', params.type)
+    if (params?.is_active !== undefined) q.set('is_active', String(params.is_active))
+    return request(`/api/sources?${q}`)
+  },
 
   createSource: (data: {
     name: string
-    resource_type: number
+    type: string
     is_sync_source: number
     is_active: number
   }): Promise<Source> =>
@@ -145,7 +158,7 @@ export const api = {
     return request(`/api/groups?${q}`)
   },
 
-  createGroup: (data: { resource_type: number; name: string; parent_id?: number | null; source_id?: number }): Promise<{
+  createGroup: (data: { type: string; name: string; parent_id?: number | null; source_id?: number }): Promise<{
     id: number
     name: string
     parent_id: number | null

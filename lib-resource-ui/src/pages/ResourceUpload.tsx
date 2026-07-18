@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Button, Input, Select, message, Progress, Image, Tooltip, Upload } from 'antd'
+import { Button, Input, Select, message, Progress, Image, Tooltip, Upload, Spin } from 'antd'
 import { ArrowLeftOutlined, DeleteOutlined, FileZipOutlined, PlusOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons'
 import JSZip from 'jszip'
 import { api, Source, GroupNode } from '../api'
@@ -45,6 +45,17 @@ const TYPE_LABELS: Record<string, string> = {
 
 const MAX_UPLOAD_COUNT = 500
 
+const findGroupById = (nodes: GroupNode[], targetId: number): GroupNode | null => {
+  for (const node of nodes) {
+    if (node.id === targetId) return node
+    if (node.children) {
+      const found = findGroupById(node.children, targetId)
+      if (found) return found
+    }
+  }
+  return null
+}
+
 const getImageDimensions = (file: Blob): Promise<{ width: number; height: number }> => {
   return new Promise((resolve, reject) => {
     const img = new window.Image()
@@ -88,16 +99,8 @@ export default function ResourceUpload() {
   const [groupName, setGroupName] = useState<string>('')
   const [configLoaded, setConfigLoaded] = useState(false)
   const [zipError, setZipError] = useState<string>('')
-
-  // 监听关键状态变化
-  useEffect(() => {
-    console.log('=== State changed ===')
-    console.log('configLoaded:', configLoaded)
-    console.log('zipLoading:', zipLoading)
-    console.log('zipError:', zipError)
-    console.log('zipProgress:', zipProgress)
-    console.log('items.length:', items.length)
-  }, [configLoaded, zipLoading, zipError, zipProgress, items.length])
+  const [pageLoading, setPageLoading] = useState(true)
+  const validatedRef = useRef(false)
 
   const typeNum = RESOURCE_TYPE_MAP[type]
   const typeLabel = TYPE_LABELS[type] || '文件'
@@ -105,60 +108,68 @@ export default function ResourceUpload() {
   const sourceIdParam = searchParams.get('sourceId')
   const groupIdParam = searchParams.get('groupId')
 
-  useEffect(() => {
-    if (!sourceIdParam) {
-      message.error('请从资源管理页面进入')
-      navigateToManage()
-      return
-    }
-    
-    api.getSources()
-      .then(data => {
-        const filtered = data.items.filter(s => s.resource_type === typeNum)
-        setSources(filtered)
-        const s = filtered.find(x => x.id === Number(sourceIdParam))
-        if (s) {
-          setSourceId(s.id)
-          setSourceName(s.name)
-        } else {
-          message.error('来源不存在')
-          navigateToManage()
-        }
-      })
-      .catch(() => message.error('加载来源失败'))
-  }, [typeNum, sourceIdParam, type, navigate])
+  const navigateToManage = useCallback(() => {
+    const params = new URLSearchParams()
+    if (sourceIdParam) params.set('sourceId', sourceIdParam)
+    if (groupIdParam) params.set('groupId', groupIdParam)
+    navigate(params.toString() ? `/${type}?${params.toString()}` : `/${type}`)
+  }, [sourceIdParam, groupIdParam, type, navigate])
 
   useEffect(() => {
-    if (!sourceId) return
+    // 防止 StrictMode 双重执行
+    if (validatedRef.current) return
+    validatedRef.current = true
     
-    api.getGroups(type, sourceId, false)
-      .then(data => {
-        if (data.items.length === 0) {
+    const validateAndLoad = async () => {
+      // 提前验证 URL 参数
+      if (!sourceIdParam) {
+        message.error('请从资源管理页面进入')
+        navigateToManage()
+        return
+      }
+      
+      const sourceIdNum = Number(sourceIdParam)
+      if (isNaN(sourceIdNum)) {
+        message.error('来源ID格式错误')
+        navigateToManage()
+        return
+      }
+      
+      setPageLoading(true)
+      
+      try {
+        const [sourcesData, groupsData] = await Promise.all([
+          api.getSources(),
+          api.getGroups(type, sourceIdNum, false)
+        ])
+        
+        const filtered = sourcesData.items.filter(s => s.resource_type === typeNum)
+        setSources(filtered)
+        
+        const source = filtered.find(x => x.id === sourceIdNum)
+        if (!source) {
+          message.error('来源不存在')
+          navigateToManage()
+          return
+        }
+        setSourceId(source.id)
+        setSourceName(source.name)
+        
+        if (groupsData.items.length === 0) {
           message.error('请先创建分组')
-          navigate(`/${type}`)
+          navigateToManage()
           return
         }
         
-        const findGroup = (nodes: GroupNode[], targetId: number): GroupNode | null => {
-          for (const node of nodes) {
-            if (node.id === targetId) return node
-            if (node.children) {
-              const found = findGroup(node.children, targetId)
-              if (found) return found
-            }
-          }
-          return null
-        }
-        
-        const findGroupName = (nodes: GroupNode[], targetId: number): string | null => {
-          const group = findGroup(nodes, targetId)
-          return group?.name || null
-        }
-        
         if (groupIdParam) {
-          const id = Number(groupIdParam)
-          const group = findGroup(data.items, id)
+          const groupIdNum = Number(groupIdParam)
+          if (isNaN(groupIdNum)) {
+            message.error('分组ID格式错误')
+            navigateToManage()
+            return
+          }
           
+          const group = findGroupById(groupsData.items, groupIdNum)
           if (!group) {
             message.error('分组不存在')
             navigateToManage()
@@ -171,28 +182,31 @@ export default function ResourceUpload() {
             return
           }
           
-          setGroupId(id)
+          setGroupId(group.id)
           setGroupName(group.name)
         } else {
-          const nonDefaultGroup = data.items.find(item => item.is_default !== 1)
+          const nonDefaultGroup = groupsData.items.find(item => item.is_default !== 1)
           if (nonDefaultGroup) {
             setGroupId(nonDefaultGroup.id)
             setGroupName(nonDefaultGroup.name)
           } else {
-            message.error('请先创建分组')
+            message.error('请先创建或选中分组')
             navigateToManage()
+            return
           }
         }
-      })
-      .catch(() => message.error('加载分组失败'))
-  }, [type, sourceId, typeNum, groupIdParam, navigate])
-
-  const navigateToManage = () => {
-    const params = new URLSearchParams()
-    if (sourceIdParam) params.set('sourceId', sourceIdParam)
-    if (groupIdParam) params.set('groupId', groupIdParam)
-    navigate(params.toString() ? `/${type}?${params.toString()}` : `/${type}`)
-  }
+        
+        setConfigLoaded(true)
+      } catch (e) {
+        message.error('加载数据失败')
+        console.error('加载失败:', e)
+      } finally {
+        setPageLoading(false)
+      }
+    }
+    
+    validateAndLoad()
+  }, [sourceIdParam, groupIdParam, type, typeNum, navigateToManage])
 
   const handleBack = () => {
     items.forEach(item => {
@@ -752,6 +766,19 @@ export default function ResourceUpload() {
     a.download = `${type}_template.zip`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  if (pageLoading && !configLoaded) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh' 
+      }}>
+        <Spin size="large" tip="加载中..." />
+      </div>
+    )
   }
 
   return (

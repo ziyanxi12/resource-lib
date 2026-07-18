@@ -77,7 +77,6 @@ async def batch_upload(
     file_dir_name = get_file_dir(resource_type)
     file_dir = os.path.join(settings.FILE_ROOT_DIR, file_dir_name)
     
-    # 缩略图目录：image 类型直接放在 image/ 目录，其他类型放在各自目录的 image/ 子目录
     if resource_type == ResourceType.image:
         thumb_dir = file_dir
         thumb_relative_prefix = file_dir_name
@@ -88,9 +87,8 @@ async def batch_upload(
     os.makedirs(file_dir, exist_ok=True)
     os.makedirs(thumb_dir, exist_ok=True)
 
-    results = []
-    vectors_data = []
-
+    # ===== 第一阶段：异步保存所有文件 =====
+    saved_items = []
     for idx, (file, thumbnail, item) in enumerate(zip(files, thumbnails, items)):
         file_uuid = str(uuid.uuid4())
 
@@ -126,64 +124,42 @@ async def batch_upload(
         else:
             thumb_relative_path = None
 
-        # 提取元数据
-        name = item.get("name", "")
-        display_file_name = item.get("file_name")
-        description = item.get("description")
-        group_id = item.get("group_id")
-        tags = item.get("tags", [])
-        search_text = item.get("search_text")
-        width = item.get("width")
-        height = item.get("height")
-        raw_data = item.get("raw_data") or item.get("meta_json")
-
-        # 构建资源数据
-        data = {
-            "resource_type": int(resource_type),
-            "source_id": source_id,
-            "name": name,
-            "file_name": display_file_name,
-            "file_path": file_relative_path,
+        saved_items.append({
+            "file_relative_path": file_relative_path,
+            "thumb_relative_path": thumb_relative_path,
             "file_size": file_size,
             "file_type": file_type,
-            "width": width,
-            "height": height,
-            "thumbnail_path": thumb_relative_path,
-            "description": description,
-            "group_id": group_id,
-            "search_text": search_text,
-            "raw_data": raw_data,
-            "data_updated_at": datetime.utcnow(),
-            "created_by": created_by,
-        }
-
-        # 入库
-        resource = create_resource(db, data)
-
-        # 处理标签
-        if tags:
-            update_tags(db, resource.id, tags)
-            from app.models.resource import Resource
-            resource = db.query(Resource).filter(Resource.id == resource.id).first()
-
-        # 构建向量文本
-        resource.vector_text = build_vector_text(resource)
-        db.commit()
-
-        vectors_data.append((resource, {}))
-
-        results.append({
-            "id": resource.id,
-            "name": resource.name,
-            "file_path": file_relative_path,
-            "thumbnail_path": thumb_relative_path,
+            "item": item,
         })
 
-    # 批量向量入库
-    if vectors_data:
+    logger.info("文件保存完成，开始批量入库: type=%s, count=%d", resource_type.name, len(saved_items))
+
+    # ===== 第二阶段：在线程池中批量入库 =====
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor() as pool:
+        insert_result = await loop.run_in_executor(
+            pool,
+            _batch_insert_db,
+            saved_items,
+            int(resource_type),
+            source_id,
+            created_by,
+        )
+
+    resources = insert_result["resources"]
+    results = insert_result["results"]
+
+    # ===== 第三阶段：向量同步 =====
+    if resources:
+        vectors_data = [(r, {}) for r in resources]
         ingest_vectors(resource_type, vectors_data)
-        resource_ids = [r.id for r, _ in vectors_data]
+        resource_ids = [r.id for r in resources]
         batch_update_vector_time(db, resource_ids)
+
+    logger.info("批量入库完成: count=%d", len(results))
 
     return {
         "success": True,
@@ -191,6 +167,89 @@ async def batch_upload(
         "items": results,
         "message": f"成功上传 {len(results)} 个资源",
     }
+
+
+def _batch_insert_db(saved_items: List[dict], resource_type: int, source_id: int, created_by: Optional[str]) -> dict:
+    """在线程池中执行的同步批量入库（支持分批）"""
+    from app.database import SessionLocal
+    from app.services.resource_service import batch_create_resources, batch_insert_tags
+    
+    BATCH_SIZE = 500
+    all_resources = []
+    all_results = []
+    
+    for batch_start in range(0, len(saved_items), BATCH_SIZE):
+        batch_items = saved_items[batch_start:batch_start + BATCH_SIZE]
+        batch_num = batch_start // BATCH_SIZE + 1
+        logger.info("处理第 %d 批: %d 条", batch_num, len(batch_items))
+        
+        db = SessionLocal()
+        try:
+            # 构建批量数据
+            resources_data = []
+            tags_list = []  # 每个资源对应的标签列表（索引与 resources_data 一一对应）
+            
+            for saved in batch_items:
+                item = saved["item"]
+                data = {
+                    "resource_type": resource_type,
+                    "source_id": source_id,
+                    "name": item.get("name", ""),
+                    "file_name": item.get("file_name"),
+                    "file_path": saved["file_relative_path"],
+                    "file_size": saved["file_size"],
+                    "file_type": saved["file_type"],
+                    "width": item.get("width"),
+                    "height": item.get("height"),
+                    "thumbnail_path": saved["thumb_relative_path"],
+                    "description": item.get("description"),
+                    "group_id": item.get("group_id"),
+                    "search_text": item.get("search_text"),
+                    "raw_data": item.get("raw_data") or item.get("meta_json"),
+                    "data_updated_at": datetime.utcnow(),
+                    "created_by": created_by,
+                }
+                resources_data.append(data)
+                tags_list.append(item.get("tags", []))
+            
+            # 批量插入资源
+            resources = batch_create_resources(db, resources_data)
+            
+            # 根据 resource_id 批量插入标签
+            tags_with_ids = []
+            for i, resource in enumerate(resources):
+                tags = tags_list[i]
+                if tags:
+                    tags_with_ids.append((resource.id, tags))
+            if tags_with_ids:
+                batch_insert_tags(db, tags_with_ids)
+            
+            # 构建向量文本
+            from app.services.resource_service import build_vector_text
+            for resource in resources:
+                resource.vector_text = build_vector_text(resource)
+            db.commit()
+            
+            all_resources.extend(resources)
+            all_results.extend([
+                {
+                    "id": r.id,
+                    "name": r.name,
+                    "file_path": r.file_path,
+                    "thumbnail_path": r.thumbnail_path,
+                }
+                for r in resources
+            ])
+            
+            logger.info("第 %d 批入库成功: %d 条", batch_num, len(resources))
+            
+        except Exception as e:
+            logger.error("第 %d 批入库失败: %s", batch_num, str(e))
+            raise
+        finally:
+            db.close()
+    
+    return {"resources": all_resources, "results": all_results}
 
 
 def understand_image(db: Session, resource_id: int, prompt: Optional[str] = None) -> str:

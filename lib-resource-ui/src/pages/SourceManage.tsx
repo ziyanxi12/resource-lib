@@ -4,13 +4,27 @@ import { PlusOutlined, EditOutlined } from '@ant-design/icons'
 import { api, Source, GroupNode } from '../api'
 
 const RESOURCE_TYPE_OPTIONS = [
-  { value: 1, label: '组件' },
-  { value: 2, label: '模版' },
-  { value: 3, label: '图标' },
-  { value: 4, label: '插画' },
-  { value: 5, label: '图片' },
-  { value: 6, label: '文件' },
+  { value: 'component', label: '组件' },
+  { value: 'template', label: '模版' },
+  { value: 'icon', label: '图标' },
+  { value: 'illus', label: '插画' },
+  { value: 'image', label: '图片' },
+  { value: 'file', label: '文件' },
 ]
+
+const RESOURCE_TYPE_ID_TO_NAME: Record<number, string> = {
+  1: 'component',
+  2: 'template',
+  3: 'icon',
+  4: 'illus',
+  5: 'image',
+  6: 'file',
+}
+
+const getTypeLabel = (resourceType: number) => {
+  const option = RESOURCE_TYPE_OPTIONS.find(o => o.value === RESOURCE_TYPE_ID_TO_NAME[resourceType])
+  return option?.label || '未知'
+}
 
 export default function SourceManage() {
   const [sources, setSources] = useState<Source[]>([])
@@ -21,7 +35,7 @@ export default function SourceManage() {
   // 新增来源
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [newName, setNewName] = useState('')
-  const [newType, setNewType] = useState<number>(3)
+  const [newType, setNewType] = useState<string>('icon')
 
   // 编辑来源
   const [editSourceModalOpen, setEditSourceModalOpen] = useState(false)
@@ -62,7 +76,10 @@ export default function SourceManage() {
 
   const loadGroups = async (resourceType: number, sourceId: number) => {
     try {
-      const typeStr = ['component', 'template', 'icon', 'illus', 'image', 'file'][resourceType - 1]
+      const typeStr = RESOURCE_TYPE_ID_TO_NAME[resourceType]
+      if (!typeStr) {
+        throw new Error('未知资源类型')
+      }
       const data = await api.getGroups(typeStr, sourceId)
       setGroups(flattenGroups(data.items))
     } catch {
@@ -90,14 +107,14 @@ export default function SourceManage() {
     try {
       await api.createSource({
         name: newName.trim(),
-        resource_type: newType,
+        type: newType,
         is_sync_source: 0,
         is_active: 1,
       })
       message.success('创建成功')
       setCreateModalOpen(false)
       setNewName('')
-      setNewType(3)
+      setNewType('icon')
       loadSources()
     } catch {
       message.error('创建失败')
@@ -143,7 +160,10 @@ export default function SourceManage() {
   const handleGetGroups = async () => {
     if (!selectedSource) return
     try {
-      const typeStr = ['component', 'template', 'icon', 'illus', 'image', 'file'][selectedSource.resource_type - 1]
+      const typeStr = RESOURCE_TYPE_ID_TO_NAME[selectedSource.resource_type]
+      if (!typeStr) {
+        throw new Error('未知资源类型')
+      }
       const data = await api.getGroups(typeStr, selectedSource.id)
       const jsonStr = JSON.stringify(data, null, 2)
       await navigator.clipboard.writeText(jsonStr)
@@ -163,11 +183,6 @@ export default function SourceManage() {
     setEditingGroup(group)
     setEditGroupName(group.name)
     setEditGroupModalOpen(true)
-  }
-
-  const getTypeLabel = (type: number) => {
-    const found = RESOURCE_TYPE_OPTIONS.find(o => o.value === type)
-    return found?.label || '未知'
   }
 
   return (
