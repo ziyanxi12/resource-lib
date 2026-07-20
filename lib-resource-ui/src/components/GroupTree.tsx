@@ -228,7 +228,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
           alignItems: 'center',
           justifyContent: 'space-between',
           width: '100%',
-          paddingRight: 8,
+          gap: 8,
         }}
         onContextMenu={(e) => {
           e.preventDefault()
@@ -237,6 +237,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
         <span
           style={{
             flex: 1,
+            minWidth: 0,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -259,7 +260,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
             size="small"
             type="text"
             icon={<PlusOutlined />}
-            style={{ opacity: 0.5 }}
+            style={{ flexShrink: 0, opacity: 0.5 }}
           />
         </Dropdown>
       </div>
@@ -267,7 +268,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
   }
 
   return (
-    <div style={{ width, background: '#fff', borderRadius: 8, padding: 12, height: '100%', overflow: 'auto' }}>
+    <div style={{ width, background: '#fff', borderRadius: 8, padding: 12, height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
       <div style={{ marginBottom: 12 }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>分组</span>
       </div>
@@ -276,6 +277,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
         .group-tree .ant-tree-treenode {
           padding: 1px 0 !important;
           margin: 0 !important;
+          width: 100% !important;
         }
         .group-tree .ant-tree-node-content-wrapper {
           height: 28px !important;
@@ -283,6 +285,10 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
           padding: 0 6px !important;
           border-radius: 4px;
           transition: background 0.15s;
+          max-width: calc(100% - 40px) !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          white-space: nowrap !important;
         }
         .group-tree .ant-tree-node-content-wrapper:hover {
           background: #f1f5f9;

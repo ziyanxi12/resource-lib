@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 from typing import Optional, Dict, Any
 from datetime import datetime
 
@@ -13,6 +13,12 @@ class SourceOut(BaseModel):
     is_active: int
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer('created_at', 'updated_at')
+    def serialize_datetime(self, dt: Optional[datetime], _info) -> Optional[int]:
+        if dt is None:
+            return None
+        return int(dt.timestamp() * 1000)
 
     model_config = {"from_attributes": True}
 

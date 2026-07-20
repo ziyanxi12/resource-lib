@@ -17,10 +17,10 @@ export interface Resource {
   raw_data: Record<string, any> | null
   group_id: number | null
   created_by: string | null
-  created_at: string | null
-  updated_at: string | null
-  data_updated_at: string | null
-  vector_updated_at: string | null
+  created_at: number | null
+  updated_at: number | null
+  data_updated_at: number | null
+  vector_updated_at: number | null
   tags: string[]
   score?: number
 }
@@ -40,6 +40,6 @@ export interface Source {
   is_sync_source: boolean
   config: string | null
   is_active: boolean
-  created_at: string
-  updated_at: string
+  created_at: number
+  updated_at: number
 }

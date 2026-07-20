@@ -66,14 +66,14 @@ class Settings:
 
     # ── 上传限制 ───────────────────────────────────────────────
     # 默认值可通过环境变量配置，但有硬编码最大上限
-    MAX_UPLOAD_COUNT: int = int(os.getenv("MAX_UPLOAD_COUNT", "500"))
-    MAX_ZIP_SIZE_MB:   int = int(os.getenv("MAX_ZIP_SIZE_MB", "50"))
-    MAX_FILE_SIZE_MB:  int = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
+    MAX_UPLOAD_COUNT: int = int(os.getenv("MAX_UPLOAD_COUNT", "50000"))
+    MAX_ZIP_SIZE_MB: int = int(os.getenv("MAX_ZIP_SIZE_MB", "2000"))
+    MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "500"))
 
     # 硬编码最大上限（不可配置，保护系统）
-    MAX_UPLOAD_COUNT_LIMIT: int = 500
-    MAX_ZIP_SIZE_MB_LIMIT:   int = 100
-    MAX_FILE_SIZE_MB_LIMIT:  int = 20
+    MAX_UPLOAD_COUNT_LIMIT: int = 50000
+    MAX_ZIP_SIZE_MB_LIMIT: int = 2000
+    MAX_FILE_SIZE_MB_LIMIT: int = 500
 
     def get_effective_upload_limit(self) -> tuple[int, int, int]:
         """返回生效的上传限制（取配置值与硬上限的较小值）"""

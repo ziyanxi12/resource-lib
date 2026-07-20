@@ -17,9 +17,16 @@ function formatSize(bytes: number) {
   return `${(bytes / 1024).toFixed(1)} KB`
 }
 
-function formatDateTime(dt: string | null | undefined): string {
-  if (!dt) return '-'
-  return dt.slice(0, 19).replace('T', ' ')
+function formatDateTime(ts: number | null | undefined): string {
+  if (!ts) return '-'
+  const date = new Date(ts)
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const seconds = String(date.getSeconds()).padStart(2, '0')
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
 }
 
 function SectionHeader({ title }: { title: string }) {
@@ -37,7 +44,7 @@ function SectionHeader({ title }: { title: string }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', padding: '5px 0', gap: 12, alignItems: 'flex-start' }}>
-      <div style={{ width: 80, flexShrink: 0, fontSize: 12, color: '#94a3b8', paddingTop: 2 }}>{label}</div>
+      <div style={{ width: 100, flexShrink: 0, fontSize: 12, color: '#94a3b8', paddingTop: 2, whiteSpace: 'nowrap' }}>{label}</div>
       <div style={{ flex: 1, minWidth: 0, fontSize: 13, color: '#1e293b' }}>{children}</div>
     </div>
   )
@@ -65,6 +72,9 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
   const [newThumbnail, setNewThumbnail] = useState<File | null>(null)
   const [newFile, setNewFile] = useState<File | null>(null)
   
+  const [rawDataString, setRawDataString] = useState('')
+  const [rawDataError, setRawDataError] = useState('')
+  
   const [groupTreeData, setGroupTreeData] = useState<TreeSelectProps['treeData']>([])
   const thumbnailInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -81,6 +91,8 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
     setPrompt('')
     setNewThumbnail(null)
     setNewFile(null)
+    setRawDataString(item.raw_data ? JSON.stringify(item.raw_data, null, 2) : '')
+    setRawDataError('')
   }, [item])
 
   useEffect(() => {
@@ -99,6 +111,22 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
 
   const handleSave = async () => {
     if (!item) return
+    
+    let rawData: Record<string, unknown> | undefined
+    if (rawDataString.trim()) {
+      try {
+        const parsed = JSON.parse(rawDataString)
+        if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+          setRawDataError('JSON 必须是对象')
+          return
+        }
+        rawData = parsed
+      } catch {
+        setRawDataError('JSON 格式错误')
+        return
+      }
+    }
+    
     setSaving(true)
     try {
       const formData = new FormData()
@@ -110,6 +138,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
       if (selectedGroupId) formData.append('group_id', String(selectedGroupId))
       if (newThumbnail) formData.append('thumbnail', newThumbnail)
       if (newFile) formData.append('file', newFile)
+      if (rawData !== undefined) formData.append('raw_data', JSON.stringify(rawData))
       
       await api.updateResource(item.id, formData)
       message.success('保存成功')
@@ -164,6 +193,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           alignItems: 'center', 
           gap: 8,
         }}>
+          {/* 隐藏分组切换功能
           <TreeSelect
             size="small"
             style={{ width: 160 }}
@@ -173,6 +203,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
             placeholder="切换分组"
             treeDefaultExpandAll
           />
+          */}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             <Button type="primary" size="small" loading={saving} onClick={handleSave} disabled={isInDefaultGroup}>保存</Button>
             {isInDefaultGroup && <span style={{ color: '#ef4444', fontSize: 11 }}>请切换分组</span>}
@@ -217,16 +248,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
               }}
             />
           </div>
-          
-          <Button 
-            size="small" 
-            block 
-            style={{ marginTop: 8 }}
-            onClick={() => thumbnailInputRef.current?.click()}
-          >
-            {newThumbnail ? `已选择: ${newThumbnail.name}` : '更新缩略图'}
-          </Button>
-          
+
           <Input.TextArea
             placeholder="输入提示词（可选）"
             value={prompt}
@@ -269,7 +291,6 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
 
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
           <SectionHeader title="基础信息" />
-          <Field label="ID">{item.id}</Field>
           <Field label="名称">
             <Input value={name} onChange={e => setName(e.target.value)} size="small" />
           </Field>
@@ -295,14 +316,17 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           <Field label="关键词">
             <Input value={searchText} onChange={e => setSearchText(e.target.value)} size="small" />
           </Field>
+          <Field label="缩略图路径">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: 1 }}>{newThumbnail ? <span style={{ color: '#059669' }}>{newThumbnail.name}</span> : (item.thumbnail_path || emptyCell)}</span>
+              <Button size="small" onClick={() => thumbnailInputRef.current?.click()}>
+                更新缩略图
+              </Button>
+            </div>
+          </Field>
           <Field label="文件名">
             <Input value={fileName} onChange={e => setFileName(e.target.value)} size="small" />
           </Field>
-
-          <SectionHeader title="文件信息" />
-          <Field label="缩略图路径">{item.thumbnail_path || emptyCell}</Field>
-          <Field label="资源宽度">{item.width ?? emptyCell}</Field>
-          <Field label="资源高度">{item.height ?? emptyCell}</Field>
           <Field label="文件路径">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ flex: 1 }}>{newFile ? <span style={{ color: '#059669' }}>{newFile.name}</span> : (item.file_path || emptyCell)}</span>
@@ -320,46 +344,33 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
               }}
             />
           </Field>
+          <Field label="业务数据">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <Input.TextArea
+                value={rawDataString}
+                onChange={e => {
+                  setRawDataString(e.target.value)
+                  setRawDataError('')
+                }}
+                autoSize={{ minRows: 3, maxRows: 10 }}
+                size="small"
+                style={{ fontFamily: 'ui-monospace, monospace' }}
+                status={rawDataError ? 'error' : undefined}
+              />
+              {rawDataError && <div style={{ color: '#ef4444', fontSize: 10 }}>{rawDataError}</div>}
+            </div>
+          </Field>
+
+          <SectionHeader title="资源信息" />
+          <Field label="ID">{item.id}</Field>
+          <Field label="资源宽度">{item.width ?? emptyCell}</Field>
+          <Field label="资源高度">{item.height ?? emptyCell}</Field>
+          <Field label="向量文本">{item.vector_text || emptyCell}</Field>
           <Field label="文件类型">{item.file_type || emptyCell}</Field>
           <Field label="文件大小">{item.file_size ? formatSize(item.file_size) : emptyCell}</Field>
           <Field label="创建时间">{formatDateTime(item.created_at)}</Field>
           <Field label="数据库更新时间">{formatDateTime(item.updated_at)}</Field>
           <Field label="向量库更新时间">{formatDateTime(item.vector_updated_at)}</Field>
-
-          <SectionHeader title="向量文本" />
-          <div style={{ 
-            padding: 12, 
-            background: '#f8fafc', 
-            borderRadius: 6, 
-            wordBreak: 'break-all', 
-            whiteSpace: 'pre-wrap',
-            maxHeight: 200,
-            overflowY: 'auto',
-            fontSize: 12,
-            color: '#334155',
-          }}>
-            {item.vector_text || emptyCell}
-          </div>
-
-          {item.raw_data && (
-            <>
-              <SectionHeader title="原始数据 (raw_data)" />
-              <pre style={{
-                fontSize: 11,
-                fontFamily: 'ui-monospace, monospace',
-                color: '#334155',
-                margin: 0,
-                lineHeight: 1.6,
-                background: '#f8fafc',
-                padding: 12,
-                borderRadius: 6,
-                overflow: 'auto',
-                maxHeight: 300,
-              }}>
-                {JSON.stringify(item.raw_data, null, 2)}
-              </pre>
-            </>
-          )}
         </div>
       </div>
     </Drawer>
@@ -481,32 +492,29 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
     {
       title: '名称',
       dataIndex: 'name',
-      ellipsis: { showTitle: false },
-      render: (v: string) => v ? <Tooltip title={v}>{v}</Tooltip> : emptyCell,
+      width: '25%',
+      render: (v: string) => <div style={{ wordBreak: 'break-all' }}>{v || emptyCell}</div>,
     },
     {
       title: '描述',
       dataIndex: 'description',
-      ellipsis: { showTitle: false },
-      render: (v: string | null) => v ? <Tooltip title={v}>{v}</Tooltip> : emptyCell,
+      width: '25%',
+      render: (v: string | null) => <div style={{ wordBreak: 'break-all' }}>{v || emptyCell}</div>,
     },
     {
       title: '标签',
       dataIndex: 'tags',
-      width: 160,
-      ellipsis: { showTitle: false },
+      width: '25%',
       render: (tags: string[]) => {
         if (!tags?.length) return emptyCell
-        const text = tags.join('、')
-        return <Tooltip title={text}>{text}</Tooltip>
+        return <div style={{ wordBreak: 'break-all' }}>{tags.join('、')}</div>
       },
     },
     {
       title: '关键词',
       dataIndex: 'search_text',
-      width: 160,
-      ellipsis: { showTitle: false },
-      render: (v: string | null) => v ? <Tooltip title={v}>{v}</Tooltip> : emptyCell,
+      width: '25%',
+      render: (v: string | null) => <div style={{ wordBreak: 'break-all' }}>{v || emptyCell}</div>,
     },
   ]
 
@@ -542,6 +550,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
         <div style={{ display: 'flex', gap: 16, marginLeft: 12, color: '#64748b', fontSize: 13 }}>
           <span>来源ID: <span style={{ color: '#1e293b', fontWeight: 500 }}>{sourceId ?? 'null'}</span></span>
           <span>分组ID: <span style={{ color: '#1e293b', fontWeight: 500 }}>{groupId ?? 'null'}</span></span>
+          <span>数据量: <span style={{ color: '#1e293b', fontWeight: 500 }}>{total}</span></span>
         </div>
         {extraActions && <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>{extraActions}</div>}
       </div>

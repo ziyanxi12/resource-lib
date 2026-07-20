@@ -1029,11 +1029,12 @@ export default function ResourceUpload() {
                 />
               </div>
               <div style={{ flex: 1, minWidth: 80 }}>
-                <Input
+                <Input.TextArea
                   value={item.search_text}
                   onChange={e => updateItem(item.uid, 'search_text', e.target.value)}
                   size="small"
                   placeholder="关键词"
+                  autoSize={{ minRows: 1, maxRows: 3 }}
                   disabled={uploading}
                 />
               </div>

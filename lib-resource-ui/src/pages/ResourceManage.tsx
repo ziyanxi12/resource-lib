@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Button, Select, message, Modal, Input } from 'antd'
+import { Button, Select, message, Modal, Input, Spin } from 'antd'
 import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import ResourceTable, { type ResourceTableHandle } from '../components/ResourceTable'
 import GroupTree from '../components/GroupTree'
@@ -34,8 +34,10 @@ export default function ResourceManage() {
   const [createSourceModalOpen, setCreateSourceModalOpen] = useState(false)
   const [newSourceName, setNewSourceName] = useState('')
   const [creatingSource, setCreatingSource] = useState(false)
+  const [pageLoading, setPageLoading] = useState(true)
 
   useEffect(() => {
+    setPageLoading(true)
     api.getSources()
       .then(data => {
         const typeNum = RESOURCE_TYPE_MAP[type]
@@ -58,6 +60,7 @@ export default function ResourceManage() {
         }
       })
       .catch(() => message.error('加载来源失败'))
+      .finally(() => setPageLoading(false))
   }, [type])
 
   const findGroup = (nodes: GroupNode[], targetId: number): GroupNode | null => {
@@ -86,15 +89,15 @@ export default function ResourceManage() {
           if (groupIdParam) {
             const id = Number(groupIdParam)
             const group = findGroup(data.items, id)
-            if (group && group.is_default !== 1) {
+            if (group) {
               setGroupId(id)
             } else {
-              const nonDefault = data.items.find(item => item.is_default !== 1)
-              setGroupId(nonDefault ? nonDefault.id : null)
+              const defaultGroup = data.items.find(item => item.is_default === 1)
+              setGroupId(defaultGroup ? defaultGroup.id : data.items[0].id)
             }
           } else {
-            const nonDefault = data.items.find(item => item.is_default !== 1)
-            setGroupId(nonDefault ? nonDefault.id : null)
+            const defaultGroup = data.items.find(item => item.is_default === 1)
+            setGroupId(defaultGroup ? defaultGroup.id : data.items[0].id)
           }
         } else {
           setGroupId(null)
@@ -207,6 +210,20 @@ export default function ResourceManage() {
   }
 
   const isInDefaultGroup = groups.some(g => g.id === groupId && g.is_default === 1)
+  
+  if (pageLoading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100%',
+        flex: 1,
+      }}>
+        <Spin size="large" tip="加载中..." />
+      </div>
+    )
+  }
   
   return (
     <div style={{ display: 'flex', gap: 16, flex: 1, minHeight: 0 }}>
