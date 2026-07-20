@@ -58,6 +58,9 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
+  deleteSource: (id: number): Promise<{ message: string }> =>
+    request(`/api/sources/${id}`, { method: 'DELETE' }),
+
   listResources: (params: {
     type?: string
     page?: number
@@ -182,6 +185,9 @@ export const api = {
   deleteGroup: (id: number): Promise<{ id: number; message: string }> =>
     request(`/api/groups/${id}`, { method: 'DELETE' }),
 
+  getGroupResourceCount: (groupId: number): Promise<{ count: number }> =>
+    request(`/api/groups/${groupId}/resource-count`),
+
   moveGroup: (id: number, data: { parent_id?: number | null; sort_order?: number }): Promise<{
     id: number
     parent_id: number | null
@@ -207,6 +213,9 @@ export const api = {
     if (sourceId) q.set('source_id', String(sourceId))
     return request(`/api/resources/sync-vectors?${q}`, { method: 'POST' })
   },
+
+  cleanupOrphanGroups: (): Promise<{ deleted: number; message: string }> =>
+    request('/api/init/cleanup-orphan-groups', { method: 'POST' }),
 
   clearResources: (type: string, sourceId?: number | null, groupId?: number | null): Promise<{ deleted: number }> => {
     const q = new URLSearchParams()

@@ -1,7 +1,8 @@
 import logging
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from app.models.resource import ResourceSource
+from sqlalchemy.exc import IntegrityError
+from app.models.resource import ResourceSource, ResourceGroup, Resource
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,19 @@ def delete_source(db: Session, source_id: int) -> bool:
     if not source:
         return False
     
-    db.delete(source)
-    db.commit()
-    return True
+    # 检查是否有资源
+    resource_count = db.query(Resource).filter(Resource.source_id == source_id).count()
+    if resource_count > 0:
+        raise ValueError(f"该来源下有 {resource_count} 条资源，无法删除。请先删除相关资源。")
+    
+    try:
+        # 删除该来源下的所有分组（代码层面）
+        db.query(ResourceGroup).filter(ResourceGroup.source_id == source_id).delete(synchronize_session=False)
+        
+        # 删除来源
+        db.delete(source)
+        db.commit()
+        return True
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("删除失败，请重试")

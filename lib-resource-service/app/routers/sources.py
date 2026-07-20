@@ -126,7 +126,10 @@ def update_source(source_id: int, data: dict, db: Session = Depends(get_db)):
 @router.delete("/{source_id}")
 def delete_source(source_id: int, db: Session = Depends(get_db)):
     """删除来源"""
-    success = source_service.delete_source(db, source_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="来源不存在")
+    try:
+        success = source_service.delete_source(db, source_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="来源不存在")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"message": "删除成功"}

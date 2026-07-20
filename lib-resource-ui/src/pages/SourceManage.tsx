@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Button, Modal, Input, Select, message, List } from 'antd'
-import { PlusOutlined, EditOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { api, Source, GroupNode } from '../api'
 
 const RESOURCE_TYPE_OPTIONS = [
@@ -41,6 +41,11 @@ export default function SourceManage() {
   const [editSourceModalOpen, setEditSourceModalOpen] = useState(false)
   const [editingSource, setEditingSource] = useState<Source | null>(null)
   const [editSourceName, setEditSourceName] = useState('')
+
+  // 删除来源
+  const [deleteSourceModalOpen, setDeleteSourceModalOpen] = useState(false)
+  const [deletingSource, setDeletingSource] = useState<Source | null>(null)
+  const [deleteSourceLoading, setDeleteSourceLoading] = useState(false)
 
   // 编辑分组
   const [editGroupModalOpen, setEditGroupModalOpen] = useState(false)
@@ -135,6 +140,26 @@ export default function SourceManage() {
       loadSources()
     } catch {
       message.error('修改失败')
+    }
+  }
+
+  const handleDeleteSource = async () => {
+    if (!deletingSource) return
+    
+    setDeleteSourceLoading(true)
+    try {
+      await api.deleteSource(deletingSource.id)
+      message.success('删除成功')
+      setDeleteSourceModalOpen(false)
+      setDeletingSource(null)
+      if (selectedSource?.id === deletingSource.id) {
+        setSelectedSource(null)
+      }
+      loadSources()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '删除失败')
+    } finally {
+      setDeleteSourceLoading(false)
     }
   }
 
@@ -243,6 +268,17 @@ export default function SourceManage() {
                     onClick={(e) => {
                       e.stopPropagation()
                       openEditSourceModal(item)
+                    }}
+                  />
+                  <Button 
+                    type="text" 
+                    size="small" 
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDeletingSource(item)
+                      setDeleteSourceModalOpen(true)
                     }}
                   />
                 </List.Item>
@@ -378,6 +414,22 @@ export default function SourceManage() {
             placeholder="请输入分组名称"
           />
         </div>
+      </Modal>
+
+      {/* 删除来源弹窗 */}
+      <Modal
+        title="确认删除"
+        open={deleteSourceModalOpen}
+        onCancel={() => {
+          setDeleteSourceModalOpen(false)
+          setDeletingSource(null)
+        }}
+        onOk={handleDeleteSource}
+        okText="删除"
+        okButtonProps={{ danger: true, loading: deleteSourceLoading }}
+      >
+        <p>确定删除来源「{deletingSource?.name}」吗？</p>
+        <p style={{ color: '#94a3b8', fontSize: 12 }}>如果该来源下有资源，删除将失败。</p>
       </Modal>
     </div>
   )

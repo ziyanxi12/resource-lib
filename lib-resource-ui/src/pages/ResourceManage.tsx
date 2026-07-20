@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Select, message, Modal, Input, Spin } from 'antd'
-import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons'
+import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons'
 import ResourceTable, { type ResourceTableHandle } from '../components/ResourceTable'
 import GroupTree from '../components/GroupTree'
 import { api, Source, GroupNode } from '../api'
@@ -34,6 +34,9 @@ export default function ResourceManage() {
   const [createSourceModalOpen, setCreateSourceModalOpen] = useState(false)
   const [newSourceName, setNewSourceName] = useState('')
   const [creatingSource, setCreatingSource] = useState(false)
+  const [editSourceModalOpen, setEditSourceModalOpen] = useState(false)
+  const [editSourceName, setEditSourceName] = useState('')
+  const [updatingSource, setUpdatingSource] = useState(false)
   const [pageLoading, setPageLoading] = useState(true)
 
   useEffect(() => {
@@ -209,6 +212,29 @@ export default function ResourceManage() {
     }
   }
 
+  const handleEditSource = async () => {
+    if (!editSourceName.trim()) {
+      message.warning('请输入来源名称')
+      return
+    }
+    
+    setUpdatingSource(true)
+    try {
+      await api.updateSource(sourceId!, { name: editSourceName.trim() })
+      message.success('修改成功')
+      setEditSourceModalOpen(false)
+      
+      const data = await api.getSources()
+      const typeNum = RESOURCE_TYPE_MAP[type]
+      const filtered = data.items.filter(s => s.resource_type === typeNum)
+      setSources(filtered)
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '修改失败')
+    } finally {
+      setUpdatingSource(false)
+    }
+  }
+
   const isInDefaultGroup = groups.some(g => g.id === groupId && g.is_default === 1)
   
   if (pageLoading) {
@@ -243,6 +269,18 @@ export default function ResourceManage() {
                 size="small"
                 icon={<PlusOutlined />}
                 onClick={() => setCreateSourceModalOpen(true)}
+              />
+              <Button
+                size="small"
+                icon={<EditOutlined />}
+                disabled={!sourceId}
+                onClick={() => {
+                  const source = sources.find(s => s.id === sourceId)
+                  if (source) {
+                    setEditSourceName(source.name)
+                    setEditSourceModalOpen(true)
+                  }
+                }}
               />
               <Button
                 size="small"
@@ -350,6 +388,25 @@ export default function ResourceManage() {
           placeholder="请输入来源名称"
           value={newSourceName}
           onChange={e => setNewSourceName(e.target.value)}
+          autoFocus
+        />
+      </Modal>
+
+      <Modal
+        open={editSourceModalOpen}
+        title="编辑来源"
+        onCancel={() => {
+          setEditSourceModalOpen(false)
+          setEditSourceName('')
+        }}
+        onOk={handleEditSource}
+        okText="保存"
+        okButtonProps={{ loading: updatingSource }}
+      >
+        <Input
+          placeholder="请输入来源名称"
+          value={editSourceName}
+          onChange={e => setEditSourceName(e.target.value)}
           autoFocus
         />
       </Modal>

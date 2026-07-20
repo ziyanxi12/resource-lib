@@ -39,6 +39,11 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
   const [newName, setNewName] = useState('')
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([])
+  const [deletePreview, setDeletePreview] = useState<{
+    groups: Array<{ id: number; name: string; level: number }>
+    resourceCount: number
+  } | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   const loadGroups = useCallback(async () => {
     setLoading(true)
@@ -130,21 +135,62 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
     }
   }
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
+    const getAllDescendants = (nodes: GroupNode[], targetId: number): GroupNode[] => {
+      for (const node of nodes) {
+        if (node.id === targetId) {
+          return flattenWithChildren(node)
+        }
+        if (node.children) {
+          const found = getAllDescendants(node.children, targetId)
+          if (found.length) return found
+        }
+      }
+      return []
+    }
+
+    const flattenWithChildren = (node: GroupNode): GroupNode[] => {
+      let result = [node]
+      if (node.children) {
+        for (const child of node.children) {
+          result = result.concat(flattenWithChildren(child))
+        }
+      }
+      return result
+    }
+
+    const descendants = getAllDescendants(groups, id)
     setDeletingId(id)
+    setDeleteLoading(true)
+    try {
+      const { count } = await api.getGroupResourceCount(id)
+      setDeletePreview({
+        groups: descendants.map(g => ({ id: g.id, name: g.name, level: g.level })),
+        resourceCount: count,
+      })
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '获取资源数量失败')
+      setDeletingId(null)
+    } finally {
+      setDeleteLoading(false)
+    }
   }
 
   const confirmDelete = async () => {
+    setDeleteLoading(true)
     try {
       await api.deleteGroup(deletingId!)
       message.success('删除成功')
       setDeletingId(null)
+      setDeletePreview(null)
       if (selectedId === deletingId) {
         onSelect?.(null)
       }
       loadGroups()
     } catch (e) {
-      message.error('删除失败')
+      message.error(e instanceof Error ? e.message : '删除失败')
+    } finally {
+      setDeleteLoading(false)
     }
   }
 
@@ -190,10 +236,21 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
 
   const treeData = convertToTreeData(groups)
 
+  const findGroupById = (nodes: GroupNode[], targetId: number): GroupNode | null => {
+    for (const node of nodes) {
+      if (node.id === targetId) return node
+      if (node.children) {
+        const found = findGroupById(node.children, targetId)
+        if (found) return found
+      }
+    }
+    return null
+  }
+
   const titleRender = (node: TreeDataNode) => {
     const id = Number(node.key)
     const name = String(node.title)
-    const group = groups.find(g => g.id === id)
+    const group = findGroupById(groups, id)
     const isRoot = group?.parent_id === null || group?.parent_id === undefined
 
     if (editingId === id) {
@@ -261,6 +318,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
             type="text"
             icon={<PlusOutlined />}
             style={{ flexShrink: 0, opacity: 0.5 }}
+            onClick={(e) => e.stopPropagation()}
           />
         </Dropdown>
       </div>
@@ -337,12 +395,32 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
       <Modal
         open={deletingId !== null}
         title="确认删除"
-        onCancel={() => setDeletingId(null)}
+        onCancel={() => {
+          setDeletingId(null)
+          setDeletePreview(null)
+        }}
         onOk={confirmDelete}
         okText="删除"
-        okButtonProps={{ danger: true }}
+        okButtonProps={{ danger: true, loading: deleteLoading }}
       >
-        <p>删除分组后，该分组下的资源将归入"未分类"，确定删除吗？</p>
+        {deleteLoading && !deletePreview ? (
+          <p style={{ color: '#64748b' }}>加载中...</p>
+        ) : deletePreview ? (
+          <>
+            <p style={{ marginBottom: 8 }}>以下分组将被删除：</p>
+            <ul style={{ paddingLeft: 20, marginBottom: 12 }}>
+              {deletePreview.groups.map(g => (
+                <li key={g.id}>
+                  {g.name}
+                  {g.level > 0 && <span style={{ color: '#94a3b8', marginLeft: 8 }}>(子分组)</span>}
+                </li>
+              ))}
+            </ul>
+            <p>
+              共 <strong style={{ color: '#ef4444' }}>{deletePreview.resourceCount}</strong> 条资源数据将移入"默认分组"
+            </p>
+          </>
+        ) : null}
       </Modal>
     </div>
   )

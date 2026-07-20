@@ -145,13 +145,56 @@ def _update_children_paths(db: Session, parent_id: int, old_name: str, new_name:
         _update_children_paths(db, child.id, old_name, new_name)
 
 
+def _get_all_descendant_ids(db: Session, group_id: int) -> List[int]:
+    children = db.query(ResourceGroup).filter(ResourceGroup.parent_id == group_id).all()
+    ids = []
+    for child in children:
+        ids.append(child.id)
+        ids.extend(_get_all_descendant_ids(db, child.id))
+    return ids
+
+
+def get_descendants_resource_count(db: Session, group_id: int) -> int:
+    all_ids = _get_all_descendant_ids(db, group_id)
+    all_ids.insert(0, group_id)
+    return db.query(Resource).filter(Resource.group_id.in_(all_ids)).count()
+
+
 def delete_group(db: Session, group_id: int) -> bool:
     group = get_group_by_id(db, group_id)
     if not group:
         return False
 
-    db.query(Resource).filter(Resource.group_id == group_id).update({Resource.group_id: None})
-    db.delete(group)
+    if group.is_default == 1:
+        raise ValueError("不能删除默认分组")
+
+    all_group_ids = _get_all_descendant_ids(db, group_id)
+    all_group_ids.insert(0, group_id)
+
+    default_group = db.query(ResourceGroup).filter(
+        ResourceGroup.source_id == group.source_id,
+        ResourceGroup.resource_type == group.resource_type,
+        ResourceGroup.is_default == 1
+    ).first()
+
+    if not default_group:
+        default_group = create_group(
+            db,
+            group.resource_type,
+            "默认分组",
+            parent_id=None,
+            source_id=group.source_id
+        )
+
+    db.query(Resource).filter(Resource.group_id.in_(all_group_ids)).update(
+        {Resource.group_id: default_group.id},
+        synchronize_session=False
+    )
+
+    db.query(ResourceGroup).filter(ResourceGroup.id.in_(all_group_ids)).delete(
+        synchronize_session=False
+    )
+
     db.commit()
     return True
 

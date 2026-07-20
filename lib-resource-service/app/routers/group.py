@@ -85,11 +85,20 @@ def update_group(group_id: int, body: GroupUpdate, db: Session = Depends(get_db)
     return {"id": group_id, "name": group.name}
 
 
+@router.get("/{group_id}/resource-count")
+def get_resource_count(group_id: int, db: Session = Depends(get_db)):
+    count = group_service.get_descendants_resource_count(db, group_id)
+    return {"count": count}
+
+
 @router.delete("/{group_id}")
 def delete_group(group_id: int, db: Session = Depends(get_db)):
-    ok = group_service.delete_group(db, group_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail="分组不存在")
+    try:
+        ok = group_service.delete_group(db, group_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="分组不存在")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"id": group_id, "message": "删除成功"}
 
 
