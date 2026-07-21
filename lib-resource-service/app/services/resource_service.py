@@ -3,10 +3,18 @@ from typing import Dict, Optional, List, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
-from app.models.resource import Resource, ResourceTag
+from app.models.resource import Resource, ResourceTag, ResourceGroup
 from app.enums import ResourceType
 
 logger = logging.getLogger(__name__)
+
+
+def _get_all_group_ids_with_descendants(db: Session, group_id: int) -> List[int]:
+    ids = [group_id]
+    children = db.query(ResourceGroup).filter(ResourceGroup.parent_id == group_id).all()
+    for child in children:
+        ids.extend(_get_all_group_ids_with_descendants(db, child.id))
+    return ids
 
 
 def get_resources(
@@ -27,7 +35,8 @@ def get_resources(
         query = query.filter(Resource.source_id == source_id)
 
     if group_id is not None:
-        query = query.filter(Resource.group_id == group_id)
+        all_group_ids = _get_all_group_ids_with_descendants(db, group_id)
+        query = query.filter(Resource.group_id.in_(all_group_ids))
 
     if search:
         pattern = f"%{search}%"

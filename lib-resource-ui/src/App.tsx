@@ -27,8 +27,7 @@ const NAV: { key: PageKey; path: string; icon: React.ReactNode; label: string }[
   { key: 'file'      , path: '/file'      , icon: <FileOutlined />,     label: '文件' },
 ]
 
-const HEADER_H = 56
-const SIDEBAR_W = 200
+const SIDEBAR_W = 220
 
 function isUploadPage(pathname: string): boolean {
   return pathname.endsWith('/upload')
@@ -85,123 +84,112 @@ function AppLayout() {
   const currentNavKey = NAV.find(item => item.path === `/${pathParts[0] || ''}`)?.key || 'overview'
 
   return (
-    <>
-      <header
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: HEADER_H,
-          background: '#fff',
-          borderBottom: '1px solid #e2e8f0',
-          display: 'flex',
-          alignItems: 'center',
-          padding: '0 24px',
-          zIndex: 200,
-          boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 8,
-              background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              fontWeight: 800,
-              fontSize: 16,
-              flexShrink: 0,
-            }}
-          >
-            R
-          </div>
-          <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', letterSpacing: -0.3 }}>
-            资源库管理
-          </span>
-        </div>
-      </header>
-
-      <div style={{ display: 'flex', minHeight: '100vh', paddingTop: HEADER_H }}>
-        {!uploadPage && (
-          <aside
-            style={{
-              width: SIDEBAR_W,
-              background: '#0f172a',
-              position: 'fixed',
-              top: HEADER_H,
-              left: 0,
-              bottom: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              zIndex: 100,
-            }}
-          >
-            <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
-              <div
-                style={{
-                  padding: '6px 16px 8px',
-                  fontSize: 11,
-                  color: '#475569',
-                  fontWeight: 600,
-                  letterSpacing: '0.06em',
-                  textTransform: 'uppercase',
-                }}
-              >
-                导航
-              </div>
-              {NAV.map(item => (
-                <NavItem
-                  key={item.key}
-                  icon={item.icon}
-                  label={item.label}
-                  active={currentNavKey === item.key}
-                  onClick={() => navigate(item.path)}
-                />
-              ))}
-            </nav>
-
-            <div
-              style={{
-                padding: '14px 20px',
-                borderTop: '1px solid rgba(255,255,255,0.06)',
-                fontSize: 11,
-                color: '#334155',
-              }}
-            >
-              v{__APP_VERSION__}
-            </div>
-          </aside>
-        )}
-
-        <main
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
+      {!uploadPage && (
+        <aside
           style={{
-            flex: 1,
-            marginLeft: uploadPage ? 0 : SIDEBAR_W,
-            height: `calc(100vh - ${HEADER_H}px)`,
-            background: '#f1f5f9',
-            padding: '28px 32px',
-            boxSizing: 'border-box',
+            width: SIDEBAR_W,
+            background: '#0f172a',
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            bottom: 0,
             display: 'flex',
             flexDirection: 'column',
-            overflow: 'hidden',
+            zIndex: 100,
           }}
         >
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-            <Routes>
-              <Route path="/" element={<ResourceOverview />} />
-              <Route path="/source-manage" element={<SourceManage />} />
-              <Route path="/:type" element={<ResourceManage />} />
-              <Route path="/:type/upload" element={<ResourceUpload />} />
-            </Routes>
+          <div
+            style={{
+              padding: '16px 20px',
+              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: 'linear-gradient(135deg,#6366f1,#8b5cf6)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#fff',
+                fontWeight: 800,
+                fontSize: 16,
+                flexShrink: 0,
+              }}
+            >
+              R
+            </div>
+            <span style={{ fontSize: 16, fontWeight: 700, color: '#fff', letterSpacing: -0.3 }}>
+              资源库管理
+            </span>
           </div>
-        </main>
-      </div>
-    </>
+          
+          <nav style={{ flex: 1, padding: '12px 0', overflowY: 'auto' }}>
+            <div
+              style={{
+                padding: '6px 16px 8px',
+                fontSize: 11,
+                color: '#475569',
+                fontWeight: 600,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+              }}
+            >
+              导航
+            </div>
+            {NAV.map(item => (
+              <NavItem
+                key={item.key}
+                icon={item.icon}
+                label={item.label}
+                active={currentNavKey === item.key}
+                onClick={() => navigate(item.path)}
+              />
+            ))}
+          </nav>
+
+          <div
+            style={{
+              padding: '14px 20px',
+              borderTop: '1px solid rgba(255,255,255,0.06)',
+              fontSize: 11,
+              color: '#334155',
+            }}
+          >
+            v{__APP_VERSION__}
+          </div>
+        </aside>
+      )}
+
+      <main
+        style={{
+          flex: 1,
+          marginLeft: uploadPage ? 0 : SIDEBAR_W,
+          height: '100vh',
+          background: '#f1f5f9',
+          padding: '28px 32px',
+          boxSizing: 'border-box',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <Routes>
+            <Route path="/" element={<ResourceOverview />} />
+            <Route path="/source-manage" element={<SourceManage />} />
+            <Route path="/:type" element={<ResourceManage />} />
+            <Route path="/:type/upload" element={<ResourceUpload />} />
+          </Routes>
+        </div>
+      </main>
+    </div>
   )
 }
 

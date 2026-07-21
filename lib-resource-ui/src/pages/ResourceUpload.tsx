@@ -43,7 +43,7 @@ const TYPE_LABELS: Record<string, string> = {
   illus: '插画',
 }
 
-const MAX_UPLOAD_COUNT = 500
+const MAX_UPLOAD_COUNT = 50000
 
 const findGroupById = (nodes: GroupNode[], targetId: number): GroupNode | null => {
   for (const node of nodes) {
@@ -243,27 +243,6 @@ export default function ResourceUpload() {
     setZipError('')
     setConfigLoaded(false)
 
-    // 校验 ZIP 包大小（前端限制 100MB）
-    const MAX_ZIP_SIZE_MB = 100
-    if (zipFile.size > MAX_ZIP_SIZE_MB * 1024 * 1024) {
-      setZipError(`ZIP 包大小超过限制 (${MAX_ZIP_SIZE_MB}MB)，当前 ${(zipFile.size / 1024 / 1024).toFixed(1)}MB`)
-      return
-    }
-
-    // 大文件警告（> 50MB）
-    const SIZE_WARNING_MB = 50
-    if (zipFile.size > SIZE_WARNING_MB * 1024 * 1024) {
-      const confirmed = window.confirm(
-        `文件较大（${(zipFile.size / 1024 / 1024).toFixed(1)}MB），解析可能需要较长时间。\n\n` +
-        `建议：\n` +
-        `1. 确保浏览器内存充足（建议 > 4GB 可用内存）\n` +
-        `2. 关闭其他标签页以释放内存\n` +
-        `3. 如果解析失败，请尝试拆分成多个小 ZIP 包\n\n` +
-        `是否继续？`
-      )
-      if (!confirmed) return
-    }
-
     console.log('File size check passed, starting to load ZIP')
     
     setZipLoading(true)
@@ -272,15 +251,8 @@ export default function ResourceUpload() {
 
     try {
       console.log('Calling JSZip.loadAsync...')
-      // 30 秒超时加载 ZIP
-      const zip = await withTimeout(
-        JSZip.loadAsync(zipFile),
-        30000,
-        'ZIP 文件加载超时（30秒），请尝试：\n' +
-        '1. 检查文件是否损坏\n' +
-        '2. 使用更小的 ZIP 包（< 50MB）\n' +
-        '3. 刷新页面后重试'
-      )
+      // 加载 ZIP（已移除超时限制，支持大文件）
+      const zip = await JSZip.loadAsync(zipFile)
       console.log('ZIP loaded successfully')
 
       setZipProgress('正在解析配置文件...')
@@ -295,13 +267,9 @@ export default function ResourceUpload() {
         return
       }
 
-      // 10 秒超时读取 config.json
+      // 读取 config.json（已移除超时限制）
       console.log('Reading config.json content...')
-      const configText = await withTimeout(
-        configFile.async('string'),
-        10000,
-        'config.json 解析超时，文件可能过大'
-      )
+      const configText = await configFile.async('string')
       console.log('Config text length:', configText.length)
 
       const config = JSON.parse(configText)
@@ -325,7 +293,7 @@ export default function ResourceUpload() {
       }
       console.log('✓ meta and data exist')
 
-      // 校验条目数量（前端限制 500 条）
+      // 校验条目数量
       if (config.data.length > MAX_UPLOAD_COUNT) {
         setZipError(`单次上传最多 ${MAX_UPLOAD_COUNT} 条，当前 ${config.data.length} 条`)
         console.log('❌ ERROR: Too many items')
@@ -732,20 +700,15 @@ export default function ResourceUpload() {
 | name | string | 是 | 资源名称 |
 | file_name | string | 否 | 展示文件名（用于前端显示） |
 | file_path | string | 否 | 文件在ZIP中的相对路径 |
-| thumbnail_path | string | 否 | 缩略图在ZIP中的相对路径（PNG格式，宽高自动读取），可选 |
+| thumbnail_path | string | 否 | 缩略图在ZIP中的相对路径（支持 PNG/SVG/JPEG 格式，宽高自动读取），可选 |
 | description | string | 否 | 资源描述 |
 | tags | array | 否 | 标签数组 |
 | search_text | string | 否 | 搜索关键词 |
 | raw_data | object | 否 | 自定义元数据 |
 
-## 上传限制
-- 单次条目数：最多 500 条
-- ZIP 包大小：最大 100 MB
-- 单文件大小：最大 20 MB
-
 ## 注意事项
 1. meta.source_id 和 meta.group_id 已根据当前页面自动填充，请勿修改
-2. 缩略图仅支持 PNG 格式，宽高会自动读取
+2. 缩略图支持 PNG/SVG/JPEG 格式，宽高会自动读取
 3. file_path 可选，如果不上传文件可以留空
 `
     zip.file("README.md", readme)
@@ -916,11 +879,11 @@ export default function ResourceUpload() {
                     />
                     <input
                       type="file"
-                      accept="image/png"
+                      accept="image/png,image/svg+xml,image/jpeg"
                       style={{ position: 'absolute', top: 0, left: 0, width: 36, height: 36, opacity: 0, cursor: 'pointer' }}
                       onChange={e => {
                         const file = e.target.files?.[0]
-                        if (file && file.type === 'image/png') {
+                        if (file) {
                           const preview = URL.createObjectURL(file)
                           if (item.thumbnailPreview) URL.revokeObjectURL(item.thumbnailPreview)
                           
@@ -945,8 +908,6 @@ export default function ResourceUpload() {
                                 errors: { ...i.errors, thumbnail_path: '' } 
                               } : i))
                             })
-                        } else if (file) {
-                          message.error('缩略图仅支持 PNG 格式')
                         }
                       }}
                       disabled={uploading}
@@ -963,11 +924,11 @@ export default function ResourceUpload() {
                     </div>
                     <input
                       type="file"
-                      accept="image/png"
+                      accept="image/png,image/svg+xml,image/jpeg"
                       style={{ position: 'absolute', top: 0, left: 0, width: 36, height: 36, opacity: 0, cursor: 'pointer' }}
                       onChange={e => {
                         const file = e.target.files?.[0]
-                        if (file && file.type === 'image/png') {
+                        if (file) {
                           const preview = URL.createObjectURL(file)
                           
                           getImageDimensions(file)
@@ -991,8 +952,6 @@ export default function ResourceUpload() {
                                 errors: { ...i.errors, thumbnail_path: '' } 
                               } : i))
                             })
-                        } else if (file) {
-                          message.error('缩略图仅支持 PNG 格式')
                         }
                       }}
                       disabled={uploading}

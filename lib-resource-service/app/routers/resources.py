@@ -340,6 +340,7 @@ def _fmt(r) -> dict:
         "thumbnail_path": r.thumbnail_path,
         "raw_data": r.raw_data,
         "group_id": r.group_id,
+        "group_path": r.group.real_path if r.group else None,
         "created_by": r.created_by,
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,

@@ -17,11 +17,19 @@ from app.clients import vector_client
 from app.config import settings
 from app.database import get_db
 from app.enums import ResourceType
-from app.models.resource import Resource
+from app.models.resource import Resource, ResourceGroup
 from app.routers.resources import _fmt
 from app.services.vector_sync_service import detect_missing_resources, sync_vectors_by_type
 
 router = APIRouter(prefix="/api/vector", tags=["向量管理"])
+
+
+def _get_all_group_ids_with_descendants(db: Session, group_id: int) -> List[int]:
+    ids = [group_id]
+    children = db.query(ResourceGroup).filter(ResourceGroup.parent_id == group_id).all()
+    for child in children:
+        ids.extend(_get_all_group_ids_with_descendants(db, child.id))
+    return ids
 
 
 class SearchRequest(BaseModel):
@@ -199,13 +207,21 @@ def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
     if req.response_mode not in ["basic", "normal", "complete"]:
         raise HTTPException(status_code=400, detail=f"无效的 response_mode: {req.response_mode}，可选值: basic/normal/complete")
 
+    filters = dict(req.filters) if req.filters else {}
+    
+    if "group_id" in filters:
+        group_id = filters["group_id"]
+        if isinstance(group_id, int):
+            all_group_ids = _get_all_group_ids_with_descendants(db, group_id)
+            filters["group_id"] = all_group_ids
+
     try:
         batch_raw = vector_client.batch_search(
             vec_type=vec_type,
             queries=req.queries,
             mode=req.mode,
             top_k=req.top_k,
-            filters=req.filters or None,
+            filters=filters if filters else None,
             hybrid_weight=req.hybrid_weight,
         )
     except Exception as e:

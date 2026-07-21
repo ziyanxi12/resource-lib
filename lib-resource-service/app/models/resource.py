@@ -56,7 +56,7 @@ class ResourceSource(Base):
     resource_type  = Column(SmallInteger, nullable=False, comment="关联资源类型")
     is_sync_source = Column(Integer, default=0, comment="是否同步来源")
     config         = Column(JSON, nullable=True, comment="来源配置（API 地址、认证信息等）")
-    is_active      = Column(Integer, default=1, comment="是否启用")
+    is_active      = Column(Integer, default=1, comment="是否启用：1=正常 0=已删除(回收站)")
     created_at     = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at     = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

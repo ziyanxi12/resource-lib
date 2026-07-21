@@ -5,7 +5,9 @@ POST /api/upload?type=component|icon|illus|template|image|file
 
 import json
 from typing import Optional, List
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from starlette.requests import Request
+from starlette.datastructures import UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -19,12 +21,8 @@ router = APIRouter(prefix="/api/upload", tags=["批量上传"])
 
 @router.post("", response_model=BatchUploadResponse)
 async def batch_upload(
+    request: Request,
     type: str = Query(..., description="资源类型：icon/illus/template/image/file"),
-    files: List[UploadFile] = File(..., description="资源文件列表"),
-    thumbnails: List[UploadFile] = File(..., description="缩略图列表（PNG）"),
-    items: str = Form(..., description="JSON数组：[{name, group_id, width, height, ...}]"),
-    source_id: int = Form(..., description="来源ID"),
-    created_by: Optional[str] = Form(None, description="创建者"),
     db: Session = Depends(get_db),
 ):
     """
@@ -34,6 +32,25 @@ async def batch_upload(
     - 缩略图仅允许 PNG 格式
     - items 格式：[{"name":"资源名","group_id":1,"width":24,"height":24,...}, ...]
     """
+    # 手动解析表单，覆盖 Starlette 默认的 max_files=1000 限制
+    form = await request.form(max_files=50000, max_fields=50000)
+    
+    # 从表单中提取字段
+    files = form.getlist("files")
+    thumbnails = form.getlist("thumbnails")
+    items = form.get("items")
+    source_id = form.get("source_id")
+    created_by = form.get("created_by")
+    
+    # 类型转换
+    try:
+        source_id = int(source_id) if source_id else None
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="来源ID格式错误")
+    
+    if source_id is None:
+        raise HTTPException(status_code=400, detail="来源ID不能为空")
+    
     # 校验类型
     try:
         resource_type = ResourceType.from_name(type)
@@ -80,15 +97,15 @@ async def batch_upload(
                 detail=f"第 {i + 1} 个缩略图必须为 PNG 格式"
             )
 
-    # 校验单文件大小
-    for i, file in enumerate(files):
-        if file.filename and file.size is not None:
-            max_file_bytes = max_file_mb * 1024 * 1024
-            if file.size > max_file_bytes:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"第 {i + 1} 个文件大小超过限制 ({max_file_mb}MB)"
-                )
+    # 校验单文件大小 - 已禁用（不限制文件大小）
+    # for i, file in enumerate(files):
+    #     if file.filename and file.size is not None:
+    #         max_file_bytes = max_file_mb * 1024 * 1024
+    #         if file.size > max_file_bytes:
+    #             raise HTTPException(
+    #                 status_code=400,
+    #                 detail=f"第 {i + 1} 个文件大小超过限制 ({max_file_mb}MB)"
+    #             )
 
     # 校验必填字段
     for i, item in enumerate(items_list):

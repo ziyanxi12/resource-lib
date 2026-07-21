@@ -16,6 +16,7 @@ export interface Resource {
   thumbnail_path: string | null
   raw_data: Record<string, any> | null
   group_id: number | null
+  group_path: string | null
   created_by: string | null
   created_at: number | null
   updated_at: number | null

@@ -10,6 +10,7 @@ class GroupNode(BaseModel):
     real_path: str
     sort_order: int
     is_default: int = 0
+    resource_count: int = 0
     children: List["GroupNode"] = []
 
     model_config = {"from_attributes": True}

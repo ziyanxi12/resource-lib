@@ -12,6 +12,7 @@ venv/
 
 # Environment
 .env
+deploy.env
 
 # Node
 node_modules/
@@ -21,5 +22,22 @@ dist/
 # Service runtime storage
 lib-resource-service/storage/
 lib-resource-service/logs/
-!lib-resource-service/storage/template/templates.json
-!lib-resource-service/storage/image/images.json
+# !lib-resource-service/storage/template/templates.json
+# !lib-resource-service/storage/image/images.json
+
+# Test files and directories
+test_zips/
+test_*.py
+test_*.zip
+create_test_zip.py
+
+# Deploy files
+deploy.env.example
+deploy.sh
+
+# PNG files
+*.png
+
+# Temporary files
+reset.sh
+A.md

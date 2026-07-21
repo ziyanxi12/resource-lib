@@ -8,7 +8,6 @@ interface GroupTreeProps {
   type: string
   selectedId?: number | null
   onSelect?: (id: number | null) => void
-  width?: number
   sourceId?: number | null
 }
 
@@ -29,7 +28,7 @@ function convertToTreeData(groups: GroupNode[]): TreeDataNode[] {
   }))
 }
 
-export default function GroupTree({ type, selectedId, onSelect, width = 240, sourceId }: GroupTreeProps) {
+export default function GroupTree({ type, selectedId, onSelect, sourceId }: GroupTreeProps) {
   const [groups, setGroups] = useState<GroupNode[]>([])
   const [loading, setLoading] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -44,6 +43,19 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
     resourceCount: number
   } | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [clearGroupId, setClearGroupId] = useState<number | null>(null)
+  const [clearModalCount, setClearModalCount] = useState<number | null>(null)
+  const [clearModalLoading, setClearModalLoading] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [movePreview, setMovePreview] = useState<{
+    id: number
+    name: string
+    targetParentId: number | null
+    targetParentName: string
+    sortOrder: number
+    resourceCount: number
+  } | null>(null)
+  const [moveLoading, setMoveLoading] = useState(false)
 
   const loadGroups = useCallback(async () => {
     setLoading(true)
@@ -194,6 +206,35 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
     }
   }
 
+  const handleClearClick = async (groupId: number) => {
+    setClearModalLoading(true)
+    setClearGroupId(groupId)
+    try {
+      const { count } = await api.getGroupResourceCount(groupId)
+      setClearModalCount(count)
+    } catch {
+      setClearModalCount(null)
+    } finally {
+      setClearModalLoading(false)
+    }
+  }
+
+  const handleClear = async () => {
+    if (!clearGroupId || !sourceId) return
+    setClearing(true)
+    try {
+      const r = await api.clearResources(type, sourceId, clearGroupId)
+      message.success(`已删除 ${r.deleted} 条数据`)
+      setClearGroupId(null)
+      setClearModalCount(null)
+      loadGroups()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '清空失败')
+    } finally {
+      setClearing(false)
+    }
+  }
+
   const handleDrop: TreeProps['onDrop'] = async (info) => {
     const dropKey = info.node.key
     const dragKey = info.dragNode.key
@@ -222,15 +263,44 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
       newSortOrder = 0
     }
 
+    const dragGroup = findGroupById(groups, Number(dragKey))
+    const targetParentName = newParentId 
+      ? findGroupById(groups, newParentId)?.name || '未知分组'
+      : '根级别'
+
+    setMoveLoading(true)
     try {
-      await api.moveGroup(Number(dragKey), {
-        parent_id: newParentId,
-        sort_order: newSortOrder,
+      const { count } = await api.getGroupResourceCount(Number(dragKey))
+      setMovePreview({
+        id: Number(dragKey),
+        name: dragGroup?.name || '',
+        targetParentId: newParentId,
+        targetParentName,
+        sortOrder: newSortOrder,
+        resourceCount: count,
+      })
+    } catch (e) {
+      message.error('获取资源数量失败')
+    } finally {
+      setMoveLoading(false)
+    }
+  }
+
+  const confirmMove = async () => {
+    if (!movePreview) return
+    setMoveLoading(true)
+    try {
+      await api.moveGroup(movePreview.id, {
+        parent_id: movePreview.targetParentId,
+        sort_order: movePreview.sortOrder,
       })
       message.success('移动成功')
+      setMovePreview(null)
       loadGroups()
     } catch (e) {
       message.error('移动失败: ' + (e instanceof Error ? e.message : '未知错误'))
+    } finally {
+      setMoveLoading(false)
     }
   }
 
@@ -253,22 +323,6 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
     const group = findGroupById(groups, id)
     const isRoot = group?.parent_id === null || group?.parent_id === undefined
 
-    if (editingId === id) {
-      return (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Input
-            size="small"
-            value={editingName}
-            onChange={e => setEditingName(e.target.value)}
-            style={{ width: 120 }}
-            autoFocus
-          />
-          <Button size="small" type="primary" onClick={handleSaveEdit}>保存</Button>
-          <Button size="small" onClick={() => setEditingId(null)}>取消</Button>
-        </div>
-      )
-    }
-
     const menuItems: Array<{ key: string; label: string; icon: React.ReactNode; danger?: boolean }> = [
       { key: 'add', label: '新增子分组', icon: <PlusOutlined /> },
       { key: 'edit', label: '编辑名称', icon: <EditOutlined /> },
@@ -277,6 +331,8 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
     if (!isRoot) {
       menuItems.push({ key: 'delete', label: '删除分组', icon: <DeleteOutlined />, danger: true })
     }
+    
+    menuItems.push({ key: 'clear', label: '清空数据', icon: <DeleteOutlined />, danger: true })
 
     return (
       <div
@@ -301,6 +357,11 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
           }}
         >
           {name}
+          {group?.resource_count !== undefined && (
+            <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 12 }}>
+              ({group.resource_count})
+            </span>
+          )}
         </span>
         <Dropdown
           menu={{
@@ -309,6 +370,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
               if (key === 'add') handleAddChild(id)
               if (key === 'edit') handleEdit(id, name)
               if (key === 'delete') handleDelete(id)
+              if (key === 'clear') handleClearClick(id)
             },
           }}
           trigger={['click']}
@@ -326,7 +388,7 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
   }
 
   return (
-    <div style={{ width, background: '#fff', borderRadius: 8, padding: 12, height: '100%', overflowY: 'auto', overflowX: 'hidden' }}>
+    <div style={{ background: '#fff', borderRadius: 8, padding: 12, height: '100%', overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div style={{ marginBottom: 12 }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>分组</span>
       </div>
@@ -393,6 +455,23 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
       </Modal>
 
       <Modal
+        open={editingId !== null}
+        title="编辑分组名称"
+        onCancel={() => {
+          setEditingId(null)
+          setEditingName('')
+        }}
+        onOk={handleSaveEdit}
+      >
+        <Input
+          placeholder="请输入分组名称"
+          value={editingName}
+          onChange={e => setEditingName(e.target.value)}
+          autoFocus
+        />
+      </Modal>
+
+      <Modal
         open={deletingId !== null}
         title="确认删除"
         onCancel={() => {
@@ -418,6 +497,51 @@ export default function GroupTree({ type, selectedId, onSelect, width = 240, sou
             </ul>
             <p>
               共 <strong style={{ color: '#ef4444' }}>{deletePreview.resourceCount}</strong> 条资源数据将移入"默认分组"
+            </p>
+          </>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={clearGroupId !== null}
+        title="确认清空"
+        onCancel={() => {
+          setClearGroupId(null)
+          setClearModalCount(null)
+        }}
+        onOk={handleClear}
+        okText="确认清空"
+        okButtonProps={{ danger: true, loading: clearing }}
+      >
+        {clearModalLoading ? (
+          <p style={{ color: '#64748b' }}>正在统计数据...</p>
+        ) : (
+          <p>确定清空当前分组的所有数据吗？</p>
+        )}
+        {clearModalCount !== null && !clearModalLoading && (
+          <p style={{ fontWeight: 500 }}>
+            即将删除 <span style={{ color: '#ef4444' }}>{clearModalCount}</span> 条数据
+          </p>
+        )}
+      </Modal>
+
+      <Modal
+        open={movePreview !== null}
+        title="确认移动"
+        onCancel={() => setMovePreview(null)}
+        onOk={confirmMove}
+        okText="确认移动"
+        okButtonProps={{ loading: moveLoading }}
+      >
+        {moveLoading && !movePreview ? (
+          <p style={{ color: '#64748b' }}>加载中...</p>
+        ) : movePreview ? (
+          <>
+            <p>
+              确定将分组 <strong>{movePreview.name}</strong> 移动到 <strong>{movePreview.targetParentName}</strong> 吗？
+            </p>
+            <p>
+              该分组及其子分组共 <strong style={{ color: '#ef4444' }}>{movePreview.resourceCount}</strong> 条资源将一起移动。
             </p>
           </>
         ) : null}

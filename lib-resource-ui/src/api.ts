@@ -61,6 +61,15 @@ export const api = {
   deleteSource: (id: number): Promise<{ message: string }> =>
     request(`/api/sources/${id}`, { method: 'DELETE' }),
 
+  getTrashSources: (params?: { type?: string }): Promise<{ items: Source[] }> => {
+    const q = new URLSearchParams()
+    if (params?.type) q.set('type', params.type)
+    return request(`/api/sources/trash?${q}`)
+  },
+
+  restoreSource: (id: number): Promise<Source> =>
+    request(`/api/sources/${id}/restore`, { method: 'POST' }),
+
   listResources: (params: {
     type?: string
     page?: number
@@ -234,5 +243,6 @@ export interface GroupNode {
   real_path: string
   sort_order: number
   is_default: number
+  resource_count: number
   children: GroupNode[]
 }

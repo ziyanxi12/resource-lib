@@ -26,6 +26,13 @@ from app.routers import vector_router, group
 from app.routers import sources, init_router
 from app.routers import resource_types
 
+# ===== 移除上传限制 =====
+# 修改 Starlette 的内存阈值，避免大文件上传时的临时文件问题
+# 默认值是 1MB，超过后会写入临时文件，可能导致权限错误
+# 设置为 10GB，所有文件都在内存中处理，避免临时文件问题
+from starlette.formparsers import MultiPartParser
+MultiPartParser.max_file_size = 10 * 1024 * 1024 * 1024  # 10GB
+
 
 logger = logging.getLogger(__name__)
 

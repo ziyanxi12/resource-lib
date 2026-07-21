@@ -11,8 +11,12 @@ def get_sources(
     db: Session,
     resource_type: Optional[int] = None,
     is_active: Optional[int] = None,
+    include_deleted: bool = False,
 ) -> List[ResourceSource]:
     query = db.query(ResourceSource)
+    
+    if not include_deleted:
+        query = query.filter(ResourceSource.is_active == 1)
     
     if resource_type is not None:
         query = query.filter(ResourceSource.resource_type == resource_type)
@@ -21,6 +25,18 @@ def get_sources(
         query = query.filter(ResourceSource.is_active == is_active)
     
     return query.order_by(ResourceSource.created_at.desc()).all()
+
+
+def get_deleted_sources(
+    db: Session,
+    resource_type: Optional[int] = None,
+) -> List[ResourceSource]:
+    query = db.query(ResourceSource).filter(ResourceSource.is_active == 0)
+    
+    if resource_type is not None:
+        query = query.filter(ResourceSource.resource_type == resource_type)
+    
+    return query.order_by(ResourceSource.updated_at.desc()).all()
 
 
 def get_source_by_id(db: Session, source_id: int) -> Optional[ResourceSource]:
@@ -57,19 +73,29 @@ def delete_source(db: Session, source_id: int) -> bool:
     if not source:
         return False
     
-    # 检查是否有资源
-    resource_count = db.query(Resource).filter(Resource.source_id == source_id).count()
-    if resource_count > 0:
-        raise ValueError(f"该来源下有 {resource_count} 条资源，无法删除。请先删除相关资源。")
+    source.is_active = 0
     
-    try:
-        # 删除该来源下的所有分组（代码层面）
-        db.query(ResourceGroup).filter(ResourceGroup.source_id == source_id).delete(synchronize_session=False)
-        
-        # 删除来源
-        db.delete(source)
-        db.commit()
-        return True
-    except IntegrityError:
-        db.rollback()
-        raise ValueError("删除失败，请重试")
+    db.query(Resource).filter(
+        Resource.source_id == source_id,
+        Resource.is_deleted == 0
+    ).update({Resource.is_deleted: 1})
+    
+    db.commit()
+    return True
+
+
+def restore_source(db: Session, source_id: int) -> Optional[ResourceSource]:
+    source = get_source_by_id(db, source_id)
+    if not source or source.is_active != 0:
+        return None
+    
+    source.is_active = 1
+    
+    db.query(Resource).filter(
+        Resource.source_id == source_id,
+        Resource.is_deleted == 1
+    ).update({Resource.is_deleted: 0})
+    
+    db.commit()
+    db.refresh(source)
+    return source

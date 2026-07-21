@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Table, Input, Button, Drawer, Tooltip, Image, message, Select, TreeSelect, Modal, Upload } from 'antd'
-import { SearchOutlined } from '@ant-design/icons'
+import { Table, Input, Button, Drawer, Tooltip, Image, message, Select, Modal, Upload } from 'antd'
+import { SearchOutlined, DownloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import type { TreeSelectProps } from 'antd'
 import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
-import type { GroupNode } from '../api'
 import SemanticUnderstand from './SemanticUnderstand'
 
 const DEFAULT_PAGE_SIZE = 20
@@ -27,6 +25,20 @@ function formatDateTime(ts: number | null | undefined): string {
   const minutes = String(date.getMinutes()).padStart(2, '0')
   const seconds = String(date.getSeconds()).padStart(2, '0')
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+}
+
+function stripExtension(filename: string): string {
+  if (!filename) return ''
+  const lastDotIndex = filename.lastIndexOf('.')
+  if (lastDotIndex === -1) return filename
+  return filename.substring(0, lastDotIndex)
+}
+
+function getExtension(filename: string): string {
+  if (!filename) return ''
+  const lastDotIndex = filename.lastIndexOf('.')
+  if (lastDotIndex === -1) return ''
+  return filename.substring(lastDotIndex + 1)
 }
 
 function SectionHeader({ title }: { title: string }) {
@@ -75,7 +87,6 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
   const [rawDataString, setRawDataString] = useState('')
   const [rawDataError, setRawDataError] = useState('')
   
-  const [groupTreeData, setGroupTreeData] = useState<TreeSelectProps['treeData']>([])
   const thumbnailInputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -85,7 +96,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
     setDescription(item.description ?? '')
     setTags(item.tags ?? [])
     setSearchText(item.search_text ?? '')
-    setFileName(item.file_name ?? '')
+    setFileName(item.file_name ? stripExtension(item.file_name) : '')
     setSelectedGroupId(item.group_id)
     setSemanticText('')
     setPrompt('')
@@ -94,20 +105,6 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
     setRawDataString(item.raw_data ? JSON.stringify(item.raw_data, null, 2) : '')
     setRawDataError('')
   }, [item])
-
-  useEffect(() => {
-    if (!open || !item) return
-    api.getGroups(type, item.source_id, false).then(data => {
-      const convertToTreeData = (nodes: GroupNode[]): TreeSelectProps['treeData'] => 
-        nodes.map(node => ({
-          value: node.id,
-          title: node.is_default ? `${node.name}（默认）` : node.name,
-          disabled: node.is_default === 1,
-          children: node.children ? convertToTreeData(node.children) : undefined,
-        }))
-      setGroupTreeData(convertToTreeData(data.items))
-    })
-  }, [open, item, type])
 
   const handleSave = async () => {
     if (!item) return
@@ -176,10 +173,6 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
 
   if (!item) return null
 
-  const isInDefaultGroup = groupTreeData?.some(node => 
-    node.value === item.group_id && node.disabled
-  )
-
   return (
     <Drawer
       open={open}
@@ -193,20 +186,8 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           alignItems: 'center', 
           gap: 8,
         }}>
-          {/* 隐藏分组切换功能
-          <TreeSelect
-            size="small"
-            style={{ width: 160 }}
-            value={selectedGroupId}
-            onChange={setSelectedGroupId}
-            treeData={groupTreeData}
-            placeholder="切换分组"
-            treeDefaultExpandAll
-          />
-          */}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-            <Button type="primary" size="small" loading={saving} onClick={handleSave} disabled={isInDefaultGroup}>保存</Button>
-            {isInDefaultGroup && <span style={{ color: '#ef4444', fontSize: 11 }}>请切换分组</span>}
+            <Button type="primary" size="small" loading={saving} onClick={handleSave}>保存</Button>
             <Button size="small" onClick={onClose}>取消</Button>
             <Button danger size="small" loading={deleting} onClick={handleDelete}>删除</Button>
           </div>
@@ -240,7 +221,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
             <input
               ref={thumbnailInputRef}
               type="file"
-              accept="image/png"
+              accept="image/png,image/svg+xml,image/jpeg"
               style={{ display: 'none' }}
               onChange={e => {
                 const file = e.target.files?.[0]
@@ -319,6 +300,20 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           <Field label="缩略图路径">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ flex: 1 }}>{newThumbnail ? <span style={{ color: '#059669' }}>{newThumbnail.name}</span> : (item.thumbnail_path || emptyCell)}</span>
+              <Button 
+                size="small" 
+                icon={<DownloadOutlined />}
+                disabled={!item.thumbnail_path || !!newThumbnail}
+                onClick={() => {
+                  const link = document.createElement('a')
+                  link.href = staticUrl(item.thumbnail_path!)
+                  const downloadName = fileName ? `${fileName}_thumb.png` : 'thumbnail.png'
+                  link.download = downloadName
+                  link.click()
+                }}
+              >
+                下载
+              </Button>
               <Button size="small" onClick={() => thumbnailInputRef.current?.click()}>
                 更新缩略图
               </Button>
@@ -330,6 +325,21 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           <Field label="文件路径">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ flex: 1 }}>{newFile ? <span style={{ color: '#059669' }}>{newFile.name}</span> : (item.file_path || emptyCell)}</span>
+              <Button 
+                size="small" 
+                icon={<DownloadOutlined />}
+                disabled={!item.file_path || !!newFile}
+                onClick={() => {
+                  const link = document.createElement('a')
+                  link.href = staticUrl(item.file_path!)
+                  const ext = getExtension(item.file_path!)
+                  const downloadName = fileName ? `${fileName}.${ext}` : item.file_path!.split('/').pop() || 'file'
+                  link.download = downloadName
+                  link.click()
+                }}
+              >
+                下载
+              </Button>
               <Button size="small" onClick={() => fileInputRef.current?.click()}>
                 更新文件
               </Button>
@@ -417,6 +427,10 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
   }, [])
 
   useEffect(() => {
+    setPage(1)
+  }, [sourceId, groupId])
+
+  useEffect(() => {
     if (searchMode) return
     let cancelled = false
     setLoading(true)
@@ -490,21 +504,28 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
       },
     },
     {
+      title: '分组',
+      dataIndex: 'group_path',
+      ellipsis: true,
+      width: '18%',
+      render: (v: string | null) => <div style={{ wordBreak: 'break-all', whiteSpace: 'pre-wrap' }}>{v || emptyCell}</div>,
+    },
+    {
       title: '名称',
       dataIndex: 'name',
-      width: '25%',
+      width: '18%',
       render: (v: string) => <div style={{ wordBreak: 'break-all' }}>{v || emptyCell}</div>,
     },
     {
       title: '描述',
       dataIndex: 'description',
-      width: '25%',
+      width: '18%',
       render: (v: string | null) => <div style={{ wordBreak: 'break-all' }}>{v || emptyCell}</div>,
     },
     {
       title: '标签',
       dataIndex: 'tags',
-      width: '25%',
+      width: '18%',
       render: (tags: string[]) => {
         if (!tags?.length) return emptyCell
         return <div style={{ wordBreak: 'break-all' }}>{tags.join('、')}</div>
@@ -513,7 +534,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
     {
       title: '关键词',
       dataIndex: 'search_text',
-      width: '25%',
+      width: '18%',
       render: (v: string | null) => <div style={{ wordBreak: 'break-all' }}>{v || emptyCell}</div>,
     },
   ]
@@ -526,7 +547,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden' }}>
       <div style={{
         background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0',
         padding: '12px 16px', marginBottom: 14, display: 'flex',
@@ -556,16 +577,46 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
       </div>
 
       <div ref={tableRef} style={{
-        flex: 1, minHeight: 0, background: '#fff',
-        borderRadius: 12, border: '1px solid #e2e8f0',
+        flex: 1, minHeight: 0, minWidth: 0, background: '#fff',
+        borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden',
       }}>
+        <style>{`
+          .custom-table .ant-table-thead > tr > th:first-child,
+          .custom-table .ant-table-tbody > tr > td:first-child {
+            width: 80px !important;
+            min-width: 80px !important;
+            max-width: 80px !important;
+          }
+          .custom-table .ant-table-thead > tr > th:not(:first-child),
+          .custom-table .ant-table-tbody > tr > td:not(:first-child) {
+            width: calc((100% - 80px) / 5) !important;
+          }
+          .custom-table.search-mode .ant-table-thead > tr > th:nth-child(1),
+          .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(1) {
+            width: 80px !important;
+            min-width: 80px !important;
+            max-width: 80px !important;
+          }
+          .custom-table.search-mode .ant-table-thead > tr > th:nth-child(2),
+          .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(2) {
+            width: 80px !important;
+            min-width: 80px !important;
+            max-width: 80px !important;
+          }
+          .custom-table.search-mode .ant-table-thead > tr > th:nth-child(n+3),
+          .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(n+3) {
+            width: calc((100% - 160px) / 5) !important;
+          }
+        `}</style>
         <Table
+          className={`custom-table${searchMode ? ' search-mode' : ''}`}
           rowKey="id"
           columns={searchMode ? [scoreColumn, ...columns] : columns}
           dataSource={items}
           loading={loading}
           size="middle"
-          scroll={{ y: scrollY }}
+          tableLayout="fixed"
+          scroll={{ x: 'max-content', y: scrollY }}
           onRow={record => ({
             onClick: () => { if (!isPreviewing) { setDetailItem(record); setDetailOpen(true) } },
             style: { cursor: 'pointer' },

@@ -20,7 +20,7 @@ def get_groups_by_type(
     return query.order_by(ResourceGroup.sort_order, ResourceGroup.id).all()
 
 
-def build_tree(groups: List[ResourceGroup]) -> List[GroupNode]:
+def build_tree(groups: List[ResourceGroup], resource_counts: dict = None) -> List[GroupNode]:
     group_map = {g.id: GroupNode(
         id=g.id,
         name=g.name,
@@ -29,6 +29,7 @@ def build_tree(groups: List[ResourceGroup]) -> List[GroupNode]:
         real_path=g.real_path,
         sort_order=g.sort_order,
         is_default=g.is_default,
+        resource_count=0,
         children=[]
     ) for g in groups}
 
@@ -42,6 +43,15 @@ def build_tree(groups: List[ResourceGroup]) -> List[GroupNode]:
         else:
             root_nodes.append(node)
 
+    if resource_counts:
+        def set_direct_count(node: GroupNode):
+            node.resource_count = resource_counts.get(node.id, 0)
+            for child in node.children:
+                set_direct_count(child)
+        
+        for node in root_nodes:
+            set_direct_count(node)
+
     return root_nodes
 
 
@@ -52,7 +62,20 @@ def get_group_tree(
     exclude_default: bool = False
 ) -> Tuple[List[GroupNode], str]:
     groups = get_groups_by_type(db, resource_type, source_id, exclude_default)
-    tree = build_tree(groups)
+    
+    group_ids = [g.id for g in groups]
+    resource_counts = {}
+    if group_ids:
+        rows = db.query(
+            Resource.group_id,
+            func.count(Resource.id)
+        ).filter(
+            Resource.group_id.in_(group_ids),
+            Resource.is_deleted == 0
+        ).group_by(Resource.group_id).all()
+        resource_counts = {row[0]: row[1] for row in rows}
+    
+    tree = build_tree(groups, resource_counts)
     type_name = ResourceType(resource_type).name
     return tree, type_name
 
