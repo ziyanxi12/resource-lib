@@ -51,6 +51,7 @@ def ingest_vectors(
             "metadata": {
                 "source_id": res.source_id,
                 "group_id":  res.group_id,
+                "tags":      [t.tag for t in res.tags],
             },
         }
         for res, raw in pairs

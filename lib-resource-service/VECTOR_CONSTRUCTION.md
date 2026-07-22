@@ -33,7 +33,8 @@
   "text":     "资源名称 描述文本 标签1 标签2 搜索关键词",
   "metadata": {
     "source_id": 1,
-    "group_id":  2
+    "group_id":  2,
+    "tags":      ["标签1", "标签2"]
   }
 }
 ```
@@ -46,12 +47,13 @@
 | `text` | `res.vector_text or build_vector_text(res)` | **向量搜索**（语义 + 全文检索的输入） | **是** |
 | `metadata.source_id` | `res.source_id` | **向量筛选**（精确过滤） | **否** |
 | `metadata.group_id` | `res.group_id` | **向量筛选**（精确过滤） | **否** |
+| `metadata.tags` | `[t.tag for t in res.tags]` | **向量筛选**（列表包含匹配） | **否** |
 
 **关键区分**：
 
-- **搜索字段**：只有 `text`。修改 `name` / `description` / `tags` / `search_text` 会改变 `text` 内容，从而影响搜索召回，需要重新 embedding。
-- **筛选字段**：只有 `metadata.source_id` 和 `metadata.group_id`。修改它们只影响过滤条件，不影响搜索召回和排序，**不需要重新 embedding**。
-- **搜索时**：`text` 走向量服务的语义 / 全文检索；`metadata` 作为 filters 传入向量服务做预过滤。`group_id` 筛选时会自动展开为包含所有后代分组的 id 列表（见 `vector_router.py:212-216`）。
+- **搜索字段**：只有 `text`。修改 `name` / `description` / `tags` / `search_text` 会改变 `text` 内容，从而影响搜索召回，需要重新 embedding。`tags` 同时存在于 `text`（语义搜索）和 `metadata`（精确筛选）中，两者互不冲突。
+- **筛选字段**：`metadata.source_id`、`metadata.group_id`、`metadata.tags`。修改它们只影响过滤条件，不影响搜索召回和排序，**不需要重新 embedding**。
+- **搜索时**：`text` 走向量服务的语义 / 全文检索；`metadata` 作为 filters 传入向量服务做预过滤。`group_id` 筛选时会自动展开为包含所有后代分组的 id 列表（见 `vector_router.py:212-216`）。`tags` 筛选传入 `{"tags": "某标签"}`，向量服务对 metadata.tags 列表做包含匹配。
 
 ---
 
@@ -116,11 +118,23 @@ init_service / upload_service
 | 编辑单资源 | `PUT /api/resources/{id}` | text 字段 + group_id | ✅ | 靠 `sync-vectors` 兜底（ingest 覆盖 text + metadata） | ❌ 手动触发 |
 | 批量移动分组 | `PUT /api/resources/batch-move` | group_id | ❌ | `vector_client.update(metadata)` 逐条更新 | ✅ |
 | 增量同步 | `POST /api/resources/sync-vectors` | 按 `vector_updated_at < data_updated_at` 筛选 | — | `ingest_vectors` | 手动触发 |
-| 全量重建 | `POST /api/vector/rebuild` | 全部数据 | — | `ingest_vectors` | 手动触发 |
+| 增量同步 | `POST /api/vector/rebuild` | 同上（基于时间戳） | — | `ingest_vectors` | 手动触发 |
+| 增量同步 | `POST /api/vector/sync` | 同上（基于时间戳） | — | `ingest_vectors` | 手动触发 |
+| **全量重建** | **`POST /api/vector/full-rebuild`** | **忽略时间戳，全部 re-ingest + 清理孤儿** | — | `ingest_vectors` + `batch_delete` 孤儿 | 手动触发 |
+
+**三种同步接口对比**：
+
+| 接口 | 筛选条件 | 清理孤儿 | 适用场景 |
+|------|---------|---------|---------|
+| `POST /api/vector/sync` | `vector_updated_at < data_updated_at` | ❌ | 日常补录 |
+| `POST /api/vector/rebuild` | 同上 | ❌ | 同上 |
+| **`POST /api/vector/full-rebuild`** | **无筛选，全部** | **✅** | metadata 结构变更（如加 tags）、数据修复 |
 
 **`data_updated_at` 更新规则**：仅当 text 相关字段（name / description / tags / search_text）变更时更新。改 group_id 或其他字段（file_name / thumbnail 等）不更新，避免触发不必要的 re-embedding。
 
-**group_id 即时同步**：改 group_id 时通过 `vector_client.update(metadata=...)` 只更新向量库 metadata，不触发 re-embedding，也不更新 `vector_updated_at`。若同时改了 text 字段，则不走此路径，由 `sync-vectors` 统一 re-embedding（ingest 全量覆盖会同时更新 text 和 metadata）。
+**group_id 即时同步**：改 group_id 时通过 `vector_client.update(metadata=...)` 只更新向量库 metadata（含 source_id / group_id / tags），不触发 re-embedding，也不更新 `vector_updated_at`。若同时改了 text 字段，则不走此路径，由 `sync-vectors` 统一 re-embedding（ingest 全量覆盖会同时更新 text 和 metadata）。
+
+**tags 的双重存在**：tags 同时存在于 `text`（拼接进 vector_text，用于语义搜索）和 `metadata.tags`（列表格式，用于精确筛选）。改 tags 会触发 `data_updated_at` 更新（因 tags 属于 text 字段），靠 `sync-vectors` 兜底 re-embedding 时 metadata.tags 也会一起更新。
 
 ### 删除
 

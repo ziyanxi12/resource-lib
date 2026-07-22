@@ -133,13 +133,20 @@ def batch_move_to_group(
         vec_type = vec_type_map.get(resource_type)
         if vec_type:
             try:
+                from sqlalchemy.orm import selectinload
                 from app.models.resource import Resource as ResModel
-                resources = db.query(ResModel).filter(ResModel.id.in_(moved_ids)).all()
+                resources = (
+                    db.query(ResModel)
+                    .options(selectinload(ResModel.tags))
+                    .filter(ResModel.id.in_(moved_ids))
+                    .all()
+                )
                 from app.clients import vector_client
                 for res in resources:
                     vector_client.update(vec_type, str(res.id), metadata={
                         "source_id": res.source_id,
                         "group_id": res.group_id,
+                        "tags": [t.tag for t in res.tags],
                     })
             except Exception as e:
                 logger.warning("向量 metadata 更新异常 (批量移动 type=%s): %s", req.type, e)
@@ -294,6 +301,7 @@ async def update_resource(
                 vector_client.update(vec_type, str(resource.id), metadata={
                     "source_id": resource.source_id,
                     "group_id": resource.group_id,
+                    "tags": [t.tag for t in resource.tags],
                 })
             except Exception as e:
                 logger.warning("向量 metadata 更新异常 (resource_id=%d): %s", resource_id, e)
