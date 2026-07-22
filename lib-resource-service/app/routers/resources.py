@@ -8,7 +8,7 @@ POST /api/resources/{id}/understand  对资源预览图生成语义描述
 """
 
 import logging
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
 from pydantic import BaseModel
@@ -25,6 +25,15 @@ logger = logging.getLogger(__name__)
 
 class UnderstandRequest(BaseModel):
     prompt: Optional[str] = None
+
+class BatchIdsRequest(BaseModel):
+    ids: List[int]
+    type: str
+
+class BatchMoveRequest(BaseModel):
+    ids: List[int]
+    group_id: int
+    type: str
 
 router = APIRouter(prefix="/api/resources", tags=["资源管理"])
 
@@ -97,6 +106,45 @@ def get_resource(resource_id: int, db: Session = Depends(get_db)):
     if not resource:
         raise HTTPException(status_code=404, detail="资源不存在")
     return _fmt(resource)
+
+
+@router.put("/batch-move")
+def batch_move_to_group(
+    req: BatchMoveRequest,
+    db: Session = Depends(get_db),
+):
+    """批量移动资源到指定分组，并同步向量库 metadata"""
+    try:
+        resource_type = ResourceType.from_name(req.type)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"未知资源类型: {req.type}")
+
+    moved_ids, count = resource_service.batch_move_group(db, req.ids, req.group_id)
+
+    if settings.VECTOR_SERVICE_ENABLED and moved_ids:
+        vec_type_map = {
+            ResourceType.component: "component",
+            ResourceType.template: "template",
+            ResourceType.icon: "icon",
+            ResourceType.illus: "illustration",
+            ResourceType.image: "image",
+            ResourceType.file: "file",
+        }
+        vec_type = vec_type_map.get(resource_type)
+        if vec_type:
+            try:
+                from app.models.resource import Resource as ResModel
+                resources = db.query(ResModel).filter(ResModel.id.in_(moved_ids)).all()
+                from app.clients import vector_client
+                for res in resources:
+                    vector_client.update(vec_type, str(res.id), metadata={
+                        "source_id": res.source_id,
+                        "group_id": res.group_id,
+                    })
+            except Exception as e:
+                logger.warning("向量 metadata 更新异常 (批量移动 type=%s): %s", req.type, e)
+
+    return {"moved": count}
 
 
 @router.put("/{resource_id}")
@@ -204,8 +252,13 @@ async def update_resource(
         update_data["file_size"] = len(content)
         logger.info("更新文件: resource_id=%d, path=%s, size=%d", resource_id, file_relative_path, len(content))
     
+    text_fields = {"name", "description", "search_text"}
+    text_changed = any(k in update_data for k in text_fields)
+    group_id_changed = "group_id" in update_data
+
     if update_data:
-        update_data["data_updated_at"] = datetime.utcnow()
+        if text_changed:
+            update_data["data_updated_at"] = datetime.utcnow()
         logger.debug("用户修改数据: resource_id=%d, fields=%s", resource_id, list(update_data.keys()))
         
         for key, value in update_data.items():
@@ -216,10 +269,34 @@ async def update_resource(
     if tags_list is not None:
         resource_service.update_tags(db, resource_id, tags_list)
         resource = resource_service.get_resource_by_id(db, resource_id)
+        text_changed = True
+        if not (update_data and "data_updated_at" in update_data):
+            resource.data_updated_at = datetime.utcnow()
+            db.commit()
     
     if resource:
         resource.vector_text = resource_service.build_vector_text(resource)
         db.commit()
+
+    if group_id_changed and not text_changed and settings.VECTOR_SERVICE_ENABLED:
+        vec_type_map = {
+            ResourceType.component: "component",
+            ResourceType.template: "template",
+            ResourceType.icon: "icon",
+            ResourceType.illus: "illustration",
+            ResourceType.image: "image",
+            ResourceType.file: "file",
+        }
+        vec_type = vec_type_map.get(ResourceType(resource.resource_type))
+        if vec_type:
+            try:
+                from app.clients import vector_client
+                vector_client.update(vec_type, str(resource.id), metadata={
+                    "source_id": resource.source_id,
+                    "group_id": resource.group_id,
+                })
+            except Exception as e:
+                logger.warning("向量 metadata 更新异常 (resource_id=%d): %s", resource_id, e)
 
     logger.debug("数据修改完成: resource_id=%d, data_updated_at=%s", resource_id, resource.data_updated_at)
 
@@ -282,6 +359,39 @@ def batch_delete_resources(
                 vector_client.batch_delete(vec_type, [str(i) for i in deleted_ids])
             except Exception as e:
                 logger.warning("向量批量删除异常 (type=%s): %s", type, e)
+
+    return {"deleted": count}
+
+
+@router.delete("/batch-ids")
+def batch_delete_by_ids(
+    req: BatchIdsRequest,
+    db: Session = Depends(get_db),
+):
+    """按 ID 列表批量软删除资源"""
+    try:
+        resource_type_int = int(ResourceType.from_name(req.type))
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"未知资源类型: {req.type}")
+
+    deleted_ids, count = resource_service.batch_soft_delete_by_ids(db, req.ids)
+
+    if settings.VECTOR_SERVICE_ENABLED and deleted_ids:
+        vec_type_map = {
+            ResourceType.component: "component",
+            ResourceType.template: "template",
+            ResourceType.icon: "icon",
+            ResourceType.illus: "illustration",
+            ResourceType.image: "image",
+            ResourceType.file: "file",
+        }
+        vec_type = vec_type_map.get(ResourceType(resource_type_int))
+        if vec_type:
+            try:
+                from app.clients import vector_client
+                vector_client.batch_delete(vec_type, [str(i) for i in deleted_ids])
+            except Exception as e:
+                logger.warning("向量批量删除异常 (type=%s): %s", req.type, e)
 
     return {"deleted": count}
 

@@ -209,6 +209,63 @@ def batch_soft_delete_by_filters(
     return deleted_ids, len(deleted_ids)
 
 
+def batch_soft_delete_by_ids(
+    db: Session,
+    ids: List[int],
+) -> Tuple[List[int], int]:
+    """
+    按 ID 列表批量软删除资源
+
+    返回：(被删除的资源ID列表, 删除数量)
+    """
+    if not ids:
+        return [], 0
+
+    resources = db.query(Resource).filter(
+        Resource.id.in_(ids),
+        Resource.is_deleted == 0,
+    ).all()
+    deleted_ids = [r.id for r in resources]
+
+    if deleted_ids:
+        db.query(Resource).filter(Resource.id.in_(deleted_ids)).update(
+            {Resource.is_deleted: 1},
+            synchronize_session=False
+        )
+        db.commit()
+
+    return deleted_ids, len(deleted_ids)
+
+
+def batch_move_group(
+    db: Session,
+    ids: List[int],
+    group_id: int,
+) -> Tuple[List[int], int]:
+    """
+    批量移动资源到指定分组
+
+    返回：(被移动的资源ID列表, 移动数量)
+    """
+    if not ids:
+        return [], 0
+
+    resources = db.query(Resource).filter(
+        Resource.id.in_(ids),
+        Resource.is_deleted == 0,
+    ).all()
+    moved_ids = [r.id for r in resources]
+
+    if moved_ids:
+        db.query(Resource).filter(Resource.id.in_(moved_ids)).update(
+            {Resource.group_id: group_id},
+            synchronize_session=False
+        )
+        db.commit()
+
+    return moved_ids, len(moved_ids)
+
+
 def update_tags(db: Session, resource_id: int, tags: List[str]) -> None:
     db.query(ResourceTag).filter(ResourceTag.resource_id == resource_id).delete()
     for tag in tags:

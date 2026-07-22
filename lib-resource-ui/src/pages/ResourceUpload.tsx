@@ -175,20 +175,14 @@ export default function ResourceUpload() {
             navigateToManage()
             return
           }
-          
-          if (group.is_default === 1) {
-            message.error('默认分组不允许上传')
-            navigateToManage()
-            return
-          }
-          
+
           setGroupId(group.id)
           setGroupName(group.name)
         } else {
-          const nonDefaultGroup = groupsData.items.find(item => item.is_default !== 1)
-          if (nonDefaultGroup) {
-            setGroupId(nonDefaultGroup.id)
-            setGroupName(nonDefaultGroup.name)
+          const firstGroup = groupsData.items[0]
+          if (firstGroup) {
+            setGroupId(firstGroup.id)
+            setGroupName(firstGroup.name)
           } else {
             message.error('请先创建或选中分组')
             navigateToManage()

@@ -1,516 +1,234 @@
 # 向量数据构造说明
 
-本文档详细说明五类资源的向量数据构造方式，供 AI 辅助代码修改时参考。
+本文档描述向量库的实际数据结构、CRUD 全路径，以及已知缺口与改进建议。
 
 ---
 
-## 总览
+## 1. 总览
 
-所有资源的向量数据通过 `app/services/vector_text_builder.py` 统一构造，包含三个核心要素：
+所有资源的向量数据通过 `app/services/vector_text_builder.py` 的 `ingest_vectors()` 函数统一入库，6 种资源类型（component / template / icon / illus / image / file）走**完全相同**的 payload 结构。
 
-| 要素 | 说明 | 用途 |
-|------|------|------|
-| `text` | 可搜索文本字符串 | 用于语义检索和全文搜索 |
-| `metadata` | 元数据字典 | 用于精确过滤和结果展示 |
-| `data_id` | 唯一标识符 | 用于向量库去重和更新 |
+- **唯一入库入口**: `ingest_vectors()` (`vector_text_builder.py:13-67`)
+- **开关**: 受 `settings.VECTOR_SERVICE_ENABLED` 控制，关闭时直接 return
+- **vec_type 映射**: 仅决定向量服务的 collection 名，不影响 payload 内容
 
-**统一入库入口**: `ingest_vectors()` 函数（line 212-248）
-
----
-
-## 六类向量拼接字段速览
-
-| 类型 | 拼接字段公式 | data_id来源 |
-|------|-------------|------------|
-| component | `{component_name} {canvas_name} {variant属性值} {翻译中文}` | variant_key |
-| icon | `{category} {chinese_name} {英文全称} {英文短名} {description}` | icon_id |
-| illus | `{illus_id} {alias} {description} {category} {tags空格连接} {version}` | illus_id |
-| template | `{name} {description}` | resource.id |
-| image | `{name} {description}` | resource.id |
-| file | `{name} {description} {tags空格连接}` | resource.id |
+| ResourceType | vec_type 字符串 |
+|--------------|----------------|
+| component (1) | `component` |
+| template (2) | `template` |
+| icon (3) | `icon` |
+| illus (4) | `illustration` |
+| image (5) | `image` |
+| file (6) | `file` |
 
 ---
 
-## 1. 组件集 (component, type=1)
-
-### 【快速参考】拼接字段
-
-**文本公式**: `{component_name} {canvas_name} {variant属性值} {翻译中文}`
-
-**构造示例**: 
-- 输入: component_name="文字链接", canvas_name="1.基础类", variant="size=normal, disabled=false"
-- 输出: `"文字链接 基础类 normal 可用 正常 启用"`
-
-**data_id**: `variant_key` (来自 ComponentVariant.variant_key)
-
----
-
-### 详细说明
-
-#### 数据表关联
-
-```
-resources (主表)
-  └─ component_variants (1:1 关联，通过 resource_id)
-```
-
-**关键字段**:
-- `ComponentVariant.variant_key` - 变体唯一标识（用作 data_id）
-- `ComponentVariant.component_name` - 组件集名称
-- `ComponentVariant.canvas_name` - 画布分组名（如"1.基础类")
-- `ComponentVariant.name` - 变体属性字符串（如"size=normal, disabled=false")
-- `ComponentVariant.lib_file_key` - 组件库文件key
-- `ComponentVariant.lib_name` - 组件库名称
-
-#### 文本构造函数
-
-**函数**: `_build_component_text_fn` (line 86-91) → `build_component_text` (line 38-53)
-
-**字段来源优先级**:
-1. `raw` 字典（初始化时携带原始JSON）
-2. ORM 关联表 `resource.component_variant`
-
-**构造逻辑**:
-
-```python
-def build_component_text(component_name: str, canvas_name: str, variant_name: str) -> str:
-    # 1. 去除数字前缀（如 "1.基础类" → "基础类")
-    clean_canvas = re.sub(r"^\d+\.", "", canvas_name or "").strip()
-    clean_name   = re.sub(r"^\d+\.", "", component_name or "").strip()
-    
-    # 2. 拼接基础部分
-    parts = [clean_name, clean_canvas]
-    
-    # 3. 解析变体属性字符串（如 "size=normal, disabled=false"）
-    for pair in (variant_name or "").split(","):
-        pair = pair.strip()
-        if "=" not in pair:
-            if pair:
-                parts.append(pair)
-            continue
-        _, value = pair.split("=", 1)
-        value = value.strip()
-        
-        # 4. 使用翻译文件查找中文同义词
-        zh = translations.get(pair, "") or translations.get(value, "")
-        parts.append(f"{value} {zh}" if zh else value)
-    
-    # 5. 空格连接所有部分
-    return " ".join(p for p in parts if p)
-```
-
-**翻译文件**: `storage/component/value_translations.json`
-
-格式示例：
-```json
-{
-  "disabled=true":  "禁用 不可用 失效 灰态",
-  "disabled=false": "可用 正常 启用",
-  "size=small":     "小 小型",
-  "size=normal":    "标准 常规"
-}
-```
-
-#### 元数据构造
-
-**函数**: `_build_component_metadata` (line 94-101)
-
-**字段**:
-```json
-{
-  "name":           "资源名称",
-  "canvas_name":    "画布分组名",
-  "component_name": "组件集名称",
-  "lib_name":       "组件库名称"
-}
-```
-
----
-
-## 2. SVG图标 (icon, type=3)
-
-### 【快速参考】拼接字段
-
-**文本公式**: `{category} {chinese_name} {英文全称} {英文短名} {description}`
-
-**构造示例**: 
-- 输入: category="navigation", chineseName="首页", name="it_home", englishName="home", description="房子图标"
-- 输出: `"navigation 首页 it home home 房子图标，用于导航首页"`
-
-**data_id**: `icon_id` (来自 ResourceIcon.icon_id)
-
----
-
-### 详细说明
-
-#### 数据表关联
-
-```
-resources (主表)
-  └─ resource_icons (1:1 关联，通过 resource_id)
-```
-
-**关键字段**:
-- `ResourceIcon.icon_id` - 图标原始ID（用作 data_id）
-- `ResourceIcon.chinese_name` - 中文名称
-- `ResourceIcon.name` - 英文全称（如"it_home")
-- `ResourceIcon.english_name` - 英文短名（如"home")
-- `ResourceIcon.category` - 分类（如"navigation", "system")
-- `Resource.description` - 描述文本
-
-#### 文本构造函数
-
-**函数**: `_build_icon_text_fn` (line 104-111) → `build_icon_text` (line 75-83)
-
-**字段来源优先级**:
-1. `raw` 字典（初始化时携带 icons.json 原始数据）
-2. ORM 关联表 `resource.icon_detail`
-3. `resource.name` / `resource.description`
-
-**构造逻辑**:
-
-```python
-def build_icon_text(category: str, chinese_name: str, name: str, english_name: str, description: str) -> str:
-    parts = [
-        category or "",
-        chinese_name or "",
-        _process_english_name(name),        # 处理英文全称
-        _process_english_name(english_name), # 处理英文短名
-        _process_description(description),   # 处理描述
-    ]
-    return " ".join(p for p in parts if p)
-```
-
-**辅助函数**:
-
-1. `_process_english_name` (line 56-64):
-   - 移除 "ic_" 前缀（如 "ic_home" → "home")
-   - 下划线转空格（如 "it_home" → "it home")
-
-2. `_process_description` (line 67-72):
-   - 如包含中文，直接返回
-   - 英文驼峰命名添加空格（如 "GearIcon" → "Gear Icon")
-
-#### 元数据构造
-
-**函数**: `_build_icon_metadata` (line 114-121)
-
-**字段**:
-```json
-{
-  "name":         "资源名称",
-  "description":  "描述文本",
-  "english_name": "英文短名",
-  "category":     "分类"
-}
-```
-
----
-
-## 3. 插画 (illus, type=4)
-
-### 【快速参考】拼接字段
-
-**文本公式**: `{illus_id} {alias} {description} {category} {tags空格连接} {version}`
-
-**构造示例**: 
-- 输入: illus_id="EMPLY_ILL", alias="空状态", description="用于列表为空时的占位插画", category="领域A", tags=["空状态illus"], version="2.0"
-- 输出: `"EMPLY_ILL 空状态 用于列表为空时的占位插画 领域A 空状态illus 2.0"`
-
-**data_id**: `illus_id` (来自 ResourceIllus.illus_id)
-
----
-
-### 详细说明
-
-#### 数据表关联
-
-```
-resources (主表)
-  └─ resource_illus (1:1 关联，通过 resource_id)
-```
-
-**关键字段**:
-- `ResourceIllus.illus_id` - 插画原始ID（用作 data_id）
-- `ResourceIllus.category` - 分类
-- `ResourceIllus.tags` - 标签列表（JSON数组）
-- `ResourceIllus.version` - 版本号
-- `Resource.name` - 别名（alias）
-- `Resource.description` - 描述
-
-#### 文本构造函数
-
-**函数**: `_build_illus_text_fn` (line 124-131)
-
-**字段来源优先级**:
-1. `raw` 字典（初始化时携带 illus.json 原始数据）
-2. ORM 关联表 `resource.illus_detail`
-
-**构造逻辑**:
-
-```python
-def _build_illus_text_fn(resource: "Resource", raw: dict) -> str:
-    il = resource.illus_detail
-    illus_id = raw.get("id") or (il.illus_id if il else "") or ""
-    alias    = resource.name or ""
-    desc     = resource.description or ""
-    category = raw.get("category") or (il.category if il else "") or ""
-    tags     = raw.get("tags") or (il.tags if il else []) or []
-    tag_str  = " ".join(tags) if isinstance(tags, list) else str(tags)
-    version  = raw.get("version") or (il.version if il else "") or ""
-    return " ".join(p for p in [illus_id, alias, desc, category, tag_str, version] if p)
-```
-
-#### 元数据构造
-
-**函数**: `_build_illus_metadata` (line 134-139)
-
-**字段**:
-```json
-{
-  "name":     "资源名称",
-  "category": "分类",
-  "version":  "版本号"
-}
-```
-
----
-
-## 4. 模版 (template, type=2)
-
-### 【快速参考】拼接字段
-
-**文本公式**: `{name} {description}`
-
-**构造示例**: 
-- 输入: name="登录页面模版", description="适用于移动端登录页面"
-- 输出: `"登录页面模版 适用于移动端登录页面，包含账号密码输入框和登录按钮"`
-
-**data_id**: `resource.id` (来自 Resource.id)
-
----
-
-### 详细说明
-
-#### 数据表关联
-
-仅使用 `resources` 主表，无关联表。
-
-**关键字段**:
-- `Resource.id` - 主键ID（用作 data_id）
-- `Resource.name` - 模版名称
-- `Resource.description` - 描述
-
-#### 文本构造函数
-
-**函数**: `_build_simple_text` (line 142-143)
-
-**构造逻辑**:
-
-```python
-def _build_simple_text(resource: "Resource", raw: dict) -> str:
-    return f"{resource.name} {resource.description or ''}".strip()
-```
-
-#### 元数据构造
-
-**函数**: `_build_simple_metadata` (line 146-147)
-
-**字段**:
-```json
-{
-  "name":        "模版名称",
-  "description": "描述文本"
-}
-```
-
----
-
-## 5. 图片 (image, type=5)
-
-### 【快速参考】拼接字段
-
-**文本公式**: `{name} {description}`
-
-**构造示例**: 
-- 输入: name="产品截图.jpg", description="首页展示图"
-- 输出: `"产品截图.jpg 首页展示图"`
-
-**data_id**: `resource.id` (来自 Resource.id)
-
----
-
-### 详细说明
-
-#### 数据表关联
-
-仅使用 `resources` 主表，无关联表。
-
-**关键字段**:
-- `Resource.id` - 主键ID（用作 data_id）
-- `Resource.name` - 图片名称
-- `Resource.description` - 描述（可选）
-
-#### 文本构造函数
-
-**函数**: `_build_simple_text` (line 142-143) - 与模版相同
-
-**构造逻辑**:
-```python
-def _build_simple_text(resource: "Resource", raw: dict) -> str:
-    return f"{resource.name} {resource.description or ''}".strip()
-```
-
-#### 元数据构造
-
-**函数**: `_build_simple_metadata` (line 146-147) - 与模版相同
-
-**字段**:
-```json
-{
-  "name":        "图片名称",
-  "description": "描述文本"
-}
-```
-
----
-
-## 6. 文件 (file, type=6)
-
-### 【快速参考】拼接字段
-
-**文本公式**: `{name} {description} {tags空格连接}`
-
-**构造示例**: 
-- 输入: name="产品文档.pdf", description="产品功能说明书", tags=["文档", "产品", "规范"]
-- 输出: `"产品文档.pdf 产品功能说明书 文档 产品 规范"`
-
-**data_id**: `resource.id` (来自 Resource.id)
-
----
-
-### 详细说明
-
-#### 数据表关联
-
-仅使用 `resources` 主表，无关联表。标签存储在 `resource_tags` 表。
-
-**关键字段**:
-- `Resource.id` - 主键ID（用作 data_id）
-- `Resource.name` - 文件名称
-- `Resource.description` - 文件描述
-- `Resource.tags` - 标签列表（来自 resource_tags 表）
-
-#### 文本构造函数
-
-**函数**: `_build_simple_text` (line 154-155) - 与模版/图片相同，但包含 tags
-
-**构造逻辑**:
-```python
-def _build_simple_text(resource: "Resource", raw: dict) -> str:
-    return " ".join(p for p in [resource.name, resource.description or "", main_tag_text(resource)] if p)
-```
-
-其中 `main_tag_text(resource)` 函数拼接所有标签：
-```python
-def main_tag_text(resource: "Resource") -> str:
-    """主库标签（resource_tags 表）拼接为空格分隔文本"""
-    return " ".join(t.tag for t in resource.tags)
-```
-
-#### 元数据构造
-
-**函数**: `_build_simple_metadata` (line 158-159) - 与模版/图片相同
-
-**字段**:
-```json
-{
-  "name":        "文件名称",
-  "description": "描述文本"
-}
-```
-
----
-
-## 向量入库流程
-
-### 调用入口
-
-```python
-from app.services.vector_text_builder import ingest_vectors
-
-# 批量入库
-pairs = [(resource_obj, raw_dict), ...]
-ingest_vectors(
-    resource_type=ResourceType.component,
-    pairs=pairs,
-    skip_vector=False  # 为 True 时跳过入库
-)
-```
-
-### 自动分批
-
-- 每批 200 条数据（`_BATCH_SIZE = 200`）
-- 调用 `vector_client.ingest()` 写入向量服务
-- 失败不影响主流程，仅 warning 日志
-
-### 数据格式
+## 2. 统一 payload 结构
 
 每条向量数据结构：
+
 ```json
 {
-  "data_id":  "唯一标识字符串",
-  "text":     "可搜索文本",
+  "data_id":  "123",
+  "text":     "资源名称 描述文本 标签1 标签2 搜索关键词",
   "metadata": {
-    "name": "...",
-    "其他字段": "..."
+    "source_id": 1,
+    "group_id":  2
   }
 }
 ```
 
-### 向量服务API
+### 字段用途：搜索 vs 筛选
 
-**写入接口**: `POST /api/v1/ingest`
-- Request: `{ "type": "component", "items": [data_id, text, metadata] }`
-- Response: `{ "succeeded": [...], "failed": [...] }`
+| 字段 | 取值 | 用途 | 改动是否需要重新 embedding |
+|------|------|------|---------------------------|
+| `data_id` | `str(Resource.id)` | 唯一标识，用于去重 / 覆盖 / 删除 / 反查 | — |
+| `text` | `res.vector_text or build_vector_text(res)` | **向量搜索**（语义 + 全文检索的输入） | **是** |
+| `metadata.source_id` | `res.source_id` | **向量筛选**（精确过滤） | **否** |
+| `metadata.group_id` | `res.group_id` | **向量筛选**（精确过滤） | **否** |
+
+**关键区分**：
+
+- **搜索字段**：只有 `text`。修改 `name` / `description` / `tags` / `search_text` 会改变 `text` 内容，从而影响搜索召回，需要重新 embedding。
+- **筛选字段**：只有 `metadata.source_id` 和 `metadata.group_id`。修改它们只影响过滤条件，不影响搜索召回和排序，**不需要重新 embedding**。
+- **搜索时**：`text` 走向量服务的语义 / 全文检索；`metadata` 作为 filters 传入向量服务做预过滤。`group_id` 筛选时会自动展开为包含所有后代分组的 id 列表（见 `vector_router.py:212-216`）。
 
 ---
 
-## 修改指引
+## 3. text 构造逻辑
 
-| 改动内容 | 需修改的文件位置 |
+**函数**: `build_vector_text()` (`resource_service.py:322-334`)
+
+所有资源类型使用**同一个**函数，拼接公式：
+
+```
+text = name + description + tags(空格连接) + search_text
+```
+
+```python
+def build_vector_text(resource: Resource) -> str:
+    tags_str = ' '.join([t.tag for t in resource.tags])
+    parts = [
+        resource.name or '',
+        resource.description or '',
+        tags_str,
+        resource.search_text or ''
+    ]
+    vector_text = ' '.join(filter(None, parts))
+    return ' '.join(vector_text.split())
+```
+
+入库时优先使用 DB 中已缓存的 `res.vector_text`，为空时 fallback 到 `build_vector_text(res)` 实时计算：
+
+```python
+"text": res.vector_text or build_vector_text(res)
+```
+
+---
+
+## 4. 向量 CRUD 全路径
+
+### 新增
+
+| 操作 | API 入口 | DB 处理 | 向量库处理 | 即时同步 |
+|------|---------|---------|-----------|---------|
+| 初始化入库 | `POST /api/init` | 批量插入 Resource | `ingest_vectors` + `batch_update_vector_time` | ✅ |
+| 批量上传 | `POST /api/upload?type=...` | 批量插入 Resource + Tags | `ingest_vectors` + `batch_update_vector_time` | ✅ |
+
+**入库流程**：
+
+```
+init_service / upload_service
+  → build_vector_text(res) 写入 res.vector_text
+  → db.commit()
+  → ingest_vectors(resource_type, pairs)
+    → vector_client.ingest(vec_type, items)
+      → 每 200 条一批 POST /api/v1/ingest
+  → batch_update_vector_time(db, resource_ids)
+```
+
+### 修改
+
+| 操作 | API 入口 | 改了什么 | 更新 `data_updated_at` | 向量库处理 | 即时同步 |
+|------|---------|---------|----------------------|-----------|---------|
+| 编辑单资源 | `PUT /api/resources/{id}` | name / desc / tags / search_text | ✅ | 靠 `sync-vectors` 兜底 re-embedding | ❌ 手动触发 |
+| 编辑单资源 | `PUT /api/resources/{id}` | group_id | ❌ | `vector_client.update(metadata)` | ✅ |
+| 编辑单资源 | `PUT /api/resources/{id}` | text 字段 + group_id | ✅ | 靠 `sync-vectors` 兜底（ingest 覆盖 text + metadata） | ❌ 手动触发 |
+| 批量移动分组 | `PUT /api/resources/batch-move` | group_id | ❌ | `vector_client.update(metadata)` 逐条更新 | ✅ |
+| 增量同步 | `POST /api/resources/sync-vectors` | 按 `vector_updated_at < data_updated_at` 筛选 | — | `ingest_vectors` | 手动触发 |
+| 全量重建 | `POST /api/vector/rebuild` | 全部数据 | — | `ingest_vectors` | 手动触发 |
+
+**`data_updated_at` 更新规则**：仅当 text 相关字段（name / description / tags / search_text）变更时更新。改 group_id 或其他字段（file_name / thumbnail 等）不更新，避免触发不必要的 re-embedding。
+
+**group_id 即时同步**：改 group_id 时通过 `vector_client.update(metadata=...)` 只更新向量库 metadata，不触发 re-embedding，也不更新 `vector_updated_at`。若同时改了 text 字段，则不走此路径，由 `sync-vectors` 统一 re-embedding（ingest 全量覆盖会同时更新 text 和 metadata）。
+
+### 删除
+
+| 操作 | API 入口 | 向量库处理 | 即时同步 |
+|------|---------|-----------|---------|
+| 单条删除 | `DELETE /api/resources/{id}` | `vector_client.delete(vec_type, data_id)` | ✅ |
+| 批量删除（按筛选） | `DELETE /api/resources/batch` | `vector_client.batch_delete(vec_type, data_ids)` | ✅ |
+| 批量删除（按 ID 列表） | `DELETE /api/resources/batch-ids` | `vector_client.batch_delete(vec_type, data_ids)` | ✅ |
+
+### 查询
+
+| 操作 | API 入口 | 说明 |
+|------|---------|------|
+| 向量搜索 | `POST /api/vector/search` | `vector_client.batch_search` + DB 反查 enrichment，支持 `basic` / `normal` / `complete` 三种响应模式 |
+| LLM 搜索 | `POST /api/vector/search/llm` | 精简版，仅返回 `data_id` + `vector_text` + `score` |
+| 详情查询 | `GET /api/vector/detail` | 纯 DB 反查（通过 data_id 查 Resource），不查向量库 |
+
+**搜索响应模式**：
+
+| 模式 | 返回字段 | 适用场景 |
+|------|---------|---------|
+| `basic` | `id`, `vector_text`, `score` | LLM 专用 |
+| `normal` | `id`, `vector_text`, `score`, `raw_data` | 外部系统调用 |
+| `complete` | 全量资源字段 + `vector_text` + `score` | 前端展示（默认） |
+
+---
+
+## 5. 修改 vector_text vs 修改 group_id
+
+这两种改动的本质不同，处理方式也应不同：
+
+| 改动内容 | 影响搜索？ | 影响筛选？ | 是否需要 re-embedding | 理想做法 |
+|---------|----------|----------|----------------------|---------|
+| 改 name / desc / tags / search_text | ✅ | ❌ | **是** | `ingest_vectors` 覆盖（重新 embedding + 写 text） |
+| 改 group_id | ❌ | ✅ | **否** | `vector_client.update(metadata=...)` 只更新 metadata |
+
+**核心区别**：
+
+- 改 `vector_text` → 搜索内容变了，**必须重新 embedding**，否则搜不到新内容
+- 改 `group_id` → 搜索内容没变，只是筛选条件变了，**不需要重新 embedding**，只需更新向量库的 `metadata.group_id`
+
+`vector_client.update()`（`vector_client.py:245-278`）支持只传 `metadata` 不传 `text`，向向量服务发 `PUT /api/v1/update` 即可只改 metadata 不触发 embedding。业务代码在 group_id 变更场景（`PUT /{id}` 和 `batch-move`）已调用此方法。
+
+### 当前实际处理对比
+
+| 场景 | API | 实际处理 | 是否正确 |
+|------|-----|---------|---------|
+| 改 text 字段 | `PUT /api/resources/{id}` | 更新 DB + `data_updated_at`，靠 `sync-vectors` 兜底 re-embedding | ✅ 设计如此 |
+| 改 group_id（仅 group_id） | `PUT /api/resources/{id}` | 即时 `vector_client.update(metadata)`，不 re-embedding | ✅ |
+| 改 text + group_id | `PUT /api/resources/{id}` | 更新 `data_updated_at`，靠 `sync-vectors` 兜底（ingest 覆盖 text + metadata） | ✅ |
+| 改 group_id | `PUT /api/resources/batch-move` | 逐条 `vector_client.update(metadata)`，不 re-embedding | ✅ |
+
+---
+
+## 6. 设计说明
+
+### text 字段变更：延迟同步
+
+`PUT /api/resources/{id}` 改 text 相关字段（name / description / tags / search_text）后，不即时调 `ingest_vectors`，而是更新 `data_updated_at`，由 `sync-vectors` 增量同步兜底。这是设计决策：re-embedding 较耗时，适合批量异步处理，不宜在单条编辑接口中同步等待。
+
+### group_id 变更：即时同步 metadata
+
+`PUT /api/resources/{id}` 和 `batch-move` 改 group_id 后，即时调 `vector_client.update(metadata=...)` 只更新向量库 metadata，不触发 re-embedding，不更新 `vector_updated_at`。这样 sync-vectors 不会因为 group_id 变更而误判需要 re-embedding。
+
+### 未使用项
+
+| 项目 | 位置 | 说明 |
+|------|------|------|
+| `raw` dict | `ingest_vectors` 的 `pairs` 参数 | 入参包含 `raw` 但入库时未读取，初始化 JSON 原始字段未进向量库 |
+| `value_translations.json` | `config.py:46-49` 加载 | 翻译表在 config 中加载，但向量构造代码未引用 |
+
+---
+
+## 7. 修改指引
+
+| 改动内容 | 需修改的文件:行 |
 |---------|----------------|
-| 调整组件文本构造逻辑 | `vector_text_builder.py:38-53` (`build_component_text`) |
-| 调整图标文本构造逻辑 | `vector_text_builder.py:75-83` (`build_icon_text`) |
-| 调整插画文本构造逻辑 | `vector_text_builder.py:124-131` (`_build_illus_text_fn`) |
-| 调整插画元数据字段 | `vector_text_builder.py:134-139` (`_build_illus_metadata`) |
-| 修改翻译映射 | `storage/component/value_translations.json` |
-| 修改元数据字段 | 对应类型的 `build_metadata` 函数 |
-| 修改 data_id 来源 | `VectorSpec.get_data_id` lambda 函数 |
-| 新增资源类型 | 在 `_build_registry()` 中添加新的 VectorSpec |
+| 调整 text 拼接逻辑 | `resource_service.py:322-334` (`build_vector_text`) |
+| 调整 metadata 字段 | `vector_text_builder.py:51-54` |
+| 调整 data_id 取值 | `vector_text_builder.py:49` |
+| 修改入库分批大小 | `vector_client.py:18` (`_BATCH_SIZE = 200`) |
+| 修改增量同步批次大小 | `vector_sync_service.py:96` (`_SYNC_BATCH_SIZE = 100`) |
+| 修改搜索响应模式 | `vector_router.py:109-133` (`_build_*_response`) |
+| 新增资源类型 | `vector_text_builder.py:34-41` 加 vec_type 映射 |
 
 ---
 
-## 文件位置速查
+## 8. 文件位置速查
 
 | 文件 | 路径 | 说明 |
 |------|------|------|
-| 向量构造核心 | `app/services/vector_text_builder.py` | 所有类型的文本构造函数和注册表 |
-| 向量客户端 | `app/clients/vector_client.py` | HTTP 调用向量服务 |
-| 组件翻译表 | `storage/component/value_translations.json` | 组件属性值中文翻译 |
-| 图标数据源 | `storage/icon/icons.json` | SVG 图标初始化数据 |
-| 插画数据源 | `storage/illus/illus.json` | 插画初始化数据 |
-| 模版数据源 | `storage/template/templates.json` | 模版初始化数据 |
-| 组件索引 | `storage/component/*/component_index.json` | 组件库索引文件 |
+| 向量入库入口 | `app/services/vector_text_builder.py` | `ingest_vectors()` 统一入库 |
+| 向量文本构造 | `app/services/resource_service.py` | `build_vector_text()` 拼接 text |
+| 向量 HTTP 客户端 | `app/clients/vector_client.py` | ingest / search / update / delete |
+| 向量同步服务 | `app/services/vector_sync_service.py` | 缺失检测 + 增量同步 |
+| 向量搜索路由 | `app/routers/vector_router.py` | search / detail / rebuild / sync |
+| 资源路由（CRUD） | `app/routers/resources.py` | 资源增删改查 + 向量同步触发 |
+| 上传服务 | `app/services/upload_service.py` | 批量上传 + 向量入库 |
+| 初始化服务 | `app/services/init_service.py` | 组件集初始化 + 向量入库 |
 | ORM 模型 | `app/models/resource.py` | 数据表定义 |
 | 类型枚举 | `app/enums.py` | ResourceType 枚举定义 |
 
 ---
 
-## 注意事项
+## 9. 注意事项
 
-1. **字段来源优先级**: 初始化入库时优先使用 `raw` 字典，更新场景 fallback 到 ORM 关联表
-2. **翻译文件格式**: 支持 `key=value` 精确匹配和 `value` 通用匹配，前者优先级更高
-3. **异常处理**: 向量入库失败不影响数据库写入，仅记录 warning 日志
-4. **空值处理**: 所有构造函数都做了空值保护，缺失字段不会导致异常
-5. **幂等性**: 使用 `data_id` 作为唯一标识，重复入库会覆盖旧数据
+1. **幂等性**: 使用 `data_id`（即 `Resource.id`）作为唯一标识，重复入库会覆盖旧数据
+2. **异常隔离**: 向量入库失败不影响数据库写入，仅记录 warning 日志
+3. **空值保护**: `build_vector_text` 对所有字段做了空值保护，缺失字段不会导致异常
+4. **时间戳机制**: `data_updated_at` 仅在 text 相关字段（name / description / tags / search_text）变更时更新，`vector_updated_at` 记录向量 re-embedding 同步时间。增量同步通过对比两者筛选待同步数据。改 group_id 不更新 `data_updated_at`，避免触发不必要的 re-embedding
+5. **group_id 筛选展开**: 搜索时传入 `group_id` 过滤条件会自动展开为包含所有后代分组的 id 列表（`vector_router.py:212-216`）

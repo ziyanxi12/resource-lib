@@ -9,7 +9,7 @@ import { api } from '../api'
 export default function SemanticUnderstand({ resourceId, prompt, onGenerated }: {
   resourceId: number
   prompt?: string
-  onGenerated?: (text: string) => void
+  onGenerated?: (text: string, elapsed: number) => void
 }) {
   const [loading, setLoading] = useState(false)
   const idRef = useRef(resourceId)
@@ -21,10 +21,12 @@ export default function SemanticUnderstand({ resourceId, prompt, onGenerated }: 
 
   const handleGenerate = async () => {
     setLoading(true)
+    const start = Date.now()
     try {
       const res = await api.understandImage(resourceId, prompt)
+      const elapsed = Math.floor((Date.now() - start) / 1000)
       if (idRef.current === resourceId) {
-        onGenerated?.(res.description)
+        onGenerated?.(res.description, elapsed)
       }
     } catch (e: unknown) {
       message.error('语义生成失败：' + (e instanceof Error ? e.message : '未知错误'))
@@ -35,7 +37,7 @@ export default function SemanticUnderstand({ resourceId, prompt, onGenerated }: 
 
   return (
     <Button block loading={loading} onClick={handleGenerate} style={{ marginTop: 12 }}>
-      {loading ? '生成中，预计需 10~30 秒' : '图片语义生成'}
+      {loading ? '生成中...' : '图片语义生成'}
     </Button>
   )
 }

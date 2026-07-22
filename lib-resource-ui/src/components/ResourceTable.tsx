@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Table, Input, Button, Drawer, Tooltip, Image, message, Select, Modal, Upload } from 'antd'
-import { SearchOutlined, DownloadOutlined } from '@ant-design/icons'
+import { Table, Input, Button, Drawer, Tooltip, Image, message, Select, Modal, Upload, Tag } from 'antd'
+import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api, staticUrl } from '../api'
 import type { Resource } from '../types'
@@ -80,6 +80,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
   
   const [prompt, setPrompt] = useState('')
   const [semanticText, setSemanticText] = useState('')
+  const [semanticElapsed, setSemanticElapsed] = useState(0)
   
   const [newThumbnail, setNewThumbnail] = useState<File | null>(null)
   const [newFile, setNewFile] = useState<File | null>(null)
@@ -99,6 +100,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
     setFileName(item.file_name ? stripExtension(item.file_name) : '')
     setSelectedGroupId(item.group_id)
     setSemanticText('')
+    setSemanticElapsed(0)
     setPrompt('')
     setNewThumbnail(null)
     setNewFile(null)
@@ -234,14 +236,14 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
             placeholder="输入提示词（可选）"
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
-            rows={2}
+            autoSize={{ minRows: 2 }}
             style={{ marginTop: 12 }}
           />
           
           <SemanticUnderstand
             resourceId={item.id}
             prompt={prompt}
-            onGenerated={setSemanticText}
+            onGenerated={(text, elapsed) => { setSemanticText(text); setSemanticElapsed(elapsed) }}
           />
           
           {semanticText && (
@@ -256,7 +258,8 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
               lineHeight: 1.6,
             }}>
               {semanticText}
-              <div style={{ marginTop: 8, textAlign: 'right' }}>
+              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ color: '#94a3b8', fontSize: 12 }}>耗时 {semanticElapsed}s</span>
                 <Button
                   size="small"
                   type="link"
@@ -273,13 +276,13 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', maxHeight: 'calc(100vh - 200px)' }}>
           <SectionHeader title="基础信息" />
           <Field label="名称">
-            <Input value={name} onChange={e => setName(e.target.value)} size="small" />
+            <Input.TextArea value={name} onChange={e => setName(e.target.value)} autoSize={{ minRows: 1 }} size="small" />
           </Field>
           <Field label="描述">
             <Input.TextArea
               value={description}
               onChange={e => setDescription(e.target.value)}
-              autoSize={{ minRows: 2, maxRows: 5 }}
+              autoSize={{ minRows: 2 }}
               size="small"
             />
           </Field>
@@ -295,14 +298,13 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
             />
           </Field>
           <Field label="关键词">
-            <Input value={searchText} onChange={e => setSearchText(e.target.value)} size="small" />
+            <Input.TextArea value={searchText} onChange={e => setSearchText(e.target.value)} autoSize={{ minRows: 1 }} size="small" />
           </Field>
           <Field label="缩略图路径">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ flex: 1 }}>{newThumbnail ? <span style={{ color: '#059669' }}>{newThumbnail.name}</span> : (item.thumbnail_path || emptyCell)}</span>
               <Button 
                 size="small" 
-                icon={<DownloadOutlined />}
                 disabled={!item.thumbnail_path || !!newThumbnail}
                 onClick={() => {
                   const link = document.createElement('a')
@@ -315,19 +317,18 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
                 下载
               </Button>
               <Button size="small" onClick={() => thumbnailInputRef.current?.click()}>
-                更新缩略图
+                更新
               </Button>
             </div>
           </Field>
           <Field label="文件名">
-            <Input value={fileName} onChange={e => setFileName(e.target.value)} size="small" />
+            <Input.TextArea value={fileName} onChange={e => setFileName(e.target.value)} autoSize={{ minRows: 1 }} size="small" />
           </Field>
           <Field label="文件路径">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ flex: 1 }}>{newFile ? <span style={{ color: '#059669' }}>{newFile.name}</span> : (item.file_path || emptyCell)}</span>
               <Button 
                 size="small" 
-                icon={<DownloadOutlined />}
                 disabled={!item.file_path || !!newFile}
                 onClick={() => {
                   const link = document.createElement('a')
@@ -341,7 +342,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
                 下载
               </Button>
               <Button size="small" onClick={() => fileInputRef.current?.click()}>
-                更新文件
+                更新
               </Button>
             </div>
             <input
@@ -359,10 +360,24 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
               <Input.TextArea
                 value={rawDataString}
                 onChange={e => {
-                  setRawDataString(e.target.value)
-                  setRawDataError('')
+                  const value = e.target.value
+                  setRawDataString(value)
+                  if (value.trim()) {
+                    try {
+                      const parsed = JSON.parse(value)
+                      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                        setRawDataError('JSON 必须是对象')
+                      } else {
+                        setRawDataError('')
+                      }
+                    } catch {
+                      setRawDataError('JSON 格式错误')
+                    }
+                  } else {
+                    setRawDataError('')
+                  }
                 }}
-                autoSize={{ minRows: 3, maxRows: 10 }}
+                autoSize={{ minRows: 3 }}
                 size="small"
                 style={{ fontFamily: 'ui-monospace, monospace' }}
                 status={rawDataError ? 'error' : undefined}
@@ -375,7 +390,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           <Field label="ID">{item.id}</Field>
           <Field label="资源宽度">{item.width ?? emptyCell}</Field>
           <Field label="资源高度">{item.height ?? emptyCell}</Field>
-          <Field label="向量文本">{item.vector_text || emptyCell}</Field>
+          <Field label="向量文本"><div style={{ wordBreak: 'break-all' }}>{item.vector_text || emptyCell}</div></Field>
           <Field label="文件类型">{item.file_type || emptyCell}</Field>
           <Field label="文件大小">{item.file_size ? formatSize(item.file_size) : emptyCell}</Field>
           <Field label="创建时间">{formatDateTime(item.created_at)}</Field>
@@ -395,9 +410,11 @@ interface Props {
   groupId: number | null
   handleRef?: React.MutableRefObject<ResourceTableHandle | null>
   extraActions?: React.ReactNode
+  selectedRowKeys?: number[]
+  onSelectionChange?: (ids: number[]) => void
 }
 
-export default function ResourceTable({ type, sourceId, groupId, handleRef, extraActions }: Props) {
+export default function ResourceTable({ type, sourceId, groupId, handleRef, extraActions, selectedRowKeys, onSelectionChange }: Props) {
   const [items, setItems] = useState<Resource[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -528,7 +545,11 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
       width: '18%',
       render: (tags: string[]) => {
         if (!tags?.length) return emptyCell
-        return <div style={{ wordBreak: 'break-all' }}>{tags.join('、')}</div>
+        return (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {tags.map((t, i) => <Tag key={i} style={{ margin: 0 }}>{t}</Tag>)}
+          </div>
+        )
       },
     },
     {
@@ -581,21 +602,27 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
         borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden',
       }}>
         <style>{`
-          .custom-table .ant-table-thead > tr > th:first-child,
-          .custom-table .ant-table-tbody > tr > td:first-child {
+          .custom-table .ant-table-thead > tr > th:nth-child(1),
+          .custom-table .ant-table-tbody > tr > td:nth-child(1) {
+            width: 48px !important;
+            min-width: 48px !important;
+            max-width: 48px !important;
+          }
+          .custom-table .ant-table-thead > tr > th:nth-child(2),
+          .custom-table .ant-table-tbody > tr > td:nth-child(2) {
             width: 80px !important;
             min-width: 80px !important;
             max-width: 80px !important;
           }
-          .custom-table .ant-table-thead > tr > th:not(:first-child),
-          .custom-table .ant-table-tbody > tr > td:not(:first-child) {
-            width: calc((100% - 80px) / 5) !important;
+          .custom-table .ant-table-thead > tr > th:nth-child(n+3),
+          .custom-table .ant-table-tbody > tr > td:nth-child(n+3) {
+            width: calc((100% - 128px) / 5) !important;
           }
           .custom-table.search-mode .ant-table-thead > tr > th:nth-child(1),
           .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(1) {
-            width: 80px !important;
-            min-width: 80px !important;
-            max-width: 80px !important;
+            width: 48px !important;
+            min-width: 48px !important;
+            max-width: 48px !important;
           }
           .custom-table.search-mode .ant-table-thead > tr > th:nth-child(2),
           .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(2) {
@@ -603,9 +630,15 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
             min-width: 80px !important;
             max-width: 80px !important;
           }
-          .custom-table.search-mode .ant-table-thead > tr > th:nth-child(n+3),
-          .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(n+3) {
-            width: calc((100% - 160px) / 5) !important;
+          .custom-table.search-mode .ant-table-thead > tr > th:nth-child(3),
+          .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(3) {
+            width: 80px !important;
+            min-width: 80px !important;
+            max-width: 80px !important;
+          }
+          .custom-table.search-mode .ant-table-thead > tr > th:nth-child(n+4),
+          .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(n+4) {
+            width: calc((100% - 208px) / 5) !important;
           }
         `}</style>
         <Table
@@ -616,7 +649,12 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
           loading={loading}
           size="middle"
           tableLayout="fixed"
-          scroll={{ x: 'max-content', y: scrollY }}
+          scroll={{ y: scrollY }}
+          rowSelection={selectedRowKeys !== undefined ? {
+            selectedRowKeys,
+            onChange: (keys) => onSelectionChange?.(keys as number[]),
+            columnWidth: 48,
+          } : undefined}
           onRow={record => ({
             onClick: () => { if (!isPreviewing) { setDetailItem(record); setDetailOpen(true) } },
             style: { cursor: 'pointer' },

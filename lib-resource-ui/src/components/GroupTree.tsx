@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react'
 import { Tree, Button, Input, Dropdown, message, Modal } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import type { TreeDataNode, TreeProps } from 'antd'
@@ -28,7 +28,9 @@ function convertToTreeData(groups: GroupNode[]): TreeDataNode[] {
   }))
 }
 
-export default function GroupTree({ type, selectedId, onSelect, sourceId }: GroupTreeProps) {
+export interface GroupTreeHandle { refresh: () => void }
+
+const GroupTree = forwardRef<GroupTreeHandle, GroupTreeProps>(function GroupTree({ type, selectedId, onSelect, sourceId }, ref) {
   const [groups, setGroups] = useState<GroupNode[]>([])
   const [loading, setLoading] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -72,6 +74,8 @@ export default function GroupTree({ type, selectedId, onSelect, sourceId }: Grou
   useEffect(() => {
     loadGroups()
   }, [loadGroups])
+
+  useImperativeHandle(ref, () => ({ refresh: loadGroups }), [loadGroups])
 
   useEffect(() => {
     const getAllKeys = (nodes: GroupNode[]): React.Key[] => {
@@ -357,12 +361,12 @@ export default function GroupTree({ type, selectedId, onSelect, sourceId }: Grou
           }}
         >
           {name}
+        </span>
           {group?.resource_count !== undefined && (
             <span style={{ color: '#94a3b8', marginLeft: 6, fontSize: 12 }}>
               ({group.resource_count})
             </span>
           )}
-        </span>
         <Dropdown
           menu={{
             items: menuItems,
@@ -548,4 +552,6 @@ export default function GroupTree({ type, selectedId, onSelect, sourceId }: Grou
       </Modal>
     </div>
   )
-}
+})
+
+export default GroupTree

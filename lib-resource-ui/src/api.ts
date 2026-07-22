@@ -233,6 +233,20 @@ export const api = {
     if (groupId) q.set('group_id', String(groupId))
     return request(`/api/resources/batch?${q}`, { method: 'DELETE' })
   },
+
+  batchDeleteResources: (ids: number[], type: string): Promise<{ deleted: number }> =>
+    request('/api/resources/batch-ids', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, type }),
+    }),
+
+  batchMoveResources: (ids: number[], groupId: number, type: string): Promise<{ moved: number }> =>
+    request('/api/resources/batch-move', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, group_id: groupId, type }),
+    }),
 }
 
 export interface GroupNode {

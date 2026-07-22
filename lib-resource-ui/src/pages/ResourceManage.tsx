@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Button, Select, message, Modal, Input, Spin, Dropdown, Tabs } from 'antd'
-import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined } from '@ant-design/icons'
-import type { SelectProps } from 'antd'
+import { Button, Select, TreeSelect, message, Modal, Input, Spin, Dropdown } from 'antd'
+import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined, SwapOutlined } from '@ant-design/icons'
 import ResourceTable, { type ResourceTableHandle } from '../components/ResourceTable'
-import GroupTree from '../components/GroupTree'
+import GroupTree, { type GroupTreeHandle } from '../components/GroupTree'
 import { api, Source, GroupNode } from '../api'
 
 const RESOURCE_TYPE_MAP: Record<string, number> = {
@@ -23,6 +22,7 @@ export default function ResourceManage() {
   const sourceIdParam = searchParams.get('sourceId')
   const groupIdParam = searchParams.get('groupId')
   const tableRef = useRef<ResourceTableHandle | null>(null)
+  const groupTreeRef = useRef<GroupTreeHandle | null>(null)
   const [groupId, setGroupId] = useState<number | null>(null)
   const [groups, setGroups] = useState<GroupNode[]>([])
   const [sources, setSources] = useState<Source[]>([])
@@ -35,11 +35,15 @@ export default function ResourceManage() {
   const [editSourceName, setEditSourceName] = useState('')
   const [updatingSource, setUpdatingSource] = useState(false)
   const [pageLoading, setPageLoading] = useState(true)
-  const [showTrash, setShowTrash] = useState(false)
+  const [trashModalOpen, setTrashModalOpen] = useState(false)
   const [trashSources, setTrashSources] = useState<Source[]>([])
   const [deleteSourceModalOpen, setDeleteSourceModalOpen] = useState(false)
   const [deletingSource, setDeletingSource] = useState(false)
   const [restoringSource, setRestoringSource] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [moveModalOpen, setMoveModalOpen] = useState(false)
+  const [moveTargetGroupId, setMoveTargetGroupId] = useState<number | null>(null)
+  const [moving, setMoving] = useState(false)
 
   useEffect(() => {
     setPageLoading(true)
@@ -78,7 +82,7 @@ export default function ResourceManage() {
     }
     return null
   }
-  
+
   useEffect(() => {
     if (!sourceId) {
       setGroupId(null)
@@ -262,13 +266,51 @@ export default function ResourceManage() {
   }
 
   useEffect(() => {
-    if (showTrash) {
-      loadTrashSources()
-    }
-  }, [showTrash, type])
+    loadTrashSources()
+  }, [type])
 
-  const isInDefaultGroup = groups.some(g => g.id === groupId && g.is_default === 1)
-  
+  const handleBatchDelete = () => {
+    Modal.confirm({
+      title: '确认删除',
+      content: `确定删除选中的 ${selectedIds.length} 项资源？`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await api.batchDeleteResources(selectedIds, type)
+          message.success('删除成功')
+          setSelectedIds([])
+          tableRef.current?.refresh()
+          groupTreeRef.current?.refresh()
+        } catch (e) {
+          message.error(e instanceof Error ? e.message : '删除失败')
+        }
+      },
+    })
+  }
+
+  const handleBatchMove = async () => {
+    if (!moveTargetGroupId) {
+      message.warning('请选择目标分组')
+      return
+    }
+    setMoving(true)
+    try {
+      await api.batchMoveResources(selectedIds, moveTargetGroupId, type)
+      message.success('移动成功')
+      setSelectedIds([])
+      setMoveModalOpen(false)
+      setMoveTargetGroupId(null)
+      tableRef.current?.refresh()
+      groupTreeRef.current?.refresh()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '移动失败')
+    } finally {
+      setMoving(false)
+    }
+  }
+
   if (pageLoading) {
     return (
       <div style={{ 
@@ -295,109 +337,68 @@ export default function ResourceManage() {
             <div style={{ fontSize: 12, color: '#64748b', fontWeight: 500 }}>
               来源
             </div>
-            <Button
-              type="primary"
-              size="small"
-              icon={<PlusOutlined />}
-              onClick={() => setCreateSourceModalOpen(true)}
-            />
-          </div>
-          
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Select
-              value={sourceId}
-              onChange={setSourceId}
-              placeholder="选择来源"
-              style={{ flex: 1 }}
-              disabled={showTrash}
-              popupMatchSelectWidth={280}
-              optionRender={(option: any) => (
-                <span style={{ 
-                  overflow: 'hidden', 
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  display: 'block'
-                }}>
-                  {option?.label}
-                </span>
-              )}
-              options={sources.map(s => ({ value: s.id, label: s.name }))}
-            />
-            <Dropdown
-              menu={{
-                items: [
-                  { key: 'edit', label: '编辑名称', icon: <EditOutlined /> },
-                  { key: 'delete', label: '删除来源', icon: <DeleteOutlined />, danger: true },
-                  { type: 'divider' as const },
-                  { key: 'sync', label: '向量同步', icon: <SyncOutlined spin={syncing} /> },
-                ],
-                onClick: ({ key }) => {
-                  if (key === 'edit') {
-                    const source = sources.find(s => s.id === sourceId)
-                    if (source) {
-                      setEditSourceName(source.name)
-                      setEditSourceModalOpen(true)
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <Button
+                type="primary"
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => setCreateSourceModalOpen(true)}
+              />
+              <Dropdown
+                menu={{
+                  items: [
+                    { key: 'edit', label: '编辑名称', icon: <EditOutlined /> },
+                    { key: 'delete', label: '删除来源', icon: <DeleteOutlined />, danger: true },
+                    { type: 'divider' as const },
+                    { key: 'sync', label: '向量同步', icon: <SyncOutlined spin={syncing} /> },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === 'edit') {
+                      const source = sources.find(s => s.id === sourceId)
+                      if (source) {
+                        setEditSourceName(source.name)
+                        setEditSourceModalOpen(true)
+                      }
                     }
-                  }
-                  if (key === 'delete') setDeleteSourceModalOpen(true)
-                  if (key === 'sync') handleSyncVectors()
-                },
-              }}
-              trigger={['click']}
-              disabled={!sourceId || showTrash}
-            >
-              <Button size="small" icon={<SettingOutlined />} disabled={!sourceId || showTrash} />
-            </Dropdown>
-          </div>
-          
-          <Tabs
-            size="small"
-            activeKey={showTrash ? 'trash' : 'normal'}
-            onChange={key => setShowTrash(key === 'trash')}
-            items={[
-              { key: 'normal', label: '正常来源' },
-              { key: 'trash', label: `回收站${trashSources.length > 0 ? ` (${trashSources.length})` : ''}` },
-            ]}
-            style={{ marginTop: 12 }}
-          />
-          
-          {showTrash && (
-            <div style={{ maxHeight: 200, overflowY: 'auto', marginTop: 8 }}>
-              {trashSources.length === 0 ? (
-                <div style={{ color: '#94a3b8', fontSize: 12, padding: '8px 0', textAlign: 'center' }}>
-                  回收站为空
-                </div>
-              ) : (
-                trashSources.map(s => (
-                  <div
-                    key={s.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '6px 8px',
-                      background: '#f8fafc',
-                      borderRadius: 4,
-                      marginBottom: 4,
-                    }}
-                  >
-                    <span style={{ fontSize: 13, color: '#475569' }}>{s.name}</span>
-                    <Button
-                      size="small"
-                      type="link"
-                      icon={<UndoOutlined />}
-                      loading={restoringSource}
-                      onClick={() => handleRestoreSource(s.id)}
-                      style={{ padding: 0, height: 'auto' }}
-                    />
-                  </div>
-                ))
-              )}
+                    if (key === 'delete') setDeleteSourceModalOpen(true)
+                    if (key === 'sync') handleSyncVectors()
+                  },
+                }}
+                trigger={['click']}
+                disabled={!sourceId}
+              >
+                <Button size="small" icon={<SettingOutlined />} disabled={!sourceId} />
+              </Dropdown>
+              <span
+                style={{ fontSize: 12, color: '#64748b', cursor: 'pointer', marginLeft: 4, whiteSpace: 'nowrap' }}
+                onClick={() => { loadTrashSources(); setTrashModalOpen(true) }}
+              >
+                回收站
+              </span>
             </div>
-          )}
+          </div>
+
+          <Select
+            value={sourceId}
+            onChange={setSourceId}
+            placeholder="选择来源"
+            style={{ width: '100%' }}
+            optionRender={(option: any) => (
+              <span style={{ 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                display: 'block'
+              }}>
+                {option?.label}
+              </span>
+            )}
+            options={sources.map(s => ({ value: s.id, label: s.name }))}
+          />
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
           <GroupTree
+            ref={groupTreeRef}
             type={type}
             selectedId={groupId}
             onSelect={setGroupId}
@@ -407,14 +408,36 @@ export default function ResourceManage() {
       </div>
 
       {/* 右侧：表格 */}
-      <div style={{ flex: 2, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 4, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <ResourceTable
           type={type}
           sourceId={sourceId}
           groupId={groupId}
           handleRef={tableRef}
+          selectedRowKeys={selectedIds}
+          onSelectionChange={setSelectedIds}
           extraActions={
             <>
+              {selectedIds.length > 0 && (
+                <Dropdown
+                  menu={{
+                    items: [
+                      { key: 'move', label: '移动', icon: <SwapOutlined /> },
+                      { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true },
+                    ],
+                    onClick: ({ key }) => {
+                      if (key === 'move') {
+                        setMoveTargetGroupId(null)
+                        setMoveModalOpen(true)
+                      }
+                      if (key === 'delete') handleBatchDelete()
+                    },
+                  }}
+                  trigger={['click']}
+                >
+                  <Button icon={<EditOutlined />}>批量编辑 ({selectedIds.length})</Button>
+                </Dropdown>
+              )}
               <Button
                 type="primary"
                 icon={<UploadOutlined />}
@@ -484,6 +507,71 @@ export default function ResourceManage() {
         <p style={{ color: '#64748b', fontSize: 13 }}>
           该来源及其下的所有资源将移入回收站，可以随时恢复。
         </p>
+      </Modal>
+
+      <Modal
+        open={trashModalOpen}
+        title="回收站"
+        onCancel={() => setTrashModalOpen(false)}
+        footer={<Button onClick={() => setTrashModalOpen(false)}>关闭</Button>}
+      >
+        <div style={{ maxHeight: 300, overflowY: 'auto' }}>
+          {trashSources.length === 0 ? (
+            <div style={{ color: '#94a3b8', fontSize: 12, padding: '8px 0', textAlign: 'center' }}>
+              回收站为空
+            </div>
+          ) : (
+            trashSources.map(s => (
+              <div
+                key={s.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '6px 8px',
+                  background: '#f8fafc',
+                  borderRadius: 4,
+                  marginBottom: 4,
+                }}
+              >
+                <span style={{ fontSize: 13, color: '#475569' }}>{s.name}</span>
+                <Button
+                  size="small"
+                  type="link"
+                  icon={<UndoOutlined />}
+                  loading={restoringSource}
+                  onClick={() => handleRestoreSource(s.id)}
+                  style={{ padding: 0, height: 'auto' }}
+                />
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={moveModalOpen}
+        title={`移动 ${selectedIds.length} 项到分组`}
+        onCancel={() => { setMoveModalOpen(false); setMoveTargetGroupId(null) }}
+        onOk={handleBatchMove}
+        okText="确定"
+        okButtonProps={{ loading: moving }}
+        cancelText="取消"
+      >
+        <TreeSelect
+          value={moveTargetGroupId}
+          onChange={setMoveTargetGroupId}
+          placeholder="选择目标分组"
+          style={{ width: '100%' }}
+          treeDefaultExpandAll
+          treeData={groups.map(function convert(g: GroupNode): any {
+            return {
+              value: g.id,
+              title: g.name,
+              children: (g.children || []).map(convert),
+            }
+          })}
+        />
       </Modal>
     </div>
   )
