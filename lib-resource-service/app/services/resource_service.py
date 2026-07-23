@@ -25,6 +25,7 @@ def get_resources(
     page: int = 1,
     limit: int = 20,
     group_id: Optional[int] = None,
+    tags: Optional[List[str]] = None,
 ) -> Tuple[List[Resource], int]:
     query = db.query(Resource).filter(Resource.is_deleted == 0)
 
@@ -37,6 +38,14 @@ def get_resources(
     if group_id is not None:
         all_group_ids = _get_all_group_ids_with_descendants(db, group_id)
         query = query.filter(Resource.group_id.in_(all_group_ids))
+
+    if tags:
+        query = query.filter(
+            Resource.id.in_(
+                db.query(ResourceTag.resource_id)
+                .filter(ResourceTag.tag.in_(tags))
+            )
+        )
 
     if search:
         pattern = f"%{search}%"
@@ -332,3 +341,30 @@ def build_vector_text(resource: Resource) -> str:
     ]
     vector_text = ' '.join(filter(None, parts))
     return ' '.join(vector_text.split())
+
+
+def get_all_tags(
+    db: Session,
+    resource_type: Optional[int] = None,
+    source_id: Optional[int] = None,
+) -> List[Dict]:
+    """
+    获取所有去重标签及使用数量，按使用量降序排列。
+
+    返回：[{"tag": "标签名", "count": 5}, ...]
+    """
+    query = (
+        db.query(ResourceTag.tag, func.count(ResourceTag.id).label("cnt"))
+        .join(Resource, ResourceTag.resource_id == Resource.id)
+        .filter(Resource.is_deleted == 0)
+    )
+
+    if resource_type is not None:
+        query = query.filter(Resource.resource_type == resource_type)
+
+    if source_id is not None:
+        query = query.filter(Resource.source_id == source_id)
+
+    query = query.group_by(ResourceTag.tag).order_by(func.count(ResourceTag.id).desc())
+
+    return [{"tag": row.tag, "count": row.cnt} for row in query.all()]

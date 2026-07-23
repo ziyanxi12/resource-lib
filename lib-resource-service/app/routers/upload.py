@@ -29,7 +29,7 @@ async def batch_upload(
     统一批量上传接口
     
     - files、thumbnails、items 按索引一一对应
-    - 缩略图仅允许 PNG 格式
+    - 缩略图允许 PNG / SVG / JPEG 格式
     - items 格式：[{"name":"资源名","group_id":1,"width":24,"height":24,...}, ...]
     """
     # 手动解析表单，覆盖 Starlette 默认的 max_files=1000 限制
@@ -90,11 +90,12 @@ async def batch_upload(
         )
 
     # 校验缩略图格式
+    allowed_thumb_types = {"image/png", "image/svg+xml", "image/jpeg"}
     for i, thumb in enumerate(thumbnails):
-        if thumb.filename and thumb.content_type != "image/png":
+        if thumb.filename and thumb.content_type not in allowed_thumb_types:
             raise HTTPException(
                 status_code=400,
-                detail=f"第 {i + 1} 个缩略图必须为 PNG 格式"
+                detail=f"第 {i + 1} 个缩略图格式不支持（仅允许 PNG/SVG/JPEG）"
             )
 
     # 校验单文件大小 - 已禁用（不限制文件大小）

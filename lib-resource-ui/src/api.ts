@@ -77,6 +77,7 @@ export const api = {
     search?: string
     group_id?: number | null
     source_id?: number | null
+    tags?: string[]
   }) => {
     const q = new URLSearchParams()
     if (params.type) q.set('type', params.type)
@@ -85,7 +86,15 @@ export const api = {
     if (params.search) q.set('search', params.search)
     if (params.group_id) q.set('group_id', String(params.group_id))
     if (params.source_id) q.set('source_id', String(params.source_id))
+    if (params.tags?.length) q.set('tags', params.tags.join(','))
     return request(`/api/resources?${q}`)
+  },
+
+  getTags: (type: string, sourceId?: number | null): Promise<{ items: { tag: string; count: number }[] }> => {
+    const q = new URLSearchParams()
+    q.set('type', type)
+    if (sourceId) q.set('source_id', String(sourceId))
+    return request(`/api/resources/tags?${q}`)
   },
 
   updateResource: (id: number, data: Record<string, unknown> | FormData) => {

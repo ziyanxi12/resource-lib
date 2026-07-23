@@ -571,14 +571,14 @@ export default function ResourceUpload() {
         }
       })
       
-      // 缩略图上传（强制 PNG）
+      // 缩略图上传
       items.forEach((item, idx) => {
         if (item.thumbnailBlob && item.thumbnail_path) {
           const filename = item.thumbnail_path.split('/').pop() || `thumb_${idx}.png`
-          const file = new File([item.thumbnailBlob], filename, { type: 'image/png' })
+          const file = new File([item.thumbnailBlob], filename, { type: getMimeType(filename) })
           formData.append('thumbnails', file)
         } else {
-          formData.append('thumbnails', new Blob([''], { type: 'image/png' }), '')
+          formData.append('thumbnails', new Blob([''], { type: 'application/octet-stream' }), '')
         }
       })
 

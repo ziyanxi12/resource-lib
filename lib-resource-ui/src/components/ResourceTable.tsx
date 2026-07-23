@@ -198,27 +198,30 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
     >
       <div style={{ display: 'flex', gap: 24 }}>
         <div style={{ width: '42%', flexShrink: 0 }}>
-          <div style={{ position: 'relative' }}>
+          <div style={{
+            position: 'relative',
+            aspectRatio: '4 / 3',
+            borderRadius: 8,
+            border: '1px solid #e2e8f0',
+            background: '#f8fafc',
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
             {newThumbnail ? (
               <img 
                 src={URL.createObjectURL(newThumbnail)} 
                 alt="new thumbnail"
-                style={{ width: '100%', borderRadius: 8, border: '1px solid #e2e8f0' }}
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' as const }}
               />
             ) : item.thumbnail_path ? (
               <Image
                 src={staticUrl(item.thumbnail_path)}
-                width="100%"
-                style={{ borderRadius: 8, border: '1px solid #e2e8f0', background: '#f8fafc' }}
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' as const }}
               />
             ) : (
-              <div style={{
-                aspectRatio: '4 / 3', borderRadius: 8, border: '1px dashed #e2e8f0',
-                background: '#f8fafc', display: 'flex', alignItems: 'center',
-                justifyContent: 'center', color: '#cbd5e1', fontSize: 13,
-              }}>
-                暂无预览图
-              </div>
+              <span style={{ color: '#cbd5e1', fontSize: 13 }}>暂无预览图</span>
             )}
             <input
               ref={thumbnailInputRef}
@@ -309,7 +312,8 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
                 onClick={() => {
                   const link = document.createElement('a')
                   link.href = staticUrl(item.thumbnail_path!)
-                  const downloadName = fileName ? `${fileName}_thumb.png` : 'thumbnail.png'
+                  const thumbExt = getExtension(item.thumbnail_path!)
+                  const downloadName = fileName ? `${fileName}_thumb.${thumbExt}` : (item.thumbnail_path!.split('/').pop() || `thumbnail.${thumbExt}`)
                   link.download = downloadName
                   link.click()
                 }}
@@ -426,6 +430,8 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [tagOptions, setTagOptions] = useState<{ tag: string; count: number }[]>([])
   const tableRef = useRef<HTMLDivElement>(null)
   const [scrollY, setScrollY] = useState(400)
 
@@ -448,10 +454,14 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
   }, [sourceId, groupId])
 
   useEffect(() => {
+    api.getTags(type, sourceId).then(data => setTagOptions(data.items)).catch(() => {})
+  }, [type, sourceId, refreshKey])
+
+  useEffect(() => {
     if (searchMode) return
     let cancelled = false
     setLoading(true)
-    api.listResources({ type, page, limit: pageSize, source_id: sourceId, group_id: groupId })
+    api.listResources({ type, page, limit: pageSize, source_id: sourceId, group_id: groupId, tags: selectedTags.length ? selectedTags : undefined })
       .then(data => {
         if (cancelled) return
         setItems(data.items)
@@ -460,7 +470,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [type, page, pageSize, searchMode, refreshKey, sourceId, groupId])
+  }, [type, page, pageSize, searchMode, refreshKey, sourceId, groupId, selectedTags])
 
   const handleSearch = useCallback(async (q: string) => {
     const trimmed = q.trim()
@@ -476,6 +486,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
       const filters: Record<string, unknown> = {}
       if (sourceId) filters.source_id = sourceId
       if (groupId) filters.group_id = groupId
+      if (selectedTags.length) filters.tags = selectedTags
       const results = await api.vectorSearch({
         query: trimmed,
         type,
@@ -489,7 +500,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
     } finally {
       setLoading(false)
     }
-  }, [type, sourceId, groupId])
+  }, [type, sourceId, groupId, selectedTags])
 
   const refresh = useCallback(() => {
     setSearchMode(false)
@@ -593,6 +604,25 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
           prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
           enterButton
         />
+        <Select
+          mode="multiple"
+          showSearch
+          maxTagCount={0}
+          style={{ width: 160 }}
+          placeholder="标签筛选"
+          value={selectedTags}
+          onChange={(vals: string[]) => {
+            setSelectedTags(vals)
+            if (searchMode && query.trim()) {
+              handleSearch(query)
+            }
+          }}
+          options={tagOptions.map(t => ({ label: `${t.tag} (${t.count})`, value: t.tag }))}
+          filterOption={(input, option) =>
+            (option?.value as string)?.toLowerCase().includes(input.toLowerCase())
+          }
+          allowClear
+        />
         {searchMode && (
           <Button onClick={() => { setQuery(''); handleSearch('') }} size="small">
             返回全量
@@ -605,6 +635,32 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
         </div>
         {extraActions && <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>{extraActions}</div>}
       </div>
+
+      {selectedTags.length > 0 && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
+          padding: '0 4px', marginBottom: 10, flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 12, color: '#94a3b8', marginRight: 4 }}>已选标签:</span>
+          {selectedTags.map(tag => (
+            <Tag
+              key={tag}
+              closable
+              onClose={e => {
+                e.preventDefault()
+                const next = selectedTags.filter(t => t !== tag)
+                setSelectedTags(next)
+                if (searchMode && query.trim()) {
+                  handleSearch(query)
+                }
+              }}
+              style={{ margin: 0, borderRadius: 4 }}
+            >
+              {tag}
+            </Tag>
+          ))}
+        </div>
+      )}
 
       <div ref={tableRef} style={{
         flex: 1, minHeight: 0, minWidth: 0, background: '#fff',

@@ -66,7 +66,7 @@ async def batch_upload(
         db: 数据库会话
         resource_type: 资源类型
         files: 资源文件列表
-        thumbnails: 缩略图列表（PNG）
+        thumbnails: 缩略图列表（PNG / SVG / JPEG）
         items: 元数据列表
         source_id: 来源ID
         created_by: 创建者
@@ -114,7 +114,8 @@ async def batch_upload(
 
         # 保存缩略图
         if thumbnail.filename:
-            thumb_name = f"{file_uuid}_thumb.png"
+            thumb_ext = thumbnail.filename.rsplit(".", 1)[-1].lower() if "." in thumbnail.filename else "png"
+            thumb_name = f"{file_uuid}_thumb.{thumb_ext}"
             thumb_relative_path = f"{thumb_relative_prefix}/{thumb_name}"
             thumb_abs_path = os.path.join(thumb_dir, thumb_name)
             
@@ -154,9 +155,12 @@ async def batch_upload(
 
     # ===== 第三阶段：向量同步 =====
     if resources:
-        vectors_data = [(r, {}) for r in resources]
-        ingest_vectors(resource_type, vectors_data)
+        # resources 来自线程池已关闭的 session（detached），需在主 session 重新加载
         resource_ids = [r.id for r in resources]
+        from app.models.resource import Resource
+        fresh_resources = db.query(Resource).filter(Resource.id.in_(resource_ids)).all()
+        vectors_data = [(r, {}) for r in fresh_resources]
+        ingest_vectors(resource_type, vectors_data)
         batch_update_vector_time(db, resource_ids)
 
     logger.info("批量入库完成: count=%d", len(results))

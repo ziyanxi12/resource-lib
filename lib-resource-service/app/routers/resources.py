@@ -44,6 +44,24 @@ def get_categories(db: Session = Depends(get_db)):
     return {"categories": resource_service.get_categories_with_counts(db)}
 
 
+@router.get("/tags")
+def get_tags(
+    type: Optional[str] = Query(None, description="资源类型名"),
+    source_id: Optional[int] = Query(None, description="来源ID筛选"),
+    db: Session = Depends(get_db),
+):
+    """获取所有去重标签及使用数量"""
+    resource_type_int = None
+    if type:
+        try:
+            resource_type_int = int(ResourceType.from_name(type))
+        except KeyError:
+            raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
+
+    items = resource_service.get_all_tags(db, resource_type=resource_type_int, source_id=source_id)
+    return {"items": items}
+
+
 @router.post("/sync-vectors")
 def sync_vectors(
     type: str = Query(..., description="资源类型名，如 component、icon、illus、template、image、file"),
@@ -71,6 +89,7 @@ def list_resources(
     page:       int           = Query(1, ge=1),
     limit:      int           = Query(20, ge=1, le=100),
     search:     Optional[str] = Query(None, description="关键词，匹配名称/描述/search_text"),
+    tags:       Optional[str] = Query(None, description="标签筛选，逗号分隔，如 很好,hhh"),
     db: Session = Depends(get_db),
 ):
     """获取资源列表"""
@@ -81,6 +100,10 @@ def list_resources(
         except KeyError:
             raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
 
+    tag_list = None
+    if tags:
+        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+
     items, total = resource_service.get_resources(
         db,
         resource_type=resource_type_int,
@@ -89,6 +112,7 @@ def list_resources(
         page=page,
         limit=limit,
         group_id=group_id,
+        tags=tag_list,
     )
 
     return {
