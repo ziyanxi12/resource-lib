@@ -563,8 +563,17 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
   const scoreColumn = {
     title: '相似度',
     dataIndex: 'score',
-    width: 88,
+    width: 80,
     render: (v: number) => v ? `${(v * 100).toFixed(1)}%` : '-',
+  }
+
+  const vectorTextColumn = {
+    title: '向量文本',
+    dataIndex: 'vector_text',
+    width: 200,
+    render: (v: string | null) => v
+      ? <div style={{ wordBreak: 'break-all', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{v}</div>
+      : '-',
   }
 
   return (
@@ -629,22 +638,30 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
             width: 80px !important;
             min-width: 80px !important;
             max-width: 80px !important;
+            background: #e6f4ff !important;
           }
           .custom-table.search-mode .ant-table-thead > tr > th:nth-child(3),
           .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(3) {
+            width: 200px !important;
+            min-width: 200px !important;
+            max-width: 200px !important;
+            background: #e6f4ff !important;
+          }
+          .custom-table.search-mode .ant-table-thead > tr > th:nth-child(4),
+          .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(4) {
             width: 80px !important;
             min-width: 80px !important;
             max-width: 80px !important;
           }
-          .custom-table.search-mode .ant-table-thead > tr > th:nth-child(n+4),
-          .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(n+4) {
-            width: calc((100% - 208px) / 5) !important;
+          .custom-table.search-mode .ant-table-thead > tr > th:nth-child(n+5),
+          .custom-table.search-mode .ant-table-tbody > tr > td:nth-child(n+5) {
+            width: calc((100% - 408px) / 5) !important;
           }
         `}</style>
         <Table
           className={`custom-table${searchMode ? ' search-mode' : ''}`}
           rowKey="id"
-          columns={searchMode ? [scoreColumn, ...columns] : columns}
+          columns={searchMode ? [scoreColumn, vectorTextColumn, ...columns] : columns}
           dataSource={items}
           loading={loading}
           size="middle"
