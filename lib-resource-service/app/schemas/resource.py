@@ -51,3 +51,4 @@ class ResourceUpdateRequest(BaseModel):
     group_id: Optional[int] = None
     search_text: Optional[str] = None
     file_name: Optional[str] = None
+    raw_data: Optional[Dict[str, Any]] = None

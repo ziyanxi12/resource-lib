@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Table, Input, Button, Drawer, Tooltip, Image, message, Select, Modal, Upload, Tag } from 'antd'
 import { SearchOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
-import { api, staticUrl } from '../api'
+import { api } from '../api'
 import type { Resource } from '../types'
 import SemanticUnderstand from './SemanticUnderstand'
 
@@ -217,7 +217,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
               />
             ) : item.thumbnail_path ? (
               <Image
-                src={staticUrl(item.thumbnail_path)}
+                src={item.thumbnail_path}
                 style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' as const }}
               />
             ) : (
@@ -305,13 +305,13 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           </Field>
           <Field label="缩略图路径">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ flex: 1 }}>{newThumbnail ? <span style={{ color: '#059669' }}>{newThumbnail.name}</span> : (item.thumbnail_path || emptyCell)}</span>
+              <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-all' }}>{newThumbnail ? <span style={{ color: '#059669' }}>{newThumbnail.name}</span> : (item.thumbnail_path || emptyCell)}</span>
               <Button 
                 size="small" 
                 disabled={!item.thumbnail_path || !!newThumbnail}
                 onClick={() => {
                   const link = document.createElement('a')
-                  link.href = staticUrl(item.thumbnail_path!)
+                  link.href = item.thumbnail_path!
                   const thumbExt = getExtension(item.thumbnail_path!)
                   const downloadName = fileName ? `${fileName}_thumb.${thumbExt}` : (item.thumbnail_path!.split('/').pop() || `thumbnail.${thumbExt}`)
                   link.download = downloadName
@@ -330,13 +330,13 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           </Field>
           <Field label="文件路径">
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ flex: 1 }}>{newFile ? <span style={{ color: '#059669' }}>{newFile.name}</span> : (item.file_path || emptyCell)}</span>
+              <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-all' }}>{newFile ? <span style={{ color: '#059669' }}>{newFile.name}</span> : (item.file_path || emptyCell)}</span>
               <Button 
                 size="small" 
                 disabled={!item.file_path || !!newFile}
                 onClick={() => {
                   const link = document.createElement('a')
-                  link.href = staticUrl(item.file_path!)
+                  link.href = item.file_path!
                   const ext = getExtension(item.file_path!)
                   const downloadName = fileName ? `${fileName}.${ext}` : item.file_path!.split('/').pop() || 'file'
                   link.download = downloadName
@@ -521,7 +521,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
         if (!r.thumbnail_path) return emptyCell
         return (
           <Image
-            src={staticUrl(r.thumbnail_path)}
+            src={r.thumbnail_path}
             width={48}
             height={48}
             style={{ borderRadius: 6, objectFit: 'cover' }}

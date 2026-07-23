@@ -8,9 +8,10 @@ POST /api/resources/{id}/understand  对资源预览图生成语义描述
 """
 
 import logging
+import re
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -83,6 +84,7 @@ def sync_vectors(
 
 @router.get("")
 def list_resources(
+    request:    Request,
     type:       Optional[str] = Query(None, description="资源类型名，如 component、icon、illus"),
     source_id:  Optional[int] = Query(None, description="来源ID筛选"),
     group_id:   Optional[int] = Query(None, description="分组ID筛选"),
@@ -119,17 +121,17 @@ def list_resources(
         "total": total,
         "page":  page,
         "limit": limit,
-        "items": [_fmt(r) for r in items],
+        "items": [_fmt(r, request) for r in items],
     }
 
 
 @router.get("/{resource_id}")
-def get_resource(resource_id: int, db: Session = Depends(get_db)):
+def get_resource(resource_id: int, request: Request, db: Session = Depends(get_db)):
     """获取单个资源详情"""
     resource = resource_service.get_resource_by_id(db, resource_id)
     if not resource:
         raise HTTPException(status_code=404, detail="资源不存在")
-    return _fmt(resource)
+    return _fmt(resource, request)
 
 
 @router.put("/batch-move")
@@ -188,6 +190,7 @@ async def update_resource(
     group_id: Optional[int] = Form(None),
     search_text: Optional[str] = Form(None),
     file_name: Optional[str] = Form(None),
+    raw_data: Optional[str] = Form(None),
     thumbnail: Optional[UploadFile] = File(None),
     file: Optional[UploadFile] = File(None),
 ):
@@ -212,6 +215,11 @@ async def update_resource(
         update_data["search_text"] = search_text
     if file_name is not None:
         update_data["file_name"] = file_name
+    if raw_data is not None:
+        try:
+            update_data["raw_data"] = json.loads(raw_data)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="raw_data JSON 格式错误")
     if group_id is not None:
         update_data["group_id"] = group_id
     
@@ -283,7 +291,7 @@ async def update_resource(
         update_data["file_size"] = len(content)
         logger.info("更新文件: resource_id=%d, path=%s, size=%d", resource_id, file_relative_path, len(content))
     
-    text_fields = {"name", "description", "search_text"}
+    text_fields = {"name", "description", "search_text", "raw_data"}
     text_changed = any(k in update_data for k in text_fields)
     group_id_changed = "group_id" in update_data
 
@@ -463,7 +471,18 @@ def delete_resource(resource_id: int, db: Session = Depends(get_db)):
     return {"message": "删除成功", "id": resource_id}
 
 
-def _fmt(r) -> dict:
+def _to_public_url(path: Optional[str], request: Request) -> Optional[str]:
+    """将相对路径转为可外部访问的完整 URL；已是完整 URL 则原样返回。"""
+    if not path:
+        return None
+    if re.match(r"^(https?:)?//", path, re.I):
+        return path
+    scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+    return f"{scheme}://{host}{settings.ROOT_PATH}/static/{path}"
+
+
+def _fmt(r, request: Request) -> dict:
     return {
         "id": r.id,
         "resource_type": r.resource_type,
@@ -474,12 +493,12 @@ def _fmt(r) -> dict:
         "search_text": r.search_text,
         "vector_text": r.vector_text,
         "file_name": r.file_name,
-        "file_path": r.file_path,
+        "file_path": _to_public_url(r.file_path, request),
         "file_size": r.file_size,
         "file_type": r.file_type,
         "width": r.width,
         "height": r.height,
-        "thumbnail_path": r.thumbnail_path,
+        "thumbnail_path": _to_public_url(r.thumbnail_path, request),
         "raw_data": r.raw_data,
         "group_id": r.group_id,
         "group_path": r.group.real_path if r.group else None,
