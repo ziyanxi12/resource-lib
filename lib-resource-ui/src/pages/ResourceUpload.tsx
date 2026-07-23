@@ -71,6 +71,23 @@ const getImageDimensions = (file: Blob): Promise<{ width: number; height: number
   })
 }
 
+const getMimeType = (filename: string): string => {
+  const ext = filename.split('.').pop()?.toLowerCase() || ''
+  const mimeMap: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    gif: 'image/gif',
+    svg: 'image/svg+xml',
+    webp: 'image/webp',
+    pdf: 'application/pdf',
+    doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    txt: 'text/plain',
+  }
+  return mimeMap[ext] || 'application/octet-stream'
+}
+
 const withTimeout = <T extends unknown>(promise: Promise<T>, timeoutMs: number, errorMsg: string): Promise<T> => {
   return Promise.race([
     promise,
@@ -369,7 +386,12 @@ export default function ResourceUpload() {
         if (item.thumbnail_path) {
           const thumbFile = zip.file(item.thumbnail_path)
           if (thumbFile) {
-            thumbnailBlob = await thumbFile.async('blob')
+            const rawBlob = await thumbFile.async('blob')
+            // JSZip 返回的 blob 无 MIME type，SVG 等格式需正确 type 才能预览
+            const mime = getMimeType(item.thumbnail_path)
+            thumbnailBlob = mime && mime !== 'application/octet-stream'
+              ? new Blob([rawBlob], { type: mime })
+              : rawBlob
             thumbnailPreview = URL.createObjectURL(thumbnailBlob)
 
             // 从缩略图读取宽高
@@ -542,24 +564,6 @@ export default function ResourceUpload() {
     try {
       const formData = new FormData()
       
-      // 辅助函数：根据扩展名获取 MIME type
-      const getMimeType = (filename: string): string => {
-        const ext = filename.split('.').pop()?.toLowerCase() || ''
-        const mimeMap: Record<string, string> = {
-          png: 'image/png',
-          jpg: 'image/jpeg',
-          jpeg: 'image/jpeg',
-          gif: 'image/gif',
-          svg: 'image/svg+xml',
-          webp: 'image/webp',
-          pdf: 'application/pdf',
-          doc: 'application/msword',
-          docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          txt: 'text/plain',
-        }
-        return mimeMap[ext] || 'application/octet-stream'
-      }
-
       // 文件上传
       items.forEach((item, idx) => {
         if (item.fileBlob && item.file_path) {
