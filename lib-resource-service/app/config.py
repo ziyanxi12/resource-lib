@@ -17,6 +17,10 @@ class Settings:
     # 例如 nginx location /resource-lib/ → proxy_pass http://127.0.0.1:8009/
     # 则此处填 ROOT_PATH=/resource-lib
     ROOT_PATH: str = os.getenv("ROOT_PATH", "")
+    # 对外访问的完整域名（不含路径前缀），用于生成静态文件完整 URL
+    # 留空时自动从请求头推断；生产环境建议显式配置
+    # 示例：PUBLIC_ORIGIN=http://resource-lib.local
+    PUBLIC_ORIGIN: str = os.getenv("PUBLIC_ORIGIN", "")
 
     # ── 数据库 ────────────────────────────────────────────────
     # DB_URL 直接指定完整连接串，优先级高于下方 MySQL 分项配置

@@ -11,7 +11,7 @@ POST /api/vector/full-rebuild  全量重建向量库 + 清理孤儿数据
 """
 
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, Depends, Query, HTTPException, Request
+from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, selectinload
 
@@ -108,7 +108,7 @@ def _enrich_llm(raw_results: List[dict], db: Session, vec_type: str) -> List[dic
     return output
 
 
-def _build_basic_response(resource: Resource, raw_result: dict, request: Request) -> dict:
+def _build_basic_response(resource: Resource, raw_result: dict) -> dict:
     """basic 模式：id, vector_text, score"""
     return {
         "id": resource.id,
@@ -117,7 +117,7 @@ def _build_basic_response(resource: Resource, raw_result: dict, request: Request
     }
 
 
-def _build_normal_response(resource: Resource, raw_result: dict, request: Request) -> dict:
+def _build_normal_response(resource: Resource, raw_result: dict) -> dict:
     """normal 模式：id, vector_text, score, raw_data"""
     return {
         "id": resource.id,
@@ -127,9 +127,9 @@ def _build_normal_response(resource: Resource, raw_result: dict, request: Reques
     }
 
 
-def _build_complete_response(resource: Resource, raw_result: dict, request: Request) -> dict:
+def _build_complete_response(resource: Resource, raw_result: dict) -> dict:
     """complete 模式：全量数据"""
-    item = _fmt(resource, request)
+    item = _fmt(resource)
     item["vector_text"] = raw_result.get("text")
     item["score"] = raw_result.get("score")
     return item
@@ -162,7 +162,6 @@ def vector_search_llm(req: SearchRequest, db: Session = Depends(get_db)):
 
 @router.get("/detail")
 def get_resource_by_data_id(
-    request: Request,
     type: str = Query(..., description="资源类型：component/icon/illus/template/image"),
     data_id: str = Query(..., description="向量库唯一标识"),
     db: Session = Depends(get_db),
@@ -178,11 +177,11 @@ def get_resource_by_data_id(
     if not resource:
         raise HTTPException(status_code=404, detail="资源不存在或已删除")
     
-    return _fmt(resource, request)
+    return _fmt(resource)
 
 
 @router.post("/search")
-def vector_search(req: SearchRequest, request: Request, db: Session = Depends(get_db)):
+def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
     """
     向量搜索接口（支持批量、三种响应模式）
     
@@ -250,7 +249,7 @@ def vector_search(req: SearchRequest, request: Request, db: Session = Depends(ge
             data_id = r.get("data_id")
             res_row = resources_by_data_id.get(str(data_id)) if data_id else None
             if res_row:
-                group_results.append(response_builder(res_row, r, request))
+                group_results.append(response_builder(res_row, r))
         
         results.append(group_results)
 
