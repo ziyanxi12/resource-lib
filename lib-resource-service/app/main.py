@@ -8,6 +8,7 @@ import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
@@ -56,7 +57,9 @@ app = FastAPI(
     description="统一管理六大类设计资源：组件集、模版、SVG、插画、图片、文件",
     version=__version__,
     lifespan=lifespan,
-    root_path=settings.ROOT_PATH,
+    docs_url=None if settings.ROOT_PATH else "/docs",
+    redoc_url=None if settings.ROOT_PATH else "/redoc",
+    openapi_url=None if settings.ROOT_PATH else "/openapi.json",
 )
 
 # 允许前端跨域访问（开发时前端跑在不同端口）
@@ -102,3 +105,33 @@ def health():
         "status": "ok",
         "mode":   "mock" if settings.USE_MOCK else "production",
     }
+
+
+# ── 自定义文档路由（ROOT_PATH 非空时，引用带前缀的 openapi.json）────────
+if settings.ROOT_PATH:
+    @app.get("/docs", include_in_schema=False)
+    async def custom_swagger_ui_html():
+        return get_swagger_ui_html(
+            openapi_url=f"{settings.ROOT_PATH}/openapi.json",
+            title=f"{app.title} - Swagger UI",
+        )
+
+    @app.get("/redoc", include_in_schema=False)
+    async def custom_redoc_html():
+        return get_redoc_html(
+            openapi_url=f"{settings.ROOT_PATH}/openapi.json",
+            title=f"{app.title} - ReDoc",
+        )
+
+    @app.get("/openapi.json", include_in_schema=False)
+    async def custom_openapi():
+        from app.main import app as _app
+        from fastapi.openapi.utils import get_openapi
+        schema = get_openapi(
+            title=_app.title,
+            version=_app.version,
+            description=_app.description,
+            routes=_app.routes,
+        )
+        schema["servers"] = [{"url": settings.ROOT_PATH}]
+        return schema
