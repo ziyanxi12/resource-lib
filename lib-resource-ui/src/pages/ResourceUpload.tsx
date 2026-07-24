@@ -44,6 +44,7 @@ const TYPE_LABELS: Record<string, string> = {
 }
 
 const MAX_UPLOAD_COUNT = 50000
+const MAX_ZIP_SIZE = 500 * 1024 * 1024
 
 const findGroupById = (nodes: GroupNode[], targetId: number): GroupNode | null => {
   for (const node of nodes) {
@@ -253,6 +254,11 @@ export default function ResourceUpload() {
     
     setZipError('')
     setConfigLoaded(false)
+
+    if (zipFile.size > MAX_ZIP_SIZE) {
+      setZipError(`ZIP 文件大小不能超过 500MB，当前 ${(zipFile.size / 1024 / 1024).toFixed(1)}MB`)
+      return
+    }
 
     console.log('File size check passed, starting to load ZIP')
     
@@ -799,6 +805,13 @@ export default function ResourceUpload() {
         style={{ display: 'none' }}
         onChange={e => handleZipSelect(e.target.files)}
       />
+
+      <div style={{
+        marginBottom: 12, padding: '6px 12px',
+        background: '#f8fafc', borderRadius: 6, fontSize: 12, color: '#94a3b8',
+      }}>
+        ZIP 文件大小限制 500MB
+      </div>
 
       {/* 进度提示 */}
       {zipLoading && (

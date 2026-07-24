@@ -425,7 +425,7 @@ const GroupTree = forwardRef<GroupTreeHandle, GroupTreeProps>(function GroupTree
           line-height: 28px !important;
         }
       `}</style>
-      <div className="group-tree">
+      <div className="group-tree" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
         <Tree
           treeData={treeData}
           selectedKeys={selectedId ? [selectedId] : []}

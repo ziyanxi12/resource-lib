@@ -477,6 +477,9 @@ def _to_public_url(path: Optional[str], request: Request) -> Optional[str]:
         return None
     if re.match(r"^(https?:)?//", path, re.I):
         return path
+    origin = request.headers.get("x-origin")
+    if origin:
+        return f"{origin.rstrip('/')}{settings.ROOT_PATH}/static/{path}"
     scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
     host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
     return f"{scheme}://{host}{settings.ROOT_PATH}/static/{path}"
