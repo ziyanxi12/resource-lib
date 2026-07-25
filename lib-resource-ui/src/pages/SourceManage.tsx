@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Button, Modal, Input, Select, message, List } from 'antd'
+import { Button, Modal, Input, Select, message, List, Tabs, Tag } from 'antd'
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
 import { api, Source, GroupNode } from '../api'
 
@@ -52,6 +52,15 @@ export default function SourceManage() {
   const [editingGroup, setEditingGroup] = useState<GroupNode | null>(null)
   const [editGroupName, setEditGroupName] = useState('')
 
+  // 标签管理
+  const [tags, setTags] = useState<{ tag: string; count: number }[]>([])
+  const [tagLoading, setTagLoading] = useState(false)
+  const [editTagModalOpen, setEditTagModalOpen] = useState(false)
+  const [editingTag, setEditingTag] = useState<string | null>(null)
+  const [editTagName, setEditTagName] = useState('')
+  const [renameTagLoading, setRenameTagLoading] = useState(false)
+  const [deleteTagLoading, setDeleteTagLoading] = useState(false)
+
   useEffect(() => {
     loadSources()
   }, [])
@@ -59,8 +68,10 @@ export default function SourceManage() {
   useEffect(() => {
     if (selectedSource) {
       loadGroups(selectedSource.resource_type, selectedSource.id)
+      loadTags(selectedSource.resource_type, selectedSource.id)
     } else {
       setGroups([])
+      setTags([])
     }
   }, [selectedSource])
 
@@ -198,6 +209,85 @@ export default function SourceManage() {
     }
   }
 
+  const loadTags = async (resourceType: number, sourceId: number) => {
+    const typeStr = RESOURCE_TYPE_ID_TO_NAME[resourceType]
+    if (!typeStr) return
+    setTagLoading(true)
+    try {
+      const data = await api.getTags(typeStr, sourceId)
+      setTags(data.items)
+    } catch {
+      message.error('加载标签失败')
+    } finally {
+      setTagLoading(false)
+    }
+  }
+
+  const openEditTagModal = (tag: string) => {
+    setEditingTag(tag)
+    setEditTagName(tag)
+    setEditTagModalOpen(true)
+  }
+
+  const handleRenameTag = async () => {
+    if (!selectedSource || !editingTag) return
+    if (!editTagName.trim()) {
+      message.error('请输入标签名')
+      return
+    }
+    if (editTagName.trim() === editingTag) {
+      message.warning('新标签名与原标签名相同')
+      return
+    }
+    setRenameTagLoading(true)
+    try {
+      const typeStr = RESOURCE_TYPE_ID_TO_NAME[selectedSource.resource_type]
+      const res = await api.renameTag({
+        type: typeStr,
+        sourceId: selectedSource.id,
+        oldTag: editingTag,
+        newTag: editTagName.trim(),
+      })
+      message.success(`已重命名，影响 ${res.affected} 条资源`)
+      setEditTagModalOpen(false)
+      setEditingTag(null)
+      setEditTagName('')
+      loadTags(selectedSource.resource_type, selectedSource.id)
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '重命名失败')
+    } finally {
+      setRenameTagLoading(false)
+    }
+  }
+
+  const handleDeleteTag = (tag: string) => {
+    if (!selectedSource) return
+    Modal.confirm({
+      title: '确认删除标签',
+      content: `确定删除标签「${tag}」吗？该操作会从当前来源下所有资源中移除此标签。`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        setDeleteTagLoading(true)
+        try {
+          const typeStr = RESOURCE_TYPE_ID_TO_NAME[selectedSource.resource_type]
+          const res = await api.deleteTag({
+            type: typeStr,
+            sourceId: selectedSource.id,
+            tag,
+          })
+          message.success(`已删除，影响 ${res.affected} 条资源`)
+          loadTags(selectedSource.resource_type, selectedSource.id)
+        } catch (e) {
+          message.error(e instanceof Error ? e.message : '删除失败')
+        } finally {
+          setDeleteTagLoading(false)
+        }
+      },
+    })
+  }
+
   const openEditSourceModal = (source: Source) => {
     setEditingSource(source)
     setEditSourceName(source.name)
@@ -287,58 +377,98 @@ export default function SourceManage() {
           </div>
         </div>
 
-        {/* 右侧：分组列表 */}
+        {/* 右侧：分组/标签管理（Tab 切换） */}
         <div style={{ 
           flex: 1,
           border: '1px solid #e2e8f0', 
           borderRadius: 8,
           display: 'flex',
           flexDirection: 'column',
+          minHeight: 0,
         }}>
-          <div style={{ 
-            padding: '12px 16px', 
-            borderBottom: '1px solid #e2e8f0',
-            fontWeight: 500,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}>
-            <span>分组 {selectedSource && `（来源：${selectedSource.name}）`}</span>
-            {selectedSource && (
-              <Button size="small" onClick={handleGetGroups}>
-                获取分组
-              </Button>
-            )}
-          </div>
-          <div style={{ flex: 1, overflow: 'auto', padding: 16 }}>
-            {selectedSource ? (
-              groups.length > 0 ? (
-                <List
-                  dataSource={groups}
-                  renderItem={(item) => (
-                    <List.Item style={{ padding: '8px 12px' }}>
-                      <div style={{ fontSize: 13, color: '#64748b', width: 60 }}>ID: {item.id}</div>
-                      <div style={{ flex: 1 }}>{item.name}</div>
-                      <Button 
-                        type="text" 
-                        size="small" 
-                        icon={<EditOutlined />}
-                        onClick={() => openEditGroupModal(item)}
+          {selectedSource ? (
+            <Tabs
+              defaultActiveKey="group"
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+              tabBarStyle={{ padding: '0 16px', margin: 0 }}
+              items={[
+                {
+                  key: 'group',
+                  label: `分组（${groups.length}）`,
+                  children: (
+                    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+                      <div style={{ padding: '8px 16px', display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button size="small" onClick={handleGetGroups}>获取分组</Button>
+                      </div>
+                      <div style={{ flex: 1, overflow: 'auto', padding: '0 16px 16px' }}>
+                        {groups.length > 0 ? (
+                          <List
+                            dataSource={groups}
+                            renderItem={(item) => (
+                              <List.Item style={{ padding: '8px 12px' }}>
+                                <div style={{ fontSize: 13, color: '#64748b', width: 60 }}>ID: {item.id}</div>
+                                <div style={{ flex: 1 }}>{item.name}</div>
+                                <Button 
+                                  type="text" 
+                                  size="small" 
+                                  icon={<EditOutlined />}
+                                  onClick={() => openEditGroupModal(item)}
+                                />
+                              </List.Item>
+                            )}
+                          />
+                        ) : (
+                          <div style={{ color: '#94a3b8', textAlign: 'center', padding: 40 }}>
+                            暂无分组
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ),
+                },
+                {
+                  key: 'tag',
+                  label: `标签（${tags.length}）`,
+                  children: (
+                    <div style={{ padding: '0 16px 16px' }}>
+                      <List
+                        loading={tagLoading}
+                        dataSource={tags}
+                        renderItem={(item) => (
+                          <List.Item style={{ padding: '8px 12px' }}>
+                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <Tag style={{ margin: 0 }}>{item.tag}</Tag>
+                              <span style={{ color: '#94a3b8', fontSize: 12 }}>{item.count} 条资源</span>
+                            </div>
+                            <Button 
+                              type="text" 
+                              size="small" 
+                              icon={<EditOutlined />}
+                              loading={renameTagLoading && editingTag === item.tag}
+                              onClick={() => openEditTagModal(item.tag)}
+                            />
+                            <Button 
+                              type="text" 
+                              size="small" 
+                              danger
+                              icon={<DeleteOutlined />}
+                              loading={deleteTagLoading && editingTag === item.tag}
+                              onClick={() => handleDeleteTag(item.tag)}
+                            />
+                          </List.Item>
+                        )}
+                        locale={{ emptyText: '暂无标签' }}
                       />
-                    </List.Item>
-                  )}
-                />
-              ) : (
-                <div style={{ color: '#94a3b8', textAlign: 'center', padding: 40 }}>
-                  暂无分组
-                </div>
-              )
-            ) : (
-              <div style={{ color: '#94a3b8', textAlign: 'center', padding: 40 }}>
-                请选择来源
-              </div>
-            )}
-          </div>
+                    </div>
+                  ),
+                },
+              ]}
+            />
+          ) : (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
+              请选择来源
+            </div>
+          )}
         </div>
       </div>
 
@@ -413,6 +543,37 @@ export default function SourceManage() {
             onChange={e => setEditGroupName(e.target.value)} 
             placeholder="请输入分组名称"
           />
+        </div>
+      </Modal>
+
+      {/* 重命名标签弹窗 */}
+      <Modal
+        title="重命名标签"
+        open={editTagModalOpen}
+        onCancel={() => {
+          setEditTagModalOpen(false)
+          setEditingTag(null)
+          setEditTagName('')
+        }}
+        onOk={handleRenameTag}
+        okText="确定"
+        okButtonProps={{ loading: renameTagLoading }}
+        cancelText="取消"
+      >
+        <div>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>
+            原标签：<Tag>{editingTag}</Tag>
+          </div>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>新标签名</div>
+          <Input 
+            value={editTagName} 
+            onChange={e => setEditTagName(e.target.value)} 
+            placeholder="请输入新标签名"
+            onPressEnter={handleRenameTag}
+          />
+          <div style={{ marginTop: 8, color: '#94a3b8', fontSize: 12 }}>
+            若新标签名已存在，将自动合并（去重）。
+          </div>
         </div>
       </Modal>
 

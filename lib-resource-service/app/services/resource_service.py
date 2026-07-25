@@ -368,3 +368,112 @@ def get_all_tags(
     query = query.group_by(ResourceTag.tag).order_by(func.count(ResourceTag.id).desc())
 
     return [{"tag": row.tag, "count": row.cnt} for row in query.all()]
+
+
+def _refresh_affected_resources(db: Session, resource_ids: List[int]) -> None:
+    """对受影响资源重建 vector_text 并更新 data_updated_at"""
+    if not resource_ids:
+        return
+    now = datetime.utcnow()
+    resources = db.query(Resource).filter(Resource.id.in_(resource_ids)).all()
+    for res in resources:
+        res.vector_text = build_vector_text(res)
+        res.data_updated_at = now
+    db.commit()
+
+
+def rename_tag(
+    db: Session,
+    resource_type: Optional[int],
+    source_id: Optional[int],
+    old_tag: str,
+    new_tag: str,
+) -> int:
+    """批量重命名标签（按 resource_type + source_id 限定作用域）。
+
+    若新标签名在同作用域下已存在某些资源上，则对这些资源做合并去重：
+    - 旧标签记录直接删除（该资源已有新标签，避免重复）
+    - 仅旧标签独有的资源才 UPDATE 为新标签名
+
+    返回受影响的资源数量。
+    """
+    base_resource_ids_subq = (
+        db.query(Resource.id).filter(Resource.is_deleted == 0)
+    )
+    if resource_type is not None:
+        base_resource_ids_subq = base_resource_ids_subq.filter(Resource.resource_type == resource_type)
+    if source_id is not None:
+        base_resource_ids_subq = base_resource_ids_subq.filter(Resource.source_id == source_id)
+
+    old_res_ids = {
+        rid for (rid,) in db.query(ResourceTag.resource_id)
+        .join(Resource, ResourceTag.resource_id == Resource.id)
+        .filter(ResourceTag.tag == old_tag)
+        .filter(Resource.id.in_(base_resource_ids_subq))
+        .all()
+    }
+    new_res_ids = {
+        rid for (rid,) in db.query(ResourceTag.resource_id)
+        .join(Resource, ResourceTag.resource_id == Resource.id)
+        .filter(ResourceTag.tag == new_tag)
+        .filter(Resource.id.in_(base_resource_ids_subq))
+        .all()
+    }
+
+    affected = old_res_ids
+    merge_ids = old_res_ids & new_res_ids
+    pure_rename_ids = old_res_ids - new_res_ids
+
+    if merge_ids:
+        db.query(ResourceTag).filter(
+            ResourceTag.tag == old_tag,
+            ResourceTag.resource_id.in_(merge_ids),
+        ).delete(synchronize_session=False)
+
+    if pure_rename_ids:
+        db.query(ResourceTag).filter(
+            ResourceTag.tag == old_tag,
+            ResourceTag.resource_id.in_(pure_rename_ids),
+        ).update({ResourceTag.tag: new_tag}, synchronize_session=False)
+
+    db.commit()
+    _refresh_affected_resources(db, list(affected))
+    logger.info("重命名标签: '%s' -> '%s', 受影响资源 %d 条", old_tag, new_tag, len(affected))
+    return len(affected)
+
+
+def delete_tag(
+    db: Session,
+    resource_type: Optional[int],
+    source_id: Optional[int],
+    tag: str,
+) -> int:
+    """批量删除标签（按 resource_type + source_id 限定作用域）。
+
+    返回受影响的资源数量。
+    """
+    base_resource_ids_subq = (
+        db.query(Resource.id).filter(Resource.is_deleted == 0)
+    )
+    if resource_type is not None:
+        base_resource_ids_subq = base_resource_ids_subq.filter(Resource.resource_type == resource_type)
+    if source_id is not None:
+        base_resource_ids_subq = base_resource_ids_subq.filter(Resource.source_id == source_id)
+
+    affected_ids = {
+        rid for (rid,) in db.query(ResourceTag.resource_id)
+        .join(Resource, ResourceTag.resource_id == Resource.id)
+        .filter(ResourceTag.tag == tag)
+        .filter(Resource.id.in_(base_resource_ids_subq))
+        .all()
+    }
+
+    db.query(ResourceTag).filter(
+        ResourceTag.tag == tag,
+        ResourceTag.resource_id.in_(affected_ids),
+    ).delete(synchronize_session=False)
+
+    db.commit()
+    _refresh_affected_resources(db, list(affected_ids))
+    logger.info("删除标签: '%s', 受影响资源 %d 条", tag, len(affected_ids))
+    return len(affected_ids)

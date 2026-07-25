@@ -203,22 +203,24 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
             aspectRatio: '4 / 3',
             borderRadius: 8,
             border: '1px solid #e2e8f0',
-            background: '#f8fafc',
+            backgroundColor: '#ffffff',
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20'%3E%3Crect width='20' height='20' fill='%23ffffff'/%3E%3Crect width='10' height='10' fill='%23eef2f6'/%3E%3Crect x='10' y='10' width='10' height='10' fill='%23eef2f6'/%3E%3C/svg%3E")`,
             overflow: 'hidden',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
           }}>
             {newThumbnail ? (
-              <img 
-                src={URL.createObjectURL(newThumbnail)} 
+              <img
+                src={URL.createObjectURL(newThumbnail)}
                 alt="new thumbnail"
-                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' as const }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' as const, display: 'block' }}
               />
             ) : item.thumbnail_path ? (
               <Image
                 src={item.thumbnail_path}
-                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' as const }}
+                wrapperStyle={{ width: '100%', height: '100%' }}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' as const, display: 'block' }}
               />
             ) : (
               <span style={{ color: '#cbd5e1', fontSize: 13 }}>暂无预览图</span>
@@ -246,6 +248,10 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           <SemanticUnderstand
             resourceId={item.id}
             prompt={prompt}
+            thumbnail={{
+              file: newThumbnail ?? undefined,
+              url: newThumbnail ? undefined : (item.thumbnail_path ?? undefined),
+            }}
             onGenerated={(text, elapsed) => { setSemanticText(text); setSemanticElapsed(elapsed) }}
           />
           
@@ -524,7 +530,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
             src={r.thumbnail_path}
             width={48}
             height={48}
-            style={{ borderRadius: 6, objectFit: 'cover' }}
+            style={{ borderRadius: 6, objectFit: 'cover', backgroundColor: '#fff', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Crect width='16' height='16' fill='%23ffffff'/%3E%3Crect width='8' height='8' fill='%23eef2f6'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23eef2f6'/%3E%3C/svg%3E\")" }}
             onClick={e => e.stopPropagation()}
             preview={{ onVisibleChange: (v: boolean) => setIsPreviewing(v) }}
           />

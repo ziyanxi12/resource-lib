@@ -97,6 +97,26 @@ export const api = {
     return request(`/api/resources/tags?${q}`)
   },
 
+  renameTag: (params: { type: string; sourceId: number; oldTag: string; newTag: string }): Promise<{ affected: number }> =>
+    request('/api/resources/tags/rename', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: params.type,
+        source_id: params.sourceId,
+        old_tag: params.oldTag,
+        new_tag: params.newTag,
+      }),
+    }),
+
+  deleteTag: (params: { type: string; sourceId: number; tag: string }): Promise<{ affected: number }> => {
+    const q = new URLSearchParams()
+    q.set('type', params.type)
+    q.set('source_id', String(params.sourceId))
+    q.set('tag', params.tag)
+    return request(`/api/resources/tags?${q}`, { method: 'DELETE' })
+  },
+
   updateResource: (id: number, data: Record<string, unknown> | FormData) => {
     if (data instanceof FormData) {
       return request(`/api/resources/${id}`, {
@@ -125,16 +145,15 @@ export const api = {
       body: formData,
     }),
 
-  understandImage: (id: number, prompt?: string): Promise<{ id: number; description: string }> => {
-    if (prompt) {
-      return request(`/api/resources/${id}/understand`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt }),
-      })
-    }
-    return request(`/api/resources/${id}/understand`, { method: 'POST' })
-  },
+  understandImage: (id: number, params: { prompt?: string; imageBase64?: string }): Promise<{ id: number; description: string }> =>
+    request(`/api/resources/${id}/understand`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: params.prompt,
+        image_base64: params.imageBase64,
+      }),
+    }),
 
   updateThumbnail: (id: number, formData: FormData): Promise<{ message: string }> =>
     request(`/api/resources/${id}/thumbnail`, {

@@ -256,13 +256,15 @@ def _batch_insert_db(saved_items: List[dict], resource_type: int, source_id: int
     return {"resources": all_resources, "results": all_results}
 
 
-def understand_image(db: Session, resource_id: int, prompt: Optional[str] = None) -> str:
+def understand_image(db: Session, resource_id: int, prompt: Optional[str] = None, image_base64: Optional[str] = None) -> str:
     """调用图片语义理解模块，对资源的预览图生成中文语义描述
     
     Args:
         db: 数据库会话
         resource_id: 资源ID
         prompt: 用户提示词（可选），用于引导生成方向
+        image_base64: 前端构造的图片 base64（可选，不含 data: 前缀）。
+                      若提供则直接传给 LLM；为空时从磁盘读取预览图兜底。
     """
     from app.services.resource_service import get_resource_by_id
     from app.clients import image_understanding
@@ -271,6 +273,18 @@ def understand_image(db: Session, resource_id: int, prompt: Optional[str] = None
     resource = get_resource_by_id(db, resource_id)
     if not resource:
         raise HTTPException(status_code=404, detail="资源不存在")
+
+    if image_base64:
+        try:
+            logger.debug("LLM调用入参(base64): resource_id=%d, prompt=%s, base64_len=%d", resource_id, prompt, len(image_base64))
+            result = image_understanding.understand_image(image_base64, prompt, image_is_base64=True)
+            logger.debug("LLM调用输出: resource_id=%d, result=%s", resource_id, result)
+            return result
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error("LLM调用失败(base64): resource_id=%d, error=%s", resource_id, str(e))
+            raise HTTPException(status_code=502, detail=f"图片语义生成失败: {e}")
 
     if resource.resource_type == int(ResourceType.image):
         rel_path = resource.file_path or resource.thumbnail_path
@@ -284,12 +298,12 @@ def understand_image(db: Session, resource_id: int, prompt: Optional[str] = None
         raise HTTPException(status_code=404, detail=f"预览图文件不存在: {rel_path}")
 
     try:
-        logger.debug("LLM调用入参: resource_id=%d, image_path=%s, prompt=%s", resource_id, abs_path, prompt)
-        result = image_understanding.understand_image(abs_path, prompt)
+        logger.debug("LLM调用入参(path): resource_id=%d, image_path=%s, prompt=%s", resource_id, abs_path, prompt)
+        result = image_understanding.understand_image(abs_path, prompt, image_is_base64=False)
         logger.debug("LLM调用输出: resource_id=%d, result=%s", resource_id, result)
         return result
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("LLM调用失败: resource_id=%d, error=%s", resource_id, str(e))
+        logger.error("LLM调用失败(path): resource_id=%d, error=%s", resource_id, str(e))
         raise HTTPException(status_code=502, detail=f"图片语义生成失败: {e}")

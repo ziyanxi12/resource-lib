@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 class UnderstandRequest(BaseModel):
     prompt: Optional[str] = None
+    image_base64: Optional[str] = None
 
 class BatchIdsRequest(BaseModel):
     ids: List[int]
@@ -35,6 +36,12 @@ class BatchMoveRequest(BaseModel):
     ids: List[int]
     group_id: int
     type: str
+
+class RenameTagRequest(BaseModel):
+    type: str
+    source_id: int
+    old_tag: str
+    new_tag: str
 
 router = APIRouter(prefix="/api/resources", tags=["资源管理"])
 
@@ -61,6 +68,64 @@ def get_tags(
 
     items = resource_service.get_all_tags(db, resource_type=resource_type_int, source_id=source_id)
     return {"items": items}
+
+
+@router.post("/tags/rename")
+def rename_tag(req: RenameTagRequest, db: Session = Depends(get_db)):
+    """批量重命名标签（按 type + source_id 限定作用域）。
+
+    若新标签名在同作用域下已存在某些资源上，自动合并去重。
+    返回受影响的资源数量。受影响资源的 vector_text 和 data_updated_at 会被更新。
+    """
+    try:
+        resource_type_int = int(ResourceType.from_name(req.type))
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"未知资源类型: {req.type}")
+
+    req.old_tag = req.old_tag.strip()
+    req.new_tag = req.new_tag.strip()
+    if not req.old_tag or not req.new_tag:
+        raise HTTPException(status_code=400, detail="标签名不能为空")
+    if req.old_tag == req.new_tag:
+        raise HTTPException(status_code=400, detail="新标签名与原标签名相同")
+
+    affected = resource_service.rename_tag(
+        db,
+        resource_type=resource_type_int,
+        source_id=req.source_id,
+        old_tag=req.old_tag,
+        new_tag=req.new_tag,
+    )
+    return {"affected": affected}
+
+
+@router.delete("/tags")
+def delete_tag(
+    type: str = Query(..., description="资源类型名"),
+    source_id: int = Query(..., description="来源ID"),
+    tag: str = Query(..., description="要删除的标签名"),
+    db: Session = Depends(get_db),
+):
+    """批量删除标签（按 type + source_id 限定作用域）。
+
+    返回受影响的资源数量。受影响资源的 vector_text 和 data_updated_at 会被更新。
+    """
+    try:
+        resource_type_int = int(ResourceType.from_name(type))
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
+
+    tag = tag.strip()
+    if not tag:
+        raise HTTPException(status_code=400, detail="标签名不能为空")
+
+    affected = resource_service.delete_tag(
+        db,
+        resource_type=resource_type_int,
+        source_id=source_id,
+        tag=tag,
+    )
+    return {"affected": affected}
 
 
 @router.post("/sync-vectors")
@@ -355,10 +420,12 @@ def understand_resource(
     
     Args:
         resource_id: 资源ID
-        request: 请求体，包含 prompt 字段（可选），用于引导生成方向
+        request: 请求体，包含 prompt（可选，引导生成方向）和 image_base64
+                 （可选，前端构造的图片 base64，不含 data: 前缀；为空时后端从磁盘读取兜底）
     """
     prompt = request.prompt if request else None
-    description = upload_service.understand_image(db, resource_id, prompt)
+    image_base64 = request.image_base64 if request else None
+    description = upload_service.understand_image(db, resource_id, prompt, image_base64=image_base64)
     return {"id": resource_id, "description": description}
 
 
