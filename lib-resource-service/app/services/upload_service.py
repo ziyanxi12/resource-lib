@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 from app.config import settings
 from app.enums import ResourceType
-from app.services.resource_service import create_resource, update_tags, batch_update_vector_time, build_vector_text
+from app.services.resource_service import create_resource, batch_update_vector_time, build_vector_text, normalize_tags
 from app.services.vector_text_builder import ingest_vectors
 
 
@@ -176,7 +176,7 @@ async def batch_upload(
 def _batch_insert_db(saved_items: List[dict], resource_type: int, source_id: int, created_by: Optional[str]) -> dict:
     """在线程池中执行的同步批量入库（支持分批）"""
     from app.database import SessionLocal
-    from app.services.resource_service import batch_create_resources, batch_insert_tags
+    from app.services.resource_service import batch_create_resources
     
     BATCH_SIZE = 500
     all_resources = []
@@ -191,7 +191,6 @@ def _batch_insert_db(saved_items: List[dict], resource_type: int, source_id: int
         try:
             # 构建批量数据
             resources_data = []
-            tags_list = []  # 每个资源对应的标签列表（索引与 resources_data 一一对应）
             
             for saved in batch_items:
                 item = saved["item"]
@@ -210,23 +209,14 @@ def _batch_insert_db(saved_items: List[dict], resource_type: int, source_id: int
                     "group_id": item.get("group_id"),
                     "search_text": item.get("search_text"),
                     "raw_data": item.get("raw_data") or item.get("meta_json"),
+                    "tags": normalize_tags(item.get("tags", [])),
                     "data_updated_at": datetime.utcnow(),
                     "created_by": created_by,
                 }
                 resources_data.append(data)
-                tags_list.append(item.get("tags", []))
             
             # 批量插入资源
             resources = batch_create_resources(db, resources_data)
-            
-            # 根据 resource_id 批量插入标签
-            tags_with_ids = []
-            for i, resource in enumerate(resources):
-                tags = tags_list[i]
-                if tags:
-                    tags_with_ids.append((resource.id, tags))
-            if tags_with_ids:
-                batch_insert_tags(db, tags_with_ids)
             
             # 构建向量文本
             from app.services.resource_service import build_vector_text

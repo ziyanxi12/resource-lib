@@ -3,10 +3,22 @@ from typing import Dict, Optional, List, Tuple
 from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
-from app.models.resource import Resource, ResourceTag, ResourceGroup
+from app.models.resource import Resource, ResourceGroup
 from app.enums import ResourceType
 
 logger = logging.getLogger(__name__)
+
+
+def normalize_tags(tags: Optional[List[str]]) -> List[str]:
+    """规范化标签列表：strip + 去空 + 去重（保持顺序）"""
+    if not tags:
+        return []
+    seen = []
+    for t in tags:
+        t = (t or '').strip()
+        if t and t not in seen:
+            seen.append(t)
+    return seen
 
 
 def _get_all_group_ids_with_descendants(db: Session, group_id: int) -> List[int]:
@@ -25,7 +37,6 @@ def get_resources(
     page: int = 1,
     limit: int = 20,
     group_id: Optional[int] = None,
-    tags: Optional[List[str]] = None,
 ) -> Tuple[List[Resource], int]:
     query = db.query(Resource).filter(Resource.is_deleted == 0)
 
@@ -38,14 +49,6 @@ def get_resources(
     if group_id is not None:
         all_group_ids = _get_all_group_ids_with_descendants(db, group_id)
         query = query.filter(Resource.group_id.in_(all_group_ids))
-
-    if tags:
-        query = query.filter(
-            Resource.id.in_(
-                db.query(ResourceTag.resource_id)
-                .filter(ResourceTag.tag.in_(tags))
-            )
-        )
 
     if search:
         pattern = f"%{search}%"
@@ -112,7 +115,7 @@ def batch_create_resources(db: Session, resources_data: List[dict]) -> List[Reso
         resources_data: 资源数据列表
     
     Returns:
-        插入的 Resource 对象列表（含 id）
+        插入的 Resource 对象列表（含 id），顺序与 resources_data 严格一致
     """
     if not resources_data:
         return []
@@ -121,45 +124,10 @@ def batch_create_resources(db: Session, resources_data: List[dict]) -> List[Reso
         if "source_id" not in data:
             raise ValueError("source_id is required")
     
-    db.bulk_insert_mappings(Resource, resources_data)
-    db.commit()
-    
-    source_ids = {d["source_id"] for d in resources_data}
-    names = [d["name"] for d in resources_data]
-    query = db.query(Resource).filter(
-        Resource.source_id.in_(source_ids),
-        Resource.name.in_(names),
-        Resource.is_deleted == 0,
-    ).order_by(Resource.id.desc()).limit(len(resources_data))
-    
-    return query.all()
-
-
-def batch_insert_tags(db: Session, resource_tags: List[Tuple[int, List[str]]]) -> None:
-    """
-    批量插入标签
-    
-    Args:
-        db: 数据库会话
-        resource_tags: [(resource_id, ["tag1", "tag2"]), ...]
-    """
-    if not resource_tags:
-        return
-    
-    resource_ids = [rid for rid, _ in resource_tags]
-    db.query(ResourceTag).filter(ResourceTag.resource_id.in_(resource_ids)).delete()
-    
-    tag_mappings = []
-    for resource_id, tags in resource_tags:
-        for tag in tags:
-            tag_mappings.append({
-                "resource_id": resource_id,
-                "tag": tag.strip(),
-            })
-    
-    if tag_mappings:
-        db.bulk_insert_mappings(ResourceTag, tag_mappings)
-        db.commit()
+    resources = [Resource(**data) for data in resources_data]
+    db.add_all(resources)
+    db.flush()
+    return resources
 
 
 def update_resource(db: Session, resource_id: int, data: dict) -> Optional[Resource]:
@@ -275,13 +243,6 @@ def batch_move_group(
     return moved_ids, len(moved_ids)
 
 
-def update_tags(db: Session, resource_id: int, tags: List[str]) -> None:
-    db.query(ResourceTag).filter(ResourceTag.resource_id == resource_id).delete()
-    for tag in tags:
-        db.add(ResourceTag(resource_id=resource_id, tag=tag.strip()))
-    db.commit()
-
-
 def get_resources_need_sync(db: Session, resource_type: int, source_id: int = None) -> Tuple[List[Resource], int]:
     """
     获取需要同步向量的资源（vector_updated_at < data_updated_at 或 vector_updated_at 为空）
@@ -332,7 +293,7 @@ def build_vector_text(resource: Resource) -> str:
     """
     构造向量文本：name + description + tags + search_text
     """
-    tags_str = ' '.join([t.tag for t in resource.tags])
+    tags_str = ' '.join(resource.tags or [])
     parts = [
         resource.name or '',
         resource.description or '',
@@ -347,133 +308,17 @@ def get_all_tags(
     db: Session,
     resource_type: Optional[int] = None,
     source_id: Optional[int] = None,
-) -> List[Dict]:
-    """
-    获取所有去重标签及使用数量，按使用量降序排列。
-
-    返回：[{"tag": "标签名", "count": 5}, ...]
-    """
-    query = (
-        db.query(ResourceTag.tag, func.count(ResourceTag.id).label("cnt"))
-        .join(Resource, ResourceTag.resource_id == Resource.id)
-        .filter(Resource.is_deleted == 0)
-    )
-
+) -> List[str]:
+    """获取去重标签列表（按字母序排列）。"""
+    query = db.query(Resource.tags).filter(Resource.is_deleted == 0)
     if resource_type is not None:
         query = query.filter(Resource.resource_type == resource_type)
-
     if source_id is not None:
         query = query.filter(Resource.source_id == source_id)
 
-    query = query.group_by(ResourceTag.tag).order_by(func.count(ResourceTag.id).desc())
-
-    return [{"tag": row.tag, "count": row.cnt} for row in query.all()]
-
-
-def _refresh_affected_resources(db: Session, resource_ids: List[int]) -> None:
-    """对受影响资源重建 vector_text 并更新 data_updated_at"""
-    if not resource_ids:
-        return
-    now = datetime.utcnow()
-    resources = db.query(Resource).filter(Resource.id.in_(resource_ids)).all()
-    for res in resources:
-        res.vector_text = build_vector_text(res)
-        res.data_updated_at = now
-    db.commit()
-
-
-def rename_tag(
-    db: Session,
-    resource_type: Optional[int],
-    source_id: Optional[int],
-    old_tag: str,
-    new_tag: str,
-) -> int:
-    """批量重命名标签（按 resource_type + source_id 限定作用域）。
-
-    若新标签名在同作用域下已存在某些资源上，则对这些资源做合并去重：
-    - 旧标签记录直接删除（该资源已有新标签，避免重复）
-    - 仅旧标签独有的资源才 UPDATE 为新标签名
-
-    返回受影响的资源数量。
-    """
-    base_resource_ids_subq = (
-        db.query(Resource.id).filter(Resource.is_deleted == 0)
-    )
-    if resource_type is not None:
-        base_resource_ids_subq = base_resource_ids_subq.filter(Resource.resource_type == resource_type)
-    if source_id is not None:
-        base_resource_ids_subq = base_resource_ids_subq.filter(Resource.source_id == source_id)
-
-    old_res_ids = {
-        rid for (rid,) in db.query(ResourceTag.resource_id)
-        .join(Resource, ResourceTag.resource_id == Resource.id)
-        .filter(ResourceTag.tag == old_tag)
-        .filter(Resource.id.in_(base_resource_ids_subq))
-        .all()
-    }
-    new_res_ids = {
-        rid for (rid,) in db.query(ResourceTag.resource_id)
-        .join(Resource, ResourceTag.resource_id == Resource.id)
-        .filter(ResourceTag.tag == new_tag)
-        .filter(Resource.id.in_(base_resource_ids_subq))
-        .all()
-    }
-
-    affected = old_res_ids
-    merge_ids = old_res_ids & new_res_ids
-    pure_rename_ids = old_res_ids - new_res_ids
-
-    if merge_ids:
-        db.query(ResourceTag).filter(
-            ResourceTag.tag == old_tag,
-            ResourceTag.resource_id.in_(merge_ids),
-        ).delete(synchronize_session=False)
-
-    if pure_rename_ids:
-        db.query(ResourceTag).filter(
-            ResourceTag.tag == old_tag,
-            ResourceTag.resource_id.in_(pure_rename_ids),
-        ).update({ResourceTag.tag: new_tag}, synchronize_session=False)
-
-    db.commit()
-    _refresh_affected_resources(db, list(affected))
-    logger.info("重命名标签: '%s' -> '%s', 受影响资源 %d 条", old_tag, new_tag, len(affected))
-    return len(affected)
-
-
-def delete_tag(
-    db: Session,
-    resource_type: Optional[int],
-    source_id: Optional[int],
-    tag: str,
-) -> int:
-    """批量删除标签（按 resource_type + source_id 限定作用域）。
-
-    返回受影响的资源数量。
-    """
-    base_resource_ids_subq = (
-        db.query(Resource.id).filter(Resource.is_deleted == 0)
-    )
-    if resource_type is not None:
-        base_resource_ids_subq = base_resource_ids_subq.filter(Resource.resource_type == resource_type)
-    if source_id is not None:
-        base_resource_ids_subq = base_resource_ids_subq.filter(Resource.source_id == source_id)
-
-    affected_ids = {
-        rid for (rid,) in db.query(ResourceTag.resource_id)
-        .join(Resource, ResourceTag.resource_id == Resource.id)
-        .filter(ResourceTag.tag == tag)
-        .filter(Resource.id.in_(base_resource_ids_subq))
-        .all()
-    }
-
-    db.query(ResourceTag).filter(
-        ResourceTag.tag == tag,
-        ResourceTag.resource_id.in_(affected_ids),
-    ).delete(synchronize_session=False)
-
-    db.commit()
-    _refresh_affected_resources(db, list(affected_ids))
-    logger.info("删除标签: '%s', 受影响资源 %d 条", tag, len(affected_ids))
-    return len(affected_ids)
+    seen = []
+    for (tags,) in query.all():
+        for t in (tags or []):
+            if t not in seen:
+                seen.append(t)
+    return sorted(seen)

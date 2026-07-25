@@ -13,7 +13,7 @@ POST /api/vector/full-rebuild  全量重建向量库 + 清理孤儿数据
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.clients import vector_client
 from app.config import settings
@@ -68,18 +68,13 @@ def _resolve_vec_type(req_type: str) -> Optional[str]:
     return None
 
 
-_LOAD_OPTS = [
-    selectinload(Resource.tags),
-]
-
-
 def _lookup_resources(db: Session, vec_type: str, data_ids: List[str]) -> Dict[str, Any]:
     """按 vec_type 用资源 ID 反查 Resource，返回 {data_id: Resource}。"""
     if not data_ids:
         return {}
 
     int_ids = [int(d) for d in data_ids if d.isdigit()]
-    rows = db.query(Resource).options(*_LOAD_OPTS).filter(
+    rows = db.query(Resource).filter(
         Resource.id.in_(int_ids),
         Resource.is_deleted == 0,
     ).all()

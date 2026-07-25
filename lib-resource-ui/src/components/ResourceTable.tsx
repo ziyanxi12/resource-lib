@@ -436,8 +436,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
   const [isPreviewing, setIsPreviewing] = useState(false)
-  const [selectedTags, setSelectedTags] = useState<string[]>([])
-  const [tagOptions, setTagOptions] = useState<{ tag: string; count: number }[]>([])
+  const [tagSearch, setTagSearch] = useState<string[]>([])
   const tableRef = useRef<HTMLDivElement>(null)
   const [scrollY, setScrollY] = useState(400)
 
@@ -460,14 +459,10 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
   }, [sourceId, groupId])
 
   useEffect(() => {
-    api.getTags(type, sourceId).then(data => setTagOptions(data.items)).catch(() => {})
-  }, [type, sourceId, refreshKey])
-
-  useEffect(() => {
     if (searchMode) return
     let cancelled = false
     setLoading(true)
-    api.listResources({ type, page, limit: pageSize, source_id: sourceId, group_id: groupId, tags: selectedTags.length ? selectedTags : undefined })
+    api.listResources({ type, page, limit: pageSize, source_id: sourceId, group_id: groupId })
       .then(data => {
         if (cancelled) return
         setItems(data.items)
@@ -476,7 +471,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
       .catch(() => message.error('加载失败'))
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [type, page, pageSize, searchMode, refreshKey, sourceId, groupId, selectedTags])
+  }, [type, page, pageSize, searchMode, refreshKey, sourceId, groupId])
 
   const handleSearch = useCallback(async (q: string) => {
     const trimmed = q.trim()
@@ -492,7 +487,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
       const filters: Record<string, unknown> = {}
       if (sourceId) filters.source_id = sourceId
       if (groupId) filters.group_id = groupId
-      if (selectedTags.length) filters.tags = selectedTags
+      if (tagSearch.length) filters.tags = tagSearch
       const results = await api.vectorSearch({
         query: trimmed,
         type,
@@ -506,7 +501,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
     } finally {
       setLoading(false)
     }
-  }, [type, sourceId, groupId, selectedTags])
+  }, [type, sourceId, groupId, tagSearch])
 
   const refresh = useCallback(() => {
     setSearchMode(false)
@@ -611,23 +606,13 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
           enterButton
         />
         <Select
-          mode="multiple"
-          showSearch
-          maxTagCount={0}
-          style={{ width: 160 }}
+          mode="tags"
+          value={tagSearch}
+          onChange={setTagSearch}
+          style={{ width: 200 }}
           placeholder="标签筛选"
-          value={selectedTags}
-          onChange={(vals: string[]) => {
-            setSelectedTags(vals)
-            if (searchMode && query.trim()) {
-              handleSearch(query)
-            }
-          }}
-          options={tagOptions.map(t => ({ label: `${t.tag} (${t.count})`, value: t.tag }))}
-          filterOption={(input, option) =>
-            (option?.value as string)?.toLowerCase().includes(input.toLowerCase())
-          }
-          allowClear
+          tokenSeparators={[',']}
+          maxTagCount={3}
         />
         {searchMode && (
           <Button onClick={() => { setQuery(''); handleSearch('') }} size="small">
@@ -641,32 +626,6 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
         </div>
         {extraActions && <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>{extraActions}</div>}
       </div>
-
-      {selectedTags.length > 0 && (
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
-          padding: '0 4px', marginBottom: 10, flexShrink: 0,
-        }}>
-          <span style={{ fontSize: 12, color: '#94a3b8', marginRight: 4 }}>已选标签:</span>
-          {selectedTags.map(tag => (
-            <Tag
-              key={tag}
-              closable
-              onClose={e => {
-                e.preventDefault()
-                const next = selectedTags.filter(t => t !== tag)
-                setSelectedTags(next)
-                if (searchMode && query.trim()) {
-                  handleSearch(query)
-                }
-              }}
-              style={{ margin: 0, borderRadius: 4 }}
-            >
-              {tag}
-            </Tag>
-          ))}
-        </div>
-      )}
 
       <div ref={tableRef} style={{
         flex: 1, minHeight: 0, minWidth: 0, background: '#fff',

@@ -37,12 +37,6 @@ class BatchMoveRequest(BaseModel):
     group_id: int
     type: str
 
-class RenameTagRequest(BaseModel):
-    type: str
-    source_id: int
-    old_tag: str
-    new_tag: str
-
 router = APIRouter(prefix="/api/resources", tags=["资源管理"])
 
 
@@ -58,7 +52,7 @@ def get_tags(
     source_id: Optional[int] = Query(None, description="来源ID筛选"),
     db: Session = Depends(get_db),
 ):
-    """获取所有去重标签及使用数量"""
+    """获取去重标签列表"""
     resource_type_int = None
     if type:
         try:
@@ -68,64 +62,6 @@ def get_tags(
 
     items = resource_service.get_all_tags(db, resource_type=resource_type_int, source_id=source_id)
     return {"items": items}
-
-
-@router.post("/tags/rename")
-def rename_tag(req: RenameTagRequest, db: Session = Depends(get_db)):
-    """批量重命名标签（按 type + source_id 限定作用域）。
-
-    若新标签名在同作用域下已存在某些资源上，自动合并去重。
-    返回受影响的资源数量。受影响资源的 vector_text 和 data_updated_at 会被更新。
-    """
-    try:
-        resource_type_int = int(ResourceType.from_name(req.type))
-    except KeyError:
-        raise HTTPException(status_code=400, detail=f"未知资源类型: {req.type}")
-
-    req.old_tag = req.old_tag.strip()
-    req.new_tag = req.new_tag.strip()
-    if not req.old_tag or not req.new_tag:
-        raise HTTPException(status_code=400, detail="标签名不能为空")
-    if req.old_tag == req.new_tag:
-        raise HTTPException(status_code=400, detail="新标签名与原标签名相同")
-
-    affected = resource_service.rename_tag(
-        db,
-        resource_type=resource_type_int,
-        source_id=req.source_id,
-        old_tag=req.old_tag,
-        new_tag=req.new_tag,
-    )
-    return {"affected": affected}
-
-
-@router.delete("/tags")
-def delete_tag(
-    type: str = Query(..., description="资源类型名"),
-    source_id: int = Query(..., description="来源ID"),
-    tag: str = Query(..., description="要删除的标签名"),
-    db: Session = Depends(get_db),
-):
-    """批量删除标签（按 type + source_id 限定作用域）。
-
-    返回受影响的资源数量。受影响资源的 vector_text 和 data_updated_at 会被更新。
-    """
-    try:
-        resource_type_int = int(ResourceType.from_name(type))
-    except KeyError:
-        raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
-
-    tag = tag.strip()
-    if not tag:
-        raise HTTPException(status_code=400, detail="标签名不能为空")
-
-    affected = resource_service.delete_tag(
-        db,
-        resource_type=resource_type_int,
-        source_id=source_id,
-        tag=tag,
-    )
-    return {"affected": affected}
 
 
 @router.post("/sync-vectors")
@@ -155,7 +91,6 @@ def list_resources(
     page:       int           = Query(1, ge=1),
     limit:      int           = Query(20, ge=1, le=100),
     search:     Optional[str] = Query(None, description="关键词，匹配名称/描述/search_text"),
-    tags:       Optional[str] = Query(None, description="标签筛选，逗号分隔，如 很好,hhh"),
     db: Session = Depends(get_db),
 ):
     """获取资源列表"""
@@ -166,10 +101,6 @@ def list_resources(
         except KeyError:
             raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
 
-    tag_list = None
-    if tags:
-        tag_list = [t.strip() for t in tags.split(",") if t.strip()]
-
     items, total = resource_service.get_resources(
         db,
         resource_type=resource_type_int,
@@ -178,7 +109,6 @@ def list_resources(
         page=page,
         limit=limit,
         group_id=group_id,
-        tags=tag_list,
     )
 
     return {
@@ -223,11 +153,9 @@ def batch_move_to_group(
         vec_type = vec_type_map.get(resource_type)
         if vec_type:
             try:
-                from sqlalchemy.orm import selectinload
                 from app.models.resource import Resource as ResModel
                 resources = (
                     db.query(ResModel)
-                    .options(selectinload(ResModel.tags))
                     .filter(ResModel.id.in_(moved_ids))
                     .all()
                 )
@@ -236,7 +164,7 @@ def batch_move_to_group(
                     vector_client.update(vec_type, str(res.id), metadata={
                         "source_id": res.source_id,
                         "group_id": res.group_id,
-                        "tags": [t.tag for t in res.tags],
+                        "tags": res.tags or [],
                     })
             except Exception as e:
                 logger.warning("向量 metadata 更新异常 (批量移动 type=%s): %s", req.type, e)
@@ -370,12 +298,12 @@ async def update_resource(
         db.refresh(resource)
     
     if tags_list is not None:
-        resource_service.update_tags(db, resource_id, tags_list)
-        resource = resource_service.get_resource_by_id(db, resource_id)
+        resource.tags = resource_service.normalize_tags(tags_list)
         text_changed = True
         if not (update_data and "data_updated_at" in update_data):
             resource.data_updated_at = datetime.utcnow()
-            db.commit()
+        db.commit()
+        db.refresh(resource)
     
     if resource:
         resource.vector_text = resource_service.build_vector_text(resource)
@@ -397,7 +325,7 @@ async def update_resource(
                 vector_client.update(vec_type, str(resource.id), metadata={
                     "source_id": resource.source_id,
                     "group_id": resource.group_id,
-                    "tags": [t.tag for t in resource.tags],
+                    "tags": resource.tags or [],
                 })
             except Exception as e:
                 logger.warning("向量 metadata 更新异常 (resource_id=%d): %s", resource_id, e)
@@ -573,5 +501,5 @@ def _fmt(r) -> dict:
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,
         "data_updated_at": r.data_updated_at.isoformat() if r.data_updated_at else None,
         "vector_updated_at": r.vector_updated_at.isoformat() if r.vector_updated_at else None,
-        "tags": [t.tag for t in r.tags],
+        "tags": r.tags or [],
     }

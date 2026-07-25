@@ -52,14 +52,9 @@ export default function SourceManage() {
   const [editingGroup, setEditingGroup] = useState<GroupNode | null>(null)
   const [editGroupName, setEditGroupName] = useState('')
 
-  // 标签管理
-  const [tags, setTags] = useState<{ tag: string; count: number }[]>([])
+  // 标签管理（只读）
+  const [tags, setTags] = useState<string[]>([])
   const [tagLoading, setTagLoading] = useState(false)
-  const [editTagModalOpen, setEditTagModalOpen] = useState(false)
-  const [editingTag, setEditingTag] = useState<string | null>(null)
-  const [editTagName, setEditTagName] = useState('')
-  const [renameTagLoading, setRenameTagLoading] = useState(false)
-  const [deleteTagLoading, setDeleteTagLoading] = useState(false)
 
   useEffect(() => {
     loadSources()
@@ -223,71 +218,6 @@ export default function SourceManage() {
     }
   }
 
-  const openEditTagModal = (tag: string) => {
-    setEditingTag(tag)
-    setEditTagName(tag)
-    setEditTagModalOpen(true)
-  }
-
-  const handleRenameTag = async () => {
-    if (!selectedSource || !editingTag) return
-    if (!editTagName.trim()) {
-      message.error('请输入标签名')
-      return
-    }
-    if (editTagName.trim() === editingTag) {
-      message.warning('新标签名与原标签名相同')
-      return
-    }
-    setRenameTagLoading(true)
-    try {
-      const typeStr = RESOURCE_TYPE_ID_TO_NAME[selectedSource.resource_type]
-      const res = await api.renameTag({
-        type: typeStr,
-        sourceId: selectedSource.id,
-        oldTag: editingTag,
-        newTag: editTagName.trim(),
-      })
-      message.success(`已重命名，影响 ${res.affected} 条资源`)
-      setEditTagModalOpen(false)
-      setEditingTag(null)
-      setEditTagName('')
-      loadTags(selectedSource.resource_type, selectedSource.id)
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : '重命名失败')
-    } finally {
-      setRenameTagLoading(false)
-    }
-  }
-
-  const handleDeleteTag = (tag: string) => {
-    if (!selectedSource) return
-    Modal.confirm({
-      title: '确认删除标签',
-      content: `确定删除标签「${tag}」吗？该操作会从当前来源下所有资源中移除此标签。`,
-      okText: '删除',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: async () => {
-        setDeleteTagLoading(true)
-        try {
-          const typeStr = RESOURCE_TYPE_ID_TO_NAME[selectedSource.resource_type]
-          const res = await api.deleteTag({
-            type: typeStr,
-            sourceId: selectedSource.id,
-            tag,
-          })
-          message.success(`已删除，影响 ${res.affected} 条资源`)
-          loadTags(selectedSource.resource_type, selectedSource.id)
-        } catch (e) {
-          message.error(e instanceof Error ? e.message : '删除失败')
-        } finally {
-          setDeleteTagLoading(false)
-        }
-      },
-    })
-  }
-
   const openEditSourceModal = (source: Source) => {
     setEditingSource(source)
     setEditSourceName(source.name)
@@ -436,25 +366,7 @@ export default function SourceManage() {
                         dataSource={tags}
                         renderItem={(item) => (
                           <List.Item style={{ padding: '8px 12px' }}>
-                            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <Tag style={{ margin: 0 }}>{item.tag}</Tag>
-                              <span style={{ color: '#94a3b8', fontSize: 12 }}>{item.count} 条资源</span>
-                            </div>
-                            <Button 
-                              type="text" 
-                              size="small" 
-                              icon={<EditOutlined />}
-                              loading={renameTagLoading && editingTag === item.tag}
-                              onClick={() => openEditTagModal(item.tag)}
-                            />
-                            <Button 
-                              type="text" 
-                              size="small" 
-                              danger
-                              icon={<DeleteOutlined />}
-                              loading={deleteTagLoading && editingTag === item.tag}
-                              onClick={() => handleDeleteTag(item.tag)}
-                            />
+                            <Tag style={{ margin: 0 }}>{item}</Tag>
                           </List.Item>
                         )}
                         locale={{ emptyText: '暂无标签' }}
@@ -543,37 +455,6 @@ export default function SourceManage() {
             onChange={e => setEditGroupName(e.target.value)} 
             placeholder="请输入分组名称"
           />
-        </div>
-      </Modal>
-
-      {/* 重命名标签弹窗 */}
-      <Modal
-        title="重命名标签"
-        open={editTagModalOpen}
-        onCancel={() => {
-          setEditTagModalOpen(false)
-          setEditingTag(null)
-          setEditTagName('')
-        }}
-        onOk={handleRenameTag}
-        okText="确定"
-        okButtonProps={{ loading: renameTagLoading }}
-        cancelText="取消"
-      >
-        <div>
-          <div style={{ marginBottom: 8, fontWeight: 500 }}>
-            原标签：<Tag>{editingTag}</Tag>
-          </div>
-          <div style={{ marginBottom: 8, fontWeight: 500 }}>新标签名</div>
-          <Input 
-            value={editTagName} 
-            onChange={e => setEditTagName(e.target.value)} 
-            placeholder="请输入新标签名"
-            onPressEnter={handleRenameTag}
-          />
-          <div style={{ marginTop: 8, color: '#94a3b8', fontSize: 12 }}>
-            若新标签名已存在，将自动合并（去重）。
-          </div>
         </div>
       </Modal>
 

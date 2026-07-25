@@ -31,20 +31,9 @@ class Resource(Base):
     data_updated_at = Column(DateTime, nullable=True, comment="业务数据更新时间，用于向量同步判断")
     vector_updated_at = Column(DateTime, nullable=True, comment="向量库更新时间")
 
-    tags   = relationship("ResourceTag", back_populates="resource", cascade="all, delete-orphan")
+    tags   = Column(JSON, nullable=False, default=list, comment="标签数组，如 ['标签1','标签2']")
     group  = relationship("ResourceGroup", back_populates="resources")
     source = relationship("ResourceSource", back_populates="resources")
-
-
-class ResourceTag(Base):
-    __tablename__ = "resource_tags"
-
-    id          = Column(Integer, primary_key=True, autoincrement=True)
-    resource_id = Column(Integer, ForeignKey("resources.id", ondelete="CASCADE"), nullable=False)
-    tag         = Column(String(100), nullable=False)
-    created_at  = Column(DateTime, nullable=False, default=datetime.utcnow)
-
-    resource = relationship("Resource", back_populates="tags")
 
 
 class ResourceSource(Base):
