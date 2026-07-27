@@ -70,6 +70,53 @@ export const api = {
   restoreSource: (id: number): Promise<Source> =>
     request(`/api/sources/${id}/restore`, { method: 'POST' }),
 
+  fullBatchImport: (
+    sourceId: number,
+    type: string,
+    formData: FormData,
+    opts?: {
+      onProgress?: (percent: number) => void
+      getXhr?: (xhr: XMLHttpRequest) => void
+      timeoutMs?: number
+    }
+  ): Promise<{
+    message: string
+    groups_created: number
+    resources_created: number
+    errors: Array<{ group?: string; label?: string; name?: string; reason: string }>
+  }> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', `${BASE}/api/sources/${sourceId}/import?type=${encodeURIComponent(type)}`)
+      xhr.timeout = opts?.timeoutMs ?? 2 * 60 * 1000
+
+      if (opts?.getXhr) opts.getXhr(xhr)
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && opts?.onProgress) {
+          opts.onProgress(Math.round((e.loaded / e.total) * 100))
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText))
+          } catch {
+            reject(new Error('响应解析失败'))
+          }
+        } else {
+          reject(new Error(xhr.responseText || `HTTP ${xhr.status}`))
+        }
+      }
+      xhr.onerror = () => reject(new Error('网络错误'))
+      xhr.ontimeout = () => reject(new Error('上传超时（2 分钟）'))
+      xhr.onabort = () => reject(new Error('已取消'))
+
+      xhr.send(formData)
+    })
+  },
+
   listResources: (params: {
     type?: string
     page?: number

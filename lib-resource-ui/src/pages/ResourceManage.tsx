@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Button, Select, TreeSelect, message, Modal, Input, Spin, Dropdown } from 'antd'
-import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined, SwapOutlined } from '@ant-design/icons'
+import { Button, Select, TreeSelect, message, Modal, Input, Spin, Dropdown, Upload, Progress, Alert } from 'antd'
+import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined, SwapOutlined, ImportOutlined } from '@ant-design/icons'
 import ResourceTable, { type ResourceTableHandle } from '../components/ResourceTable'
 import GroupTree, { type GroupTreeHandle } from '../components/GroupTree'
 import { api, Source, GroupNode } from '../api'
@@ -44,6 +44,12 @@ export default function ResourceManage() {
   const [moveModalOpen, setMoveModalOpen] = useState(false)
   const [moveTargetGroupId, setMoveTargetGroupId] = useState<number | null>(null)
   const [moving, setMoving] = useState(false)
+  const [importModalOpen, setImportModalOpen] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState(0)
+  const [importResult, setImportResult] = useState<{ groups_created: number; resources_created: number; errors: Array<{ group?: string; label?: string; name?: string; reason: string }> } | null>(null)
+  const xhrRef = useRef<XMLHttpRequest | null>(null)
 
   useEffect(() => {
     setPageLoading(true)
@@ -311,6 +317,41 @@ export default function ResourceManage() {
     }
   }
 
+  const handleFullImport = async () => {
+    if (!importFile || !sourceId) return
+    setImporting(true)
+    setImportProgress(0)
+    setImportResult(null)
+    const formData = new FormData()
+    formData.append('file', importFile)
+    try {
+      const res = await api.fullBatchImport(sourceId, type, formData, {
+        onProgress: setImportProgress,
+        getXhr: (xhr) => { xhrRef.current = xhr },
+      })
+      setImportResult(res)
+      message.success(`导入完成：${res.groups_created} 个分组，${res.resources_created} 个资源`)
+      groupTreeRef.current?.refresh()
+      tableRef.current?.refresh()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '导入失败'
+      if (msg !== '已取消') message.error(msg)
+    } finally {
+      setImporting(false)
+      xhrRef.current = null
+    }
+  }
+
+  const closeImportModal = () => {
+    if (importing && xhrRef.current) {
+      xhrRef.current.abort()
+    }
+    setImportModalOpen(false)
+    setImportFile(null)
+    setImportProgress(0)
+    setImportResult(null)
+  }
+
   if (pageLoading) {
     return (
       <div style={{ 
@@ -351,6 +392,7 @@ export default function ResourceManage() {
                     { key: 'delete', label: '删除来源', icon: <DeleteOutlined />, danger: true },
                     { type: 'divider' as const },
                     { key: 'sync', label: '向量同步', icon: <SyncOutlined spin={syncing} /> },
+                    { key: 'import', label: '全量批量导入', icon: <ImportOutlined /> },
                   ],
                   onClick: ({ key }) => {
                     if (key === 'edit') {
@@ -362,6 +404,12 @@ export default function ResourceManage() {
                     }
                     if (key === 'delete') setDeleteSourceModalOpen(true)
                     if (key === 'sync') handleSyncVectors()
+                    if (key === 'import') {
+                      setImportFile(null)
+                      setImportProgress(0)
+                      setImportResult(null)
+                      setImportModalOpen(true)
+                    }
                   },
                 }}
                 trigger={['click']}
@@ -572,6 +620,80 @@ export default function ResourceManage() {
             }
           })}
         />
+      </Modal>
+
+      <Modal
+        open={importModalOpen}
+        title="全量批量导入"
+        onCancel={closeImportModal}
+        footer={[
+          <Button key="close" onClick={closeImportModal}>
+            {importing ? '取消上传' : '关闭'}
+          </Button>,
+          <Button
+            key="upload"
+            type="primary"
+            loading={importing}
+            disabled={!importFile || importing || !!importResult}
+            onClick={handleFullImport}
+            icon={<ImportOutlined />}
+          >
+            开始导入
+          </Button>,
+        ]}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="ZIP 包需包含 config.json（含 group 分组树）及引用的资源文件和缩略图"
+        />
+        <Upload.Dragger
+          accept=".zip"
+          maxCount={1}
+          beforeUpload={(file) => {
+            setImportFile(file)
+            setImportResult(null)
+            return false
+          }}
+          onRemove={() => { setImportFile(null); setImportResult(null) }}
+          fileList={importFile ? [{ uid: '-1', name: importFile.name, status: 'done' as const }] : []}
+          disabled={importing}
+        >
+          <p style={{ margin: '8px 0' }}><ImportOutlined style={{ fontSize: 32, color: '#1677ff' }} /></p>
+          <p style={{ margin: 0 }}>点击或拖拽 ZIP 文件到此处</p>
+          <p style={{ margin: '4px 0 0', color: '#999', fontSize: 12 }}>仅支持 .zip 格式</p>
+        </Upload.Dragger>
+
+        {importing && (
+          <div style={{ marginTop: 16 }}>
+            <Progress percent={importProgress} status="active" />
+            <div style={{ textAlign: 'center', color: '#999', fontSize: 12, marginTop: 4 }}>
+              上传中... {importProgress}%
+            </div>
+          </div>
+        )}
+
+        {importResult && (
+          <Alert
+            type={importResult.errors.length > 0 ? 'warning' : 'success'}
+            showIcon
+            style={{ marginTop: 16 }}
+            message={`导入完成：${importResult.groups_created} 个分组，${importResult.resources_created} 个资源${
+              importResult.errors.length > 0 ? `，${importResult.errors.length} 项失败` : ''
+            }`}
+            description={importResult.errors.length > 0 ? (
+              <div style={{ maxHeight: 120, overflowY: 'auto', fontSize: 12 }}>
+                {importResult.errors.slice(0, 20).map((err, i) => (
+                  <div key={i} style={{ color: '#666' }}>
+                    {err.name || err.label || err.group || '未知'}: {err.reason}
+                  </div>
+                ))}
+                {importResult.errors.length > 20 && <div>...还有 {importResult.errors.length - 20} 条错误</div>}
+              </div>
+            ) : undefined}
+          />
+        )}
       </Modal>
     </div>
   )

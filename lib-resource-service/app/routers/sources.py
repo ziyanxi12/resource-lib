@@ -5,11 +5,11 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services import source_service
+from app.services import source_service, import_service
 from app.enums import ResourceType
 
 logger = logging.getLogger(__name__)
@@ -128,3 +128,53 @@ def restore_source(source_id: int, db: Session = Depends(get_db)):
     if not source:
         raise HTTPException(status_code=404, detail="来源不存在或不在回收站中")
     return _format_source(source)
+
+
+@router.post("/{source_id}/import")
+async def full_batch_import(
+    source_id: int,
+    type: str = Query(..., description="资源类型名，如 icon、illus、template 等"),
+    request: Request = None,
+    db: Session = Depends(get_db),
+):
+    """全量批量导入：上传 ZIP 包，在指定来源下递归创建分组及资源"""
+    # 校验资源类型
+    try:
+        resource_type = ResourceType.from_name(type)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
+
+    # 校验来源存在
+    source = source_service.get_source_by_id(db, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="来源不存在")
+    if source.resource_type != int(resource_type):
+        raise HTTPException(
+            status_code=400,
+            detail=f"来源类型不匹配：来源为 {ResourceType(source.resource_type).name}，请求为 {type}",
+        )
+
+    # 读取 ZIP 内容（不限制大小，main.py 已设 10GB multipart 上限）
+    zip_bytes = await request.body()
+    if not zip_bytes:
+        raise HTTPException(status_code=400, detail="未接收到文件内容")
+
+    try:
+        result = import_service.full_batch_import(
+            db,
+            source_id=source_id,
+            resource_type=resource_type,
+            zip_bytes=zip_bytes,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("全量导入失败: source_id=%s, type=%s", source_id, type)
+        raise HTTPException(status_code=500, detail=f"导入失败: {e}")
+
+    return {
+        "message": f"导入完成：{result['groups_created']} 个分组，{result['resources_created']} 个资源",
+        "groups_created": result["groups_created"],
+        "resources_created": result["resources_created"],
+        "errors": result["errors"],
+    }
