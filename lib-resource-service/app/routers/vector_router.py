@@ -34,6 +34,29 @@ def _get_all_group_ids_with_descendants(db: Session, group_id: int) -> List[int]
     return ids
 
 
+def _resolve_filters(db: Session, filters: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    规范化 filters：
+    - group_id: int | list[int] → 展开所有子孙分组，合并去重为 list；空列表则移除该 key
+    - 其他字段（source_id / tags 等）：原样透传，由向量服务端按类型驱动处理
+    """
+    result = dict(filters) if filters else {}
+
+    if "group_id" in result and result["group_id"] is not None:
+        gid = result["group_id"]
+        gid_list = [gid] if isinstance(gid, int) else list(gid)
+
+        if not gid_list:
+            result.pop("group_id", None)
+        else:
+            expanded: set = set()
+            for g in gid_list:
+                expanded.update(_get_all_group_ids_with_descendants(db, int(g)))
+            result["group_id"] = sorted(expanded)
+
+    return result
+
+
 class SearchRequest(BaseModel):
     type: str
     queries: List[str]
@@ -138,14 +161,16 @@ def vector_search_llm(req: SearchRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"不支持的 type：{req.type}")
     if not req.queries:
         raise HTTPException(status_code=422, detail="queries 不能为空")
-    
+
+    filters = _resolve_filters(db, req.filters)
+
     try:
         batch_raw = vector_client.batch_search(
             vec_type=vec_type,
             queries=req.queries,
             mode=req.mode,
             top_k=req.top_k,
-            filters=req.filters,
+            filters=filters if filters else None,
             hybrid_weight=req.hybrid_weight,
         )
     except Exception as e:
@@ -204,13 +229,7 @@ def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
     if req.response_mode not in ["basic", "normal", "complete"]:
         raise HTTPException(status_code=400, detail=f"无效的 response_mode: {req.response_mode}，可选值: basic/normal/complete")
 
-    filters = dict(req.filters) if req.filters else {}
-    
-    if "group_id" in filters:
-        group_id = filters["group_id"]
-        if isinstance(group_id, int):
-            all_group_ids = _get_all_group_ids_with_descendants(db, group_id)
-            filters["group_id"] = all_group_ids
+    filters = _resolve_filters(db, req.filters)
 
     try:
         batch_raw = vector_client.batch_search(
