@@ -2,13 +2,14 @@
 来源管理路由
 """
 
+import asyncio
 import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.services import source_service, import_service
 from app.enums import ResourceType
 
@@ -144,7 +145,7 @@ async def full_batch_import(
     except KeyError:
         raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
 
-    # 校验来源存在
+    # 校验来源存在（用请求级 session 快速校验）
     source = source_service.get_source_by_id(db, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="来源不存在")
@@ -154,18 +155,26 @@ async def full_batch_import(
             detail=f"来源类型不匹配：来源为 {ResourceType(source.resource_type).name}，请求为 {type}",
         )
 
-    # 读取 ZIP 内容（不限制大小，main.py 已设 10GB multipart 上限）
+    # 读取 ZIP 内容（async，不阻塞事件循环）
     zip_bytes = await request.body()
     if not zip_bytes:
         raise HTTPException(status_code=400, detail="未接收到文件内容")
 
+    # 在线程池中执行导入（独立 session，不阻塞事件循环）
+    def _run_import():
+        import_db = SessionLocal()
+        try:
+            return import_service.full_batch_import(
+                import_db,
+                source_id=source_id,
+                resource_type=resource_type,
+                zip_bytes=zip_bytes,
+            )
+        finally:
+            import_db.close()
+
     try:
-        result = import_service.full_batch_import(
-            db,
-            source_id=source_id,
-            resource_type=resource_type,
-            zip_bytes=zip_bytes,
-        )
+        result = await asyncio.to_thread(_run_import)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

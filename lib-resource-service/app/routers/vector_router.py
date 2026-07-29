@@ -154,7 +154,7 @@ def _build_complete_response(resource: Resource, raw_result: dict) -> dict:
 
 
 @router.post("/search/llm")
-def vector_search_llm(req: SearchRequest, db: Session = Depends(get_db)):
+async def vector_search_llm(req: SearchRequest, db: Session = Depends(get_db)):
     """向量搜索 - LLM 精简版（仅返回 data_id + vector_text + score）"""
     vec_type = _resolve_vec_type(req.type)
     if vec_type is None:
@@ -165,7 +165,7 @@ def vector_search_llm(req: SearchRequest, db: Session = Depends(get_db)):
     filters = _resolve_filters(db, req.filters)
 
     try:
-        batch_raw = vector_client.batch_search(
+        batch_raw = await vector_client.batch_search_async(
             vec_type=vec_type,
             queries=req.queries,
             mode=req.mode,
@@ -201,7 +201,7 @@ def get_resource_by_data_id(
 
 
 @router.post("/search")
-def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
+async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
     """
     向量搜索接口（支持批量、三种响应模式）
     
@@ -232,7 +232,7 @@ def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
     filters = _resolve_filters(db, req.filters)
 
     try:
-        batch_raw = vector_client.batch_search(
+        batch_raw = await vector_client.batch_search_async(
             vec_type=vec_type,
             queries=req.queries,
             mode=req.mode,

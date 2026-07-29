@@ -277,9 +277,10 @@ def _update_children_paths_and_levels(db: Session, parent_id: int, old_path: str
 
 
 def reorder_groups(db: Session, items: List[GroupReorderItem]) -> bool:
-    for item in items:
+    """批量更新分组排序，自动归一化 sort_order 为 0,1,2,..."""
+    for index, item in enumerate(items):
         group = get_group_by_id(db, item.id)
         if group:
-            group.sort_order = item.sort_order
+            group.sort_order = index
     db.commit()
     return True

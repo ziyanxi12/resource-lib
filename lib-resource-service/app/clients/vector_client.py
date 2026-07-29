@@ -242,6 +242,89 @@ def batch_search(
         raise
 
 
+async def batch_search_async(
+    vec_type: str,
+    queries: List[str],
+    mode: Optional[str] = None,
+    top_k: int = 10,
+    filters: Optional[dict] = None,
+    hybrid_weight: float = 0.7,
+) -> List[List[dict]]:
+    """
+    异步批量搜索，返回二维结果列表，顺序与 queries 一一对应。
+    逻辑与 batch_search 完全一致，仅 httpx.post → await client.post。
+    """
+    resolved_mode = mode or settings.VECTOR_SEARCH_MODE
+    payload: Dict[str, Any] = {
+        "type": vec_type,
+        "queries": queries,
+        "mode": resolved_mode,
+        "top_k": top_k,
+        "hybrid_weight": hybrid_weight,
+    }
+    if filters:
+        payload["filters"] = filters
+
+    logger.info(
+        "[batch_search_async] 发起批量搜索: type=%s  queries=%s  mode=%s  top_k=%d",
+        vec_type, queries, resolved_mode, top_k,
+    )
+    logger.debug("[batch_search_async] 发起批量搜索详情: payload=%s", payload)
+
+    try:
+        async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
+            resp = await client.post(
+                f"{settings.VECTOR_SERVICE_URL}/api/v1/search/batch",
+                json=payload,
+            )
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+
+        if results:
+            first_group = [
+                {
+                    "data_id": item["data_id"],
+                    "score": round(item.get("score", 0), 4),
+                    "text": (item.get("text") or "")[:50],
+                }
+                for item in results[0][:3]
+            ]
+            logger.info(
+                "[batch_search_async] 返回 %d 组结果: 第1组(%d条)前3条=%s",
+                len(results), len(results[0]), first_group,
+            )
+        else:
+            logger.info("[batch_search_async] 返回 0 组结果")
+
+        result_detail = []
+        for i, group in enumerate(results):
+            items = [
+                {
+                    "data_id": item["data_id"],
+                    "score": round(item.get("score", 0), 4),
+                    "text": (item.get("text") or "")[:50],
+                    "metadata": item.get("metadata"),
+                }
+                for item in group
+            ]
+            result_detail.append(f"第{i+1}组({len(group)}条): {items}")
+        logger.debug("[batch_search_async] 返回完整结果:\n%s", "\n".join(result_detail))
+
+        return results
+
+    except Exception as e:
+        logger.warning(
+            "[batch_search_async] 批量搜索失败: %s, type=%s, queries前3条=%s",
+            type(e).__name__, vec_type, queries[:3],
+        )
+        logger.debug(
+            "[batch_search_async] 批量搜索失败详情: type=%s  queries=%s  payload=%s  error=%s",
+            vec_type, queries, payload, str(e),
+            exc_info=True,
+        )
+        raise
+
+
 def update(
     vec_type: str,
     data_id: str,

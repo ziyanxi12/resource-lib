@@ -150,18 +150,19 @@ async def batch_upload(
             created_by,
         )
 
-    resources = insert_result["resources"]
-    results = insert_result["results"]
+        resources = insert_result["resources"]
+        results = insert_result["results"]
 
-    # ===== 第三阶段：向量同步 =====
-    if resources:
-        # resources 来自线程池已关闭的 session（detached），需在主 session 重新加载
-        resource_ids = [r.id for r in resources]
-        from app.models.resource import Resource
-        fresh_resources = db.query(Resource).filter(Resource.id.in_(resource_ids)).all()
-        vectors_data = [(r, {}) for r in fresh_resources]
-        ingest_vectors(resource_type, vectors_data)
-        batch_update_vector_time(db, resource_ids)
+        # ===== 第三阶段：向量同步（复用线程池，不阻塞事件循环）=====
+        if resources:
+            resource_ids = [r.id for r in resources]
+            await loop.run_in_executor(
+                pool,
+                _vector_sync,
+                db,
+                resource_type,
+                resource_ids,
+            )
 
     logger.info("批量入库完成: count=%d", len(results))
 
@@ -244,6 +245,15 @@ def _batch_insert_db(saved_items: List[dict], resource_type: int, source_id: int
             db.close()
     
     return {"resources": all_resources, "results": all_results}
+
+
+def _vector_sync(db: Session, resource_type: ResourceType, resource_ids: list) -> None:
+    """在线程池中执行的向量同步（不阻塞事件循环）"""
+    from app.models.resource import Resource
+    fresh_resources = db.query(Resource).filter(Resource.id.in_(resource_ids)).all()
+    vectors_data = [(r, {}) for r in fresh_resources]
+    ingest_vectors(resource_type, vectors_data)
+    batch_update_vector_time(db, resource_ids)
 
 
 def understand_image(db: Session, resource_id: int, prompt: Optional[str] = None, image_base64: Optional[str] = None) -> str:

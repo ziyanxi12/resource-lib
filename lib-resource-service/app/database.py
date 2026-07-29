@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, declarative_base
 from app.config import settings
 
@@ -25,6 +25,18 @@ else:
     _engine_kwargs["pool_pre_ping"] = True
 
 engine = create_engine(DATABASE_URL, **_engine_kwargs)
+
+if _is_sqlite:
+    # WAL 模式：写操作写入 WAL 文件而非主库，读写可并发，写不阻塞读
+    # busy_timeout：遇锁等待而非立即报 "database is locked"
+    # synchronous=NORMAL：WAL 下安全且更快
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_conn, conn_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=10000")
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.close()
 
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 

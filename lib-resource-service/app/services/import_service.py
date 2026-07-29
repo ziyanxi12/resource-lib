@@ -27,22 +27,83 @@ from datetime import datetime
 from io import BytesIO
 from typing import Any, Dict
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.enums import ResourceType
 from app.models.resource import Resource, ResourceGroup
-from app.services import group_service, resource_service
+from app.services import resource_service
 from app.services.upload_service import get_file_dir
 from app.services.vector_text_builder import ingest_vectors
 
 logger = logging.getLogger(__name__)
 
 
+def _create_group_no_commit(
+    db: Session,
+    resource_type: int,
+    name: str,
+    parent_id,
+    source_id: int,
+) -> ResourceGroup:
+    """
+    内联版 create_group：构建 ResourceGroup 并 add+flush，不 commit。
+    复制原有分组创建的 level/real_path/sort_order 计算逻辑，
+    但全部用 flush 代替 commit，减少 SQLite 锁竞争。
+    """
+    if parent_id is None:
+        existing_root = db.query(ResourceGroup).filter(
+            ResourceGroup.resource_type == resource_type,
+            ResourceGroup.source_id == source_id,
+            ResourceGroup.parent_id.is_(None),
+        ).first()
+        if existing_root:
+            raise ValueError("该来源下已存在默认分组")
+
+    if parent_id:
+        parent = db.query(ResourceGroup).filter(ResourceGroup.id == parent_id).first()
+        if not parent:
+            raise ValueError(f"Parent group {parent_id} not found")
+        level = parent.level + 1
+        real_path = f"{parent.real_path}/{name}"
+        is_default = 0
+    else:
+        level = 0
+        real_path = name
+        is_default = 1 if name == "默认分组" else 0
+
+    # 内联 get_next_sort_order
+    q = db.query(func.max(ResourceGroup.sort_order)).filter(
+        ResourceGroup.resource_type == resource_type
+    )
+    if source_id is not None:
+        q = q.filter(ResourceGroup.source_id == source_id)
+    if parent_id is None:
+        q = q.filter(ResourceGroup.parent_id.is_(None))
+    else:
+        q = q.filter(ResourceGroup.parent_id == parent_id)
+    sort_order = (q.scalar() or -1) + 1
+
+    group = ResourceGroup(
+        resource_type=resource_type,
+        source_id=source_id,
+        name=name,
+        parent_id=parent_id,
+        level=level,
+        real_path=real_path,
+        sort_order=sort_order,
+        is_default=is_default,
+    )
+    db.add(group)
+    db.flush()
+    return group
+
+
 def _get_or_create_default_group(
     db: Session, resource_type: ResourceType, source_id: int
 ) -> ResourceGroup:
-    """查找指定来源+类型下的默认分组，不存在则创建。"""
+    """查找指定来源+类型下的默认分组，不存在则创建（不 commit，由调用方统一提交）。"""
     default_group = (
         db.query(ResourceGroup)
         .filter(
@@ -55,7 +116,7 @@ def _get_or_create_default_group(
     )
     if default_group:
         return default_group
-    return group_service.create_group(
+    return _create_group_no_commit(
         db,
         resource_type=int(resource_type),
         name="默认分组",
@@ -68,160 +129,183 @@ def _resolve_ext(filename: str, default: str = "bin") -> str:
     return filename.rsplit(".", 1)[-1].lower() if "." in filename else default
 
 
-def _save_item(
-    db: Session,
-    item: Dict[str, Any],
-    group_id: int,
-    resource_type: ResourceType,
-    source_id: int,
+def _precopy_files(
+    node: Dict[str, Any],
     extract_dir: str,
     file_dir_name: str,
     file_dir: str,
     thumb_dir: str,
     thumb_relative_prefix: str,
-) -> Resource:
+    errors: list,
+    group_label: str = "",
+) -> list:
     """
-    处理单条 data 项：复制文件（或使用外部链接），构建 Resource 并 add+flush。
-    返回已 flush 的 Resource（含 id）。
+    Phase 1：遍历分组节点的 data 项，复制文件到 storage（无 DB 事务）。
+    将复制后的路径信息写回 item dict（_saved_* 前缀），供 Phase 2 使用。
+    返回处理后的 data 列表（保留了原始 item + 附加 _saved_ 字段）。
     """
-    file_uuid = str(uuid.uuid4())
+    processed_data = []
+    for idx, item in enumerate(node.get("data", []) or []):
+        item_name = item.get("name", f"第{idx + 1}项")
+        file_uuid = str(uuid.uuid4())
 
-    file_path_in_zip = item.get("file_path")
-    file_url = item.get("file_url")
-    if not file_path_in_zip and not file_url:
-        raise ValueError("file_path 和 file_url 至少填一个")
+        file_path_in_zip = item.get("file_path")
+        file_url = item.get("file_url")
+        if not file_path_in_zip and not file_url:
+            errors.append({"group": group_label, "name": item_name, "reason": "file_path 和 file_url 至少填一个"})
+            continue
 
-    # 保存资源文件
-    if file_path_in_zip:
-        src = os.path.join(extract_dir, file_path_in_zip)
-        if not os.path.exists(src):
-            raise FileNotFoundError(f"ZIP 内未找到文件: {file_path_in_zip}")
+        saved = {"_file_uuid": file_uuid}
 
-        original_name = item.get("file_name") or os.path.basename(file_path_in_zip)
-        ext = _resolve_ext(original_name)
-        file_name = f"{file_uuid}.{ext}"
-        file_relative_path = f"{file_dir_name}/{file_name}"
-        file_abs_path = os.path.join(file_dir, file_name)
+        # 复制资源文件
+        if file_path_in_zip:
+            src = os.path.join(extract_dir, file_path_in_zip)
+            if not os.path.exists(src):
+                errors.append({"group": group_label, "name": item_name, "reason": f"ZIP 内未找到文件: {file_path_in_zip}"})
+                continue
+            original_name = item.get("file_name") or os.path.basename(file_path_in_zip)
+            ext = _resolve_ext(original_name)
+            file_name = f"{file_uuid}.{ext}"
+            file_relative_path = f"{file_dir_name}/{file_name}"
+            file_abs_path = os.path.join(file_dir, file_name)
+            shutil.copy2(src, file_abs_path)
+            saved["_file_name"] = file_name
+            saved["_file_relative_path"] = file_relative_path
+            saved["_file_size"] = os.path.getsize(file_abs_path)
+            saved["_file_type"] = ext
+        else:
+            saved["_file_name"] = item.get("file_name")
+            saved["_file_relative_path"] = None
+            saved["_file_size"] = None
+            saved["_file_type"] = None
 
-        shutil.copy2(src, file_abs_path)
-        file_size = os.path.getsize(file_abs_path)
-        file_type = ext
-    else:
-        # 外部链接，无本地文件
-        file_name = item.get("file_name")
-        file_relative_path = None
-        file_size = None
-        file_type = None
+        # 复制缩略图
+        thumbnail_path_in_zip = item.get("thumbnail_path")
+        if thumbnail_path_in_zip:
+            thumb_src = os.path.join(extract_dir, thumbnail_path_in_zip)
+            if not os.path.exists(thumb_src):
+                errors.append({"group": group_label, "name": item_name, "reason": f"ZIP 内未找到缩略图: {thumbnail_path_in_zip}"})
+                continue
+            thumb_ext = _resolve_ext(thumbnail_path_in_zip, default="png")
+            thumb_name = f"{file_uuid}_thumb.{thumb_ext}"
+            saved["_thumb_relative_path"] = f"{thumb_relative_prefix}/{thumb_name}"
+            shutil.copy2(thumb_src, os.path.join(thumb_dir, thumb_name))
+        else:
+            saved["_thumb_relative_path"] = None
 
-    # 保存缩略图
-    thumb_relative_path = None
-    thumbnail_path_in_zip = item.get("thumbnail_path")
-    if thumbnail_path_in_zip:
-        thumb_src = os.path.join(extract_dir, thumbnail_path_in_zip)
-        if not os.path.exists(thumb_src):
-            raise FileNotFoundError(f"ZIP 内未找到缩略图: {thumbnail_path_in_zip}")
+        processed_data.append((item, saved))
 
-        thumb_ext = _resolve_ext(thumbnail_path_in_zip, default="png")
-        thumb_name = f"{file_uuid}_thumb.{thumb_ext}"
-        thumb_relative_path = f"{thumb_relative_prefix}/{thumb_name}"
-        thumb_abs_path = os.path.join(thumb_dir, thumb_name)
-        shutil.copy2(thumb_src, thumb_abs_path)
-
-    data = {
-        "resource_type": int(resource_type),
-        "source_id": source_id,
-        "name": item.get("name", ""),
-        "file_name": file_name,
-        "file_path": file_relative_path,
-        "file_size": file_size,
-        "file_type": file_type,
-        "width": item.get("width"),
-        "height": item.get("height"),
-        "thumbnail_path": thumb_relative_path,
-        "description": item.get("description"),
-        "group_id": group_id,
-        "search_text": item.get("search_text"),
-        "raw_data": item.get("raw_data"),
-        "tags": resource_service.normalize_tags(item.get("tags", [])),
-        "data_updated_at": datetime.utcnow(),
-    }
-    resource = Resource(**data)
-    db.add(resource)
-    db.flush()
-    return resource
+    return processed_data
 
 
-def _process_group_node(
+def _precopy_tree(
+    nodes: list,
+    extract_dir: str,
+    file_dir_name: str,
+    file_dir: str,
+    thumb_dir: str,
+    thumb_relative_prefix: str,
+    errors: list,
+) -> list:
+    """
+    Phase 1 递归：遍历整棵 group 树，预复制所有文件。
+    返回扁平化的 [(item, saved, group_label)] 列表，顺序与树结构一致。
+    """
+    flat_items = []
+
+    def _walk(node, parent_label=""):
+        label = node.get("label")
+        if not label:
+            errors.append({"label": label, "reason": "缺少 label 字段"})
+            return
+
+        full_label = f"{parent_label}/{label}" if parent_label else label
+        processed = _precopy_files(
+            node, extract_dir, file_dir_name, file_dir, thumb_dir, thumb_relative_prefix, errors, full_label
+        )
+        for item, saved in processed:
+            flat_items.append((item, saved, full_label))
+
+        for child in node.get("children", []) or []:
+            _walk(child, full_label)
+
+    for node in nodes:
+        _walk(node)
+
+    return flat_items
+
+
+def _create_db_records(
     db: Session,
-    node: Dict[str, Any],
+    nodes: list,
     parent_id: int,
     resource_type: ResourceType,
     source_id: int,
-    extract_dir: str,
-    file_dir_name: str,
-    file_dir: str,
-    thumb_dir: str,
-    thumb_relative_prefix: str,
+    flat_items: list,
     stats: Dict[str, Any],
 ) -> None:
-    """递归处理分组节点：创建分组 → 处理 data → 递归 children。"""
-    label = node.get("label")
-    if not label:
-        stats["errors"].append({"label": label, "reason": "缺少 label 字段"})
-        return
+    """
+    Phase 2：快速创建 DB 记录（无文件 I/O，事务极短）。
+    递归创建分组树，用 flat_items 中预复制的路径信息创建资源。
+    flat_items 是 [(item, saved, group_label)] 的列表，按树遍历顺序排列。
+    """
+    item_iter = iter(flat_items)
 
-    try:
-        new_group = group_service.create_group(
-            db,
-            resource_type=int(resource_type),
-            name=label,
-            parent_id=parent_id,
-            source_id=source_id,
-        )
-    except ValueError as e:
-        stats["errors"].append({"label": label, "reason": f"创建分组失败: {e}"})
-        return
-    stats["groups_created"] += 1
+    def _walk(node, pid):
+        label = node.get("label")
+        if not label:
+            return
 
-    # 处理当前分组的 data 项
-    for idx, item in enumerate(node.get("data", []) or []):
-        item_name = item.get("name", f"第{idx + 1}项")
         try:
-            resource = _save_item(
+            new_group = _create_group_no_commit(
                 db,
-                item,
-                new_group.id,
-                resource_type,
-                source_id,
-                extract_dir,
-                file_dir_name,
-                file_dir,
-                thumb_dir,
-                thumb_relative_prefix,
+                resource_type=int(resource_type),
+                name=label,
+                parent_id=pid,
+                source_id=source_id,
             )
+        except ValueError as e:
+            stats["errors"].append({"label": label, "reason": f"创建分组失败: {e}"})
+            return
+        stats["groups_created"] += 1
+
+        # 消费当前节点 data 数量对应的 flat_items
+        data_count = len(node.get("data", []) or [])
+        for _ in range(data_count):
+            try:
+                item, saved = next(item_iter)
+            except StopIteration:
+                break
+
+            data = {
+                "resource_type": int(resource_type),
+                "source_id": source_id,
+                "name": item.get("name", ""),
+                "file_name": saved.get("_file_name"),
+                "file_path": saved.get("_file_relative_path"),
+                "file_size": saved.get("_file_size"),
+                "file_type": saved.get("_file_type"),
+                "width": item.get("width"),
+                "height": item.get("height"),
+                "thumbnail_path": saved.get("_thumb_relative_path"),
+                "description": item.get("description"),
+                "group_id": new_group.id,
+                "search_text": item.get("search_text"),
+                "raw_data": item.get("raw_data"),
+                "tags": resource_service.normalize_tags(item.get("tags", [])),
+                "data_updated_at": datetime.utcnow(),
+            }
+            resource = Resource(**data)
+            db.add(resource)
+            db.flush()
             stats["resources_created"] += 1
             stats["new_resource_ids"].append(resource.id)
-        except Exception as e:
-            logger.warning("导入资源失败: name=%s, err=%s", item_name, e)
-            stats["errors"].append(
-                {"group": label, "name": item_name, "reason": str(e)}
-            )
 
-    # 递归处理子分组
-    for child in node.get("children", []) or []:
-        _process_group_node(
-            db,
-            child,
-            new_group.id,
-            resource_type,
-            source_id,
-            extract_dir,
-            file_dir_name,
-            file_dir,
-            thumb_dir,
-            thumb_relative_prefix,
-            stats,
-        )
+        for child in node.get("children", []) or []:
+            _walk(child, new_group.id)
+
+    for node in nodes:
+        _walk(node, parent_id)
 
 
 def full_batch_import(
@@ -232,7 +316,7 @@ def full_batch_import(
     skip_vector: bool = False,
 ) -> Dict[str, Any]:
     """
-    全量批量导入：解压 ZIP → 解析 config.json → 在默认分组下递归创建分组和资源。
+    全量批量导入：三阶段处理（预复制文件 → 快速DB入库 → 向量同步）。
 
     Returns:
         {
@@ -275,9 +359,6 @@ def full_batch_import(
         os.makedirs(file_dir, exist_ok=True)
         os.makedirs(thumb_dir, exist_ok=True)
 
-        # 查找/创建默认分组
-        default_group = _get_or_create_default_group(db, resource_type, source_id)
-
         stats: Dict[str, Any] = {
             "groups_created": 0,
             "resources_created": 0,
@@ -285,26 +366,33 @@ def full_batch_import(
             "new_resource_ids": [],
         }
 
-        # 递归处理每个根级 group 节点（作为默认分组的子分组）
-        for node in group_list:
-            _process_group_node(
-                db,
-                node,
-                default_group.id,
-                resource_type,
-                source_id,
-                extract_dir,
-                file_dir_name,
-                file_dir,
-                thumb_dir,
-                thumb_relative_prefix,
-                stats,
-            )
+        # ===== Phase 1：预复制所有文件（无 DB 事务，零锁）=====
+        flat_items = _precopy_tree(
+            group_list,
+            extract_dir,
+            file_dir_name,
+            file_dir,
+            thumb_dir,
+            thumb_relative_prefix,
+            stats["errors"],
+        )
+        logger.info("Phase 1 完成: 预复制 %d 个文件, %d 个错误", len(flat_items), len(stats["errors"]))
 
-        # 单事务提交
+        # ===== Phase 2：快速创建 DB 记录（事务极短，毫秒级）=====
+        default_group = _get_or_create_default_group(db, resource_type, source_id)
+        _create_db_records(
+            db,
+            group_list,
+            default_group.id,
+            resource_type,
+            source_id,
+            flat_items,
+            stats,
+        )
         db.commit()
+        logger.info("Phase 2 完成: %d 个分组, %d 个资源", stats["groups_created"], stats["resources_created"])
 
-        # 向量同步
+        # ===== Phase 3：向量同步（事务外）=====
         if not skip_vector and stats["new_resource_ids"]:
             try:
                 new_resources = (
