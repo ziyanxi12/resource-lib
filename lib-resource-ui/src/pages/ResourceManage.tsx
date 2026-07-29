@@ -61,6 +61,7 @@ export default function ResourceManage() {
   } | null>(null)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const importTaskIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     setPageLoading(true)
@@ -95,21 +96,35 @@ export default function ResourceManage() {
 
   // 页面加载时恢复未完成的导入任务
   useEffect(() => {
+    let stale = false
+
+    // 切换来源时：先彻底清除导入状态
+    stopPolling()
+    importTaskIdRef.current = null
+    setImporting(false)
+    setImportProgress(0)
+    setImportPhase(null)
+    setImportTaskId(null)
+    setImportTaskStatus(null)
+
     if (!sourceId) return
+
+    // 检查是否有未完成的导入任务需要恢复
     const saved = localStorage.getItem('import_task')
     if (!saved) return
     let parsed: { task_id: string; source_id: number; type: string }
     try { parsed = JSON.parse(saved) } catch { localStorage.removeItem('import_task'); return }
     if (parsed.type !== type || parsed.source_id !== sourceId) return
 
+    // 匹配：恢复进度
     setImportPhase('processing')
     setImportTaskId(parsed.task_id)
     api.getImportTaskStatus(parsed.task_id).then(status => {
+      if (stale) return
       setImportTaskStatus(status)
       if (status.status === 'pending' || status.status === 'running') {
         startPolling(parsed.task_id)
       } else {
-        stopPolling()
         if (status.status === 'success') {
           message.success(`导入完成：${status.groups_created} 个分组，${status.resources_created} 个资源`)
           groupTreeRef.current?.refresh()
@@ -125,10 +140,13 @@ export default function ResourceManage() {
         localStorage.removeItem('import_task')
       }
     }).catch(() => {
+      if (stale) return
       localStorage.removeItem('import_task')
       setImportPhase(null)
       setImportTaskId(null)
     })
+
+    return () => { stale = true }
   }, [type, sourceId])
 
   const findGroup = (nodes: GroupNode[], targetId: number): GroupNode | null => {
@@ -378,12 +396,16 @@ export default function ResourceManage() {
   }
 
   const startPolling = (taskId: string) => {
+    stopPolling()
+    importTaskIdRef.current = taskId
     pollRef.current = setInterval(async () => {
       try {
         const status = await api.getImportTaskStatus(taskId)
+        if (importTaskIdRef.current !== taskId) return
         setImportTaskStatus(status)
         if (status.status === 'pending' || status.status === 'running') return
         stopPolling()
+        importTaskIdRef.current = null
         if (status.status === 'success') {
           message.success(`导入完成：${status.groups_created} 个分组，${status.resources_created} 个资源`)
           groupTreeRef.current?.refresh()
