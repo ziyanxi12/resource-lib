@@ -25,7 +25,7 @@ import uuid
 import zipfile
 from datetime import datetime
 from io import BytesIO
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -34,10 +34,19 @@ from app.config import settings
 from app.enums import ResourceType
 from app.models.resource import Resource, ResourceGroup
 from app.services import resource_service
+from app.services import import_task_registry
 from app.services.upload_service import get_file_dir
 from app.services.vector_text_builder import ingest_vectors
 
 logger = logging.getLogger(__name__)
+
+# Phase 3 分块查询大小，避免 SQLite IN 子句参数上限 (默认 999)
+_CHUNK_SIZE = 500
+
+
+class ImportCancelled(Exception):
+    """用户请求取消导入时抛出"""
+    pass
 
 
 def _create_group_no_commit(
@@ -138,14 +147,17 @@ def _precopy_files(
     thumb_relative_prefix: str,
     errors: list,
     group_label: str = "",
+    task_id: Optional[str] = None,
 ) -> list:
     """
     Phase 1：遍历分组节点的 data 项，复制文件到 storage（无 DB 事务）。
     将复制后的路径信息写回 item dict（_saved_* 前缀），供 Phase 2 使用。
-    返回处理后的 data 列表（保留了原始 item + 附加 _saved_ 字段）。
+    返回处理后的 data 列表（只含成功项，跳过的无效项不在此列表中）。
     """
     processed_data = []
     for idx, item in enumerate(node.get("data", []) or []):
+        if import_task_registry.is_cancelled(task_id):
+            raise ImportCancelled()
         item_name = item.get("name", f"第{idx + 1}项")
         file_uuid = str(uuid.uuid4())
 
@@ -206,14 +218,18 @@ def _precopy_tree(
     thumb_dir: str,
     thumb_relative_prefix: str,
     errors: list,
-) -> list:
+    task_id: Optional[str] = None,
+) -> int:
     """
     Phase 1 递归：遍历整棵 group 树，预复制所有文件。
-    返回扁平化的 [(item, saved, group_label)] 列表，顺序与树结构一致。
+    将处理结果挂到每个节点["_processed"]上（[(item, saved)] 列表），
+    供 Phase 2 直接从节点取用，避免迭代器错位。
+    返回成功处理的文件总数。
     """
-    flat_items = []
+    total = 0
 
     def _walk(node, parent_label=""):
+        nonlocal total
         label = node.get("label")
         if not label:
             errors.append({"label": label, "reason": "缺少 label 字段"})
@@ -221,10 +237,10 @@ def _precopy_tree(
 
         full_label = f"{parent_label}/{label}" if parent_label else label
         processed = _precopy_files(
-            node, extract_dir, file_dir_name, file_dir, thumb_dir, thumb_relative_prefix, errors, full_label
+            node, extract_dir, file_dir_name, file_dir, thumb_dir, thumb_relative_prefix, errors, full_label, task_id
         )
-        for item, saved in processed:
-            flat_items.append((item, saved, full_label))
+        node["_processed"] = processed
+        total += len(processed)
 
         for child in node.get("children", []) or []:
             _walk(child, full_label)
@@ -232,7 +248,7 @@ def _precopy_tree(
     for node in nodes:
         _walk(node)
 
-    return flat_items
+    return total
 
 
 def _create_db_records(
@@ -241,17 +257,18 @@ def _create_db_records(
     parent_id: int,
     resource_type: ResourceType,
     source_id: int,
-    flat_items: list,
     stats: Dict[str, Any],
+    task_id: Optional[str] = None,
 ) -> None:
     """
     Phase 2：快速创建 DB 记录（无文件 I/O，事务极短）。
-    递归创建分组树，用 flat_items 中预复制的路径信息创建资源。
-    flat_items 是 [(item, saved, group_label)] 的列表，按树遍历顺序排列。
+    递归创建分组树，从每个节点的 _processed 列表创建资源。
+    资源按分组批量 add_all + 单次 flush，避免逐条 flush 的性能问题。
     """
-    item_iter = iter(flat_items)
 
     def _walk(node, pid):
+        if import_task_registry.is_cancelled(task_id):
+            raise ImportCancelled()
         label = node.get("label")
         if not label:
             return
@@ -269,14 +286,10 @@ def _create_db_records(
             return
         stats["groups_created"] += 1
 
-        # 消费当前节点 data 数量对应的 flat_items
-        data_count = len(node.get("data", []) or [])
-        for _ in range(data_count):
-            try:
-                item, saved = next(item_iter)
-            except StopIteration:
-                break
-
+        # 从节点取 Phase 1 预处理的列表（只含成功项）
+        processed_items: List[Tuple[dict, dict]] = node.get("_processed", [])
+        batch: List[Resource] = []
+        for item, saved in processed_items:
             data = {
                 "resource_type": int(resource_type),
                 "source_id": source_id,
@@ -295,11 +308,13 @@ def _create_db_records(
                 "tags": resource_service.normalize_tags(item.get("tags", [])),
                 "data_updated_at": datetime.utcnow(),
             }
-            resource = Resource(**data)
-            db.add(resource)
-            db.flush()
+            batch.append(Resource(**data))
             stats["resources_created"] += 1
-            stats["new_resource_ids"].append(resource.id)
+
+        if batch:
+            db.add_all(batch)
+            db.flush()
+            stats["new_resource_ids"].extend(r.id for r in batch)
 
         for child in node.get("children", []) or []:
             _walk(child, new_group.id)
@@ -314,9 +329,13 @@ def full_batch_import(
     resource_type: ResourceType,
     zip_bytes: bytes,
     skip_vector: bool = False,
+    task_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     全量批量导入：三阶段处理（预复制文件 → 快速DB入库 → 向量同步）。
+
+    task_id 非空时，在各阶段边界上报进度到 import_task_registry，
+    并在循环中检查取消标志。
 
     Returns:
         {
@@ -325,6 +344,18 @@ def full_batch_import(
             "errors": List[dict],
         }
     """
+
+    def _report(phase: int = None, phase_label: str = None, **extra):
+        if not task_id:
+            return
+        kwargs = {}
+        if phase is not None:
+            kwargs["phase"] = phase
+        if phase_label is not None:
+            kwargs["phase_label"] = phase_label
+        kwargs.update(extra)
+        import_task_registry.update_task(task_id, **kwargs)
+
     # 解压到临时目录
     with tempfile.TemporaryDirectory() as extract_dir:
         try:
@@ -367,7 +398,8 @@ def full_batch_import(
         }
 
         # ===== Phase 1：预复制所有文件（无 DB 事务，零锁）=====
-        flat_items = _precopy_tree(
+        _report(phase=1, phase_label="解压并复制文件")
+        total_copied = _precopy_tree(
             group_list,
             extract_dir,
             file_dir_name,
@@ -375,10 +407,12 @@ def full_batch_import(
             thumb_dir,
             thumb_relative_prefix,
             stats["errors"],
+            task_id=task_id,
         )
-        logger.info("Phase 1 完成: 预复制 %d 个文件, %d 个错误", len(flat_items), len(stats["errors"]))
+        logger.info("Phase 1 完成: 预复制 %d 个文件, %d 个错误", total_copied, len(stats["errors"]))
 
-        # ===== Phase 2：快速创建 DB 记录（事务极短，毫秒级）=====
+        # ===== Phase 2：快速创建 DB 记录（批量 add_all，毫秒级）=====
+        _report(phase=2, phase_label="创建数据库记录")
         default_group = _get_or_create_default_group(db, resource_type, source_id)
         _create_db_records(
             db,
@@ -386,20 +420,30 @@ def full_batch_import(
             default_group.id,
             resource_type,
             source_id,
-            flat_items,
             stats,
+            task_id=task_id,
         )
         db.commit()
         logger.info("Phase 2 完成: %d 个分组, %d 个资源", stats["groups_created"], stats["resources_created"])
+        _report(phase_label="数据库入库完成", groups_created=stats["groups_created"],
+                resources_created=stats["resources_created"], errors=stats["errors"])
 
         # ===== Phase 3：向量同步（事务外）=====
         if not skip_vector and stats["new_resource_ids"]:
+            _report(phase=3, phase_label="向量同步")
             try:
-                new_resources = (
-                    db.query(Resource)
-                    .filter(Resource.id.in_(stats["new_resource_ids"]))
-                    .all()
-                )
+                if import_task_registry.is_cancelled(task_id):
+                    raise ImportCancelled()
+
+                # 分块查询，避免 SQLite IN 子句参数上限
+                new_resources: List[Resource] = []
+                all_ids = stats["new_resource_ids"]
+                for i in range(0, len(all_ids), _CHUNK_SIZE):
+                    chunk = all_ids[i:i + _CHUNK_SIZE]
+                    new_resources.extend(
+                        db.query(Resource).filter(Resource.id.in_(chunk)).all()
+                    )
+
                 for res in new_resources:
                     res.vector_text = resource_service.build_vector_text(res)
                 db.commit()
@@ -409,10 +453,13 @@ def full_batch_import(
                 resource_service.batch_update_vector_time(
                     db, [r.id for r in new_resources]
                 )
+            except ImportCancelled:
+                raise
             except Exception as e:
                 logger.warning("向量同步失败（不影响导入结果）: %s", e)
 
         stats.pop("new_resource_ids", None)
+        _report(phase=4, phase_label="完成", status="success")
         logger.info(
             "全量导入完成: source_id=%s, type=%s, groups=%d, resources=%d, errors=%d",
             source_id,

@@ -278,15 +278,21 @@ def batch_update_vector_time(db: Session, resource_ids: List[int]) -> int:
         logger.debug("无资源需要更新向量时间")
         return 0
     now = datetime.utcnow()
-    logger.debug("批量更新向量同步时间: ids=%s, time=%s", resource_ids, now.isoformat())
-    count = (
-        db.query(Resource)
-        .filter(Resource.id.in_(resource_ids))
-        .update({Resource.vector_updated_at: now}, synchronize_session=False)
-    )
+    logger.debug("批量更新向量同步时间: ids=%s, time=%s", resource_ids[:10], now.isoformat())
+    # 分块更新，避免 SQLite IN 子句参数上限 (默认 999)
+    chunk_size = 500
+    total_count = 0
+    for i in range(0, len(resource_ids), chunk_size):
+        chunk = resource_ids[i:i + chunk_size]
+        count = (
+            db.query(Resource)
+            .filter(Resource.id.in_(chunk))
+            .update({Resource.vector_updated_at: now}, synchronize_session=False)
+        )
+        total_count += count
     db.commit()
-    logger.debug("更新完成: %d 条记录", count)
-    return count
+    logger.debug("更新完成: %d 条记录", total_count)
+    return total_count
 
 
 def build_vector_text(resource: Resource) -> str:

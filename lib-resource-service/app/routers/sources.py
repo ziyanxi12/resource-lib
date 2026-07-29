@@ -2,15 +2,15 @@
 来源管理路由
 """
 
-import asyncio
 import logging
+import threading
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal, get_db
-from app.services import source_service, import_service
+from app.services import source_service, import_service, import_task_registry
 from app.enums import ResourceType
 
 logger = logging.getLogger(__name__)
@@ -138,14 +138,16 @@ async def full_batch_import(
     request: Request = None,
     db: Session = Depends(get_db),
 ):
-    """全量批量导入：上传 ZIP 包，在指定来源下递归创建分组及资源"""
+    """全量批量导入：上传 ZIP 包，在指定来源下递归创建分组及资源。
+    立即返回 task_id，后台线程执行导入，通过 GET /api/import/tasks/{task_id}/status 轮询进度。
+    """
     # 校验资源类型
     try:
         resource_type = ResourceType.from_name(type)
     except KeyError:
         raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
 
-    # 校验来源存在（用请求级 session 快速校验）
+    # 校验来源存在
     source = source_service.get_source_by_id(db, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="来源不存在")
@@ -155,35 +157,37 @@ async def full_batch_import(
             detail=f"来源类型不匹配：来源为 {ResourceType(source.resource_type).name}，请求为 {type}",
         )
 
-    # 读取 ZIP 内容（async，不阻塞事件循环）
+    # 读取 ZIP 内容
     zip_bytes = await request.body()
     if not zip_bytes:
         raise HTTPException(status_code=400, detail="未接收到文件内容")
 
-    # 在线程池中执行导入（独立 session，不阻塞事件循环）
+    # 创建任务
+    task = import_task_registry.create_task(source_id, type)
+
+    # 后台线程执行导入（独立 session，不阻塞请求）
     def _run_import():
         import_db = SessionLocal()
         try:
-            return import_service.full_batch_import(
+            import_service.full_batch_import(
                 import_db,
                 source_id=source_id,
                 resource_type=resource_type,
                 zip_bytes=zip_bytes,
+                task_id=task.task_id,
             )
+        except import_service.ImportCancelled:
+            import_task_registry.update_task(
+                task.task_id, status="cancelled", phase_label="已取消"
+            )
+            logger.info("导入已取消: task=%s", task.task_id)
+        except Exception as e:
+            import_task_registry.update_task(
+                task.task_id, status="failed", message=str(e), phase_label="失败"
+            )
+            logger.exception("导入失败: task=%s, source_id=%s, type=%s", task.task_id, source_id, type)
         finally:
             import_db.close()
 
-    try:
-        result = await asyncio.to_thread(_run_import)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.exception("全量导入失败: source_id=%s, type=%s", source_id, type)
-        raise HTTPException(status_code=500, detail=f"导入失败: {e}")
-
-    return {
-        "message": f"导入完成：{result['groups_created']} 个分组，{result['resources_created']} 个资源",
-        "groups_created": result["groups_created"],
-        "resources_created": result["resources_created"],
-        "errors": result["errors"],
-    }
+    threading.Thread(target=_run_import, daemon=True).start()
+    return {"task_id": task.task_id, "message": "导入已开始"}

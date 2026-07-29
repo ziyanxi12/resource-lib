@@ -26,6 +26,7 @@ from app.routers import resources, upload
 from app.routers import vector_router, group
 from app.routers import sources, init_router
 from app.routers import resource_types
+from app.routers import import_task
 
 # ===== 移除上传限制 =====
 # 修改 Starlette 的内存阈值，避免大文件上传时的临时文件问题
@@ -78,6 +79,7 @@ app.include_router(group.router)
 app.include_router(sources.router)
 app.include_router(init_router.router)
 app.include_router(resource_types.router)
+app.include_router(import_task.router)
 
 # 静态文件服务：前端可通过 /static/{file_path} 直接访问上传文件
 if os.path.exists(settings.FILE_ROOT_DIR):

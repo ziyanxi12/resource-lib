@@ -79,12 +79,7 @@ export const api = {
       getXhr?: (xhr: XMLHttpRequest) => void
       timeoutMs?: number
     }
-  ): Promise<{
-    message: string
-    groups_created: number
-    resources_created: number
-    errors: Array<{ group?: string; label?: string; name?: string; reason: string }>
-  }> => {
+  ): Promise<{ task_id: string; message: string }> => {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', `${BASE}/api/sources/${sourceId}/import?type=${encodeURIComponent(type)}`)
@@ -116,6 +111,20 @@ export const api = {
       xhr.send(formData)
     })
   },
+
+  getImportTaskStatus: (taskId: string): Promise<{
+    task_id: string
+    status: string
+    phase: number
+    phase_label: string
+    groups_created: number
+    resources_created: number
+    errors: Array<{ group?: string; label?: string; name?: string; reason: string }>
+    message: string
+  }> => request(`/api/import/tasks/${taskId}/status`),
+
+  cancelImportTask: (taskId: string): Promise<{ message: string }> =>
+    request(`/api/import/tasks/${taskId}/cancel`, { method: 'POST' }),
 
   listResources: (params: {
     type?: string

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Select, TreeSelect, message, Modal, Input, Spin, Dropdown, Upload, Progress, Alert } from 'antd'
-import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined, SwapOutlined, ImportOutlined } from '@ant-design/icons'
+import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined, SwapOutlined, ImportOutlined, CloseOutlined } from '@ant-design/icons'
 import ResourceTable, { type ResourceTableHandle } from '../components/ResourceTable'
 import GroupTree, { type GroupTreeHandle } from '../components/GroupTree'
 import { api, Source, GroupNode } from '../api'
@@ -48,8 +48,19 @@ export default function ResourceManage() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importing, setImporting] = useState(false)
   const [importProgress, setImportProgress] = useState(0)
-  const [importResult, setImportResult] = useState<{ groups_created: number; resources_created: number; errors: Array<{ group?: string; label?: string; name?: string; reason: string }> } | null>(null)
+  const [importPhase, setImportPhase] = useState<'uploading' | 'processing' | null>(null)
+  const [importTaskId, setImportTaskId] = useState<string | null>(null)
+  const [importTaskStatus, setImportTaskStatus] = useState<{
+    status: string
+    phase: number
+    phase_label: string
+    groups_created: number
+    resources_created: number
+    errors: Array<{ group?: string; label?: string; name?: string; reason: string }>
+    message: string
+  } | null>(null)
   const xhrRef = useRef<XMLHttpRequest | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     setPageLoading(true)
@@ -77,6 +88,48 @@ export default function ResourceManage() {
       .catch(() => message.error('加载来源失败'))
       .finally(() => setPageLoading(false))
   }, [type])
+
+  useEffect(() => {
+    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+  }, [])
+
+  // 页面加载时恢复未完成的导入任务
+  useEffect(() => {
+    if (!sourceId) return
+    const saved = localStorage.getItem('import_task')
+    if (!saved) return
+    let parsed: { task_id: string; source_id: number; type: string }
+    try { parsed = JSON.parse(saved) } catch { localStorage.removeItem('import_task'); return }
+    if (parsed.type !== type || parsed.source_id !== sourceId) return
+
+    setImportPhase('processing')
+    setImportTaskId(parsed.task_id)
+    api.getImportTaskStatus(parsed.task_id).then(status => {
+      setImportTaskStatus(status)
+      if (status.status === 'running') {
+        startPolling(parsed.task_id)
+      } else {
+        stopPolling()
+        if (status.status === 'success') {
+          message.success(`导入完成：${status.groups_created} 个分组，${status.resources_created} 个资源`)
+          groupTreeRef.current?.refresh()
+          tableRef.current?.refresh()
+        } else if (status.status === 'failed') {
+          message.error(status.message || '导入失败')
+        } else if (status.status === 'cancelled') {
+          message.info('导入已取消')
+        }
+        setImportPhase(null)
+        setImportTaskId(null)
+        setImportTaskStatus(null)
+        localStorage.removeItem('import_task')
+      }
+    }).catch(() => {
+      localStorage.removeItem('import_task')
+      setImportPhase(null)
+      setImportTaskId(null)
+    })
+  }, [type, sourceId])
 
   const findGroup = (nodes: GroupNode[], targetId: number): GroupNode | null => {
     for (const node of nodes) {
@@ -317,39 +370,97 @@ export default function ResourceManage() {
     }
   }
 
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }
+
+  const startPolling = (taskId: string) => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const status = await api.getImportTaskStatus(taskId)
+        setImportTaskStatus(status)
+        if (status.status === 'running') return
+        stopPolling()
+        if (status.status === 'success') {
+          message.success(`导入完成：${status.groups_created} 个分组，${status.resources_created} 个资源`)
+          groupTreeRef.current?.refresh()
+          tableRef.current?.refresh()
+        } else if (status.status === 'failed') {
+          message.error(status.message || '导入失败')
+        } else if (status.status === 'cancelled') {
+          message.info('导入已取消')
+        }
+        setImporting(false)
+        setImportPhase(null)
+        setImportTaskId(null)
+        setImportTaskStatus(null)
+        setImportFile(null)
+        localStorage.removeItem('import_task')
+      } catch {
+        // 轮询单次失败不中断，继续下一轮
+      }
+    }, 2000)
+  }
+
   const handleFullImport = async () => {
     if (!importFile || !sourceId) return
     setImporting(true)
     setImportProgress(0)
-    setImportResult(null)
+    setImportPhase('uploading')
+    setImportTaskStatus(null)
+    setImportTaskId(null)
     const formData = new FormData()
     formData.append('file', importFile)
     try {
+      // 阶段 1：上传 ZIP
       const res = await api.fullBatchImport(sourceId, type, formData, {
         onProgress: setImportProgress,
         getXhr: (xhr) => { xhrRef.current = xhr },
       })
-      setImportResult(res)
-      message.success(`导入完成：${res.groups_created} 个分组，${res.resources_created} 个资源`)
-      groupTreeRef.current?.refresh()
-      tableRef.current?.refresh()
+      // 上传完成，切换到处理阶段，关闭 Modal，进度转移到来源卡片
+      setImportPhase('processing')
+      setImportTaskId(res.task_id)
+      setImportModalOpen(false)
+      localStorage.setItem('import_task', JSON.stringify({
+        task_id: res.task_id,
+        source_id: sourceId,
+        type,
+      }))
+
+      // 阶段 2：轮询服务端处理进度
+      startPolling(res.task_id)
     } catch (e) {
       const msg = e instanceof Error ? e.message : '导入失败'
       if (msg !== '已取消') message.error(msg)
-    } finally {
       setImporting(false)
+      setImportPhase(null)
+    } finally {
       xhrRef.current = null
     }
   }
 
   const closeImportModal = () => {
-    if (importing && xhrRef.current) {
+    // 上传阶段关闭：中断 XHR + 全部清理
+    if (importPhase === 'uploading' && xhrRef.current) {
       xhrRef.current.abort()
     }
+    // 处理阶段关闭：只关 Modal，进度继续在来源卡片展示（不停轮询）
+    if (importPhase === 'processing') {
+      setImportModalOpen(false)
+      return
+    }
+    // 空闲状态：清理
+    stopPolling()
     setImportModalOpen(false)
     setImportFile(null)
     setImportProgress(0)
-    setImportResult(null)
+    setImportPhase(null)
+    setImportTaskId(null)
+    setImportTaskStatus(null)
+    setImporting(false)
   }
 
   if (pageLoading) {
@@ -407,7 +518,6 @@ export default function ResourceManage() {
                     if (key === 'import') {
                       setImportFile(null)
                       setImportProgress(0)
-                      setImportResult(null)
                       setImportModalOpen(true)
                     }
                   },
@@ -443,6 +553,28 @@ export default function ResourceManage() {
             )}
             options={sources.map(s => ({ value: s.id, label: s.name }))}
           />
+
+          {importTaskId && importPhase === 'processing' && (
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+              {[1, 2, 3].map((step) => {
+                const isError = importTaskStatus?.status === 'failed' || importTaskStatus?.status === 'cancelled'
+                const bg = importTaskStatus && importTaskStatus.phase > step
+                  ? '#52c41a'
+                  : importTaskStatus && importTaskStatus.phase === step
+                    ? (isError ? '#ff4d4f' : '#1677ff')
+                    : '#e2e8f0'
+                return (
+                  <div key={step} style={{ flex: 1, height: 4, borderRadius: 2, background: bg, transition: 'background 0.3s' }} />
+                )
+              })}
+              <Button
+                type="text"
+                size="small"
+                icon={<CloseOutlined />}
+                onClick={() => { if (importTaskId) api.cancelImportTask(importTaskId).catch(() => {}) }}
+              />
+            </div>
+          )}
         </div>
         <div style={{ flex: 1, minHeight: 0 }}>
           <GroupTree
@@ -627,14 +759,14 @@ export default function ResourceManage() {
         title="全量批量导入"
         onCancel={closeImportModal}
         footer={[
-          <Button key="close" onClick={closeImportModal}>
-            {importing ? '取消上传' : '关闭'}
+          <Button key="close" onClick={closeImportModal} danger={importing}>
+            {importPhase === 'uploading' ? '取消上传' : '关闭'}
           </Button>,
           <Button
             key="upload"
             type="primary"
             loading={importing}
-            disabled={!importFile || importing || !!importResult}
+            disabled={!importFile || importing}
             onClick={handleFullImport}
             icon={<ImportOutlined />}
           >
@@ -653,10 +785,9 @@ export default function ResourceManage() {
           maxCount={1}
           beforeUpload={(file) => {
             setImportFile(file)
-            setImportResult(null)
             return false
           }}
-          onRemove={() => { setImportFile(null); setImportResult(null) }}
+          onRemove={() => { setImportFile(null) }}
           fileList={importFile ? [{ uid: '-1', name: importFile.name, status: 'done' as const }] : []}
           disabled={importing}
         >
@@ -665,34 +796,13 @@ export default function ResourceManage() {
           <p style={{ margin: '4px 0 0', color: '#999', fontSize: 12 }}>仅支持 .zip 格式</p>
         </Upload.Dragger>
 
-        {importing && (
+        {importPhase === 'uploading' && (
           <div style={{ marginTop: 16 }}>
             <Progress percent={importProgress} status="active" />
             <div style={{ textAlign: 'center', color: '#999', fontSize: 12, marginTop: 4 }}>
               上传中... {importProgress}%
             </div>
           </div>
-        )}
-
-        {importResult && (
-          <Alert
-            type={importResult.errors.length > 0 ? 'warning' : 'success'}
-            showIcon
-            style={{ marginTop: 16 }}
-            message={`导入完成：${importResult.groups_created} 个分组，${importResult.resources_created} 个资源${
-              importResult.errors.length > 0 ? `，${importResult.errors.length} 项失败` : ''
-            }`}
-            description={importResult.errors.length > 0 ? (
-              <div style={{ maxHeight: 120, overflowY: 'auto', fontSize: 12 }}>
-                {importResult.errors.slice(0, 20).map((err, i) => (
-                  <div key={i} style={{ color: '#666' }}>
-                    {err.name || err.label || err.group || '未知'}: {err.reason}
-                  </div>
-                ))}
-                {importResult.errors.length > 20 && <div>...还有 {importResult.errors.length - 20} 条错误</div>}
-              </div>
-            ) : undefined}
-          />
         )}
       </Modal>
     </div>
