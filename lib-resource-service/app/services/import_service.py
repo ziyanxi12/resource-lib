@@ -398,7 +398,7 @@ def full_batch_import(
         }
 
         # ===== Phase 1：预复制所有文件（无 DB 事务，零锁）=====
-        _report(phase=1, phase_label="解压并复制文件")
+        _report(status="running", phase=1, phase_label="解压并复制文件")
         total_copied = _precopy_tree(
             group_list,
             extract_dir,

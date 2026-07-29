@@ -106,7 +106,7 @@ export default function ResourceManage() {
     setImportTaskId(parsed.task_id)
     api.getImportTaskStatus(parsed.task_id).then(status => {
       setImportTaskStatus(status)
-      if (status.status === 'running') {
+      if (status.status === 'pending' || status.status === 'running') {
         startPolling(parsed.task_id)
       } else {
         stopPolling()
@@ -382,7 +382,7 @@ export default function ResourceManage() {
       try {
         const status = await api.getImportTaskStatus(taskId)
         setImportTaskStatus(status)
-        if (status.status === 'running') return
+        if (status.status === 'pending' || status.status === 'running') return
         stopPolling()
         if (status.status === 'success') {
           message.success(`导入完成：${status.groups_created} 个分组，${status.resources_created} 个资源`)
