@@ -66,7 +66,7 @@ def import_app(
     if existing:
         return {"action": "skipped", "app": existing}
 
-    parsed_created = _parse_dt(created_at) or datetime.utcnow()
+    parsed_created = _parse_dt(created_at) or datetime.now()
     parsed_updated = _parse_dt(updated_at) or parsed_created
 
     app = SearchApp(

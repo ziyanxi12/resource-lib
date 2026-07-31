@@ -26,8 +26,8 @@ class Resource(Base):
     group_id        = Column(Integer, ForeignKey("resource_groups.id", ondelete="SET NULL"), nullable=True, comment="所属分组ID")
     created_by      = Column(String(100), nullable=True)
     is_deleted      = Column(Integer, nullable=False, default=0)
-    created_at      = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at      = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at      = Column(DateTime, nullable=False, default=datetime.now)
+    updated_at      = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
     data_updated_at = Column(DateTime, nullable=True, comment="业务数据更新时间，用于向量同步判断")
     vector_updated_at = Column(DateTime, nullable=True, comment="向量库更新时间")
 
@@ -46,8 +46,8 @@ class ResourceSource(Base):
     is_sync_source = Column(Integer, default=0, comment="是否同步来源")
     config         = Column(JSON, nullable=True, comment="来源配置（API 地址、认证信息等）")
     is_active      = Column(Integer, default=1, comment="是否启用：1=正常 0=已删除(回收站)")
-    created_at     = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at     = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at     = Column(DateTime, nullable=False, default=datetime.now)
+    updated_at     = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
 
     resources = relationship("Resource", back_populates="source")
 
@@ -65,8 +65,8 @@ class ResourceGroup(Base):
     real_path     = Column(String(500), nullable=False, comment="完整路径：根分组/一级分组/二级分组")
     sort_order    = Column(Integer, default=0, comment="同级排序序号")
     is_default    = Column(Integer, default=0, comment="是否默认分组")
-    created_at    = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at    = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at    = Column(DateTime, nullable=False, default=datetime.now)
+    updated_at    = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
 
     children  = relationship("ResourceGroup", backref="parent", remote_side=[id], cascade="all")
     resources = relationship("Resource", back_populates="group")

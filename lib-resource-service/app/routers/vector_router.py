@@ -231,6 +231,20 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
 
     filters = _resolve_filters(db, req.filters)
 
+    raw_filters = req.filters or {}
+    filter_sources = []
+    filter_groups = []
+    filter_tags = []
+    if raw_filters.get("source_id") is not None:
+        sid = raw_filters["source_id"]
+        filter_sources = [sid] if isinstance(sid, int) else list(sid)
+    if raw_filters.get("group_id") is not None:
+        gid = raw_filters["group_id"]
+        filter_groups = [gid] if isinstance(gid, int) else list(gid)
+    if raw_filters.get("tags") is not None:
+        t = raw_filters["tags"]
+        filter_tags = list(t) if isinstance(t, list) else [t]
+
     set_search_log_ctx(
         resource_type=req.type,
         search_mode=req.mode,
@@ -240,6 +254,9 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
         query_count=len(req.queries),
         queries=req.queries,
         filters=req.filters,
+        filter_sources=filter_sources,
+        filter_groups=filter_groups,
+        filter_tags=filter_tags,
     )
 
     try:
@@ -278,13 +295,17 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
         
         results.append(group_results)
 
-    all_ids = [item["id"] for group in results for item in group if "id" in item]
-    all_scores = [item["score"] for group in results for item in group if "score" in item and item["score"] is not None]
+    score_map = {}
+    for group in results:
+        for item in group:
+            rid = item.get("id")
+            score = item.get("score")
+            if rid is not None and score is not None:
+                if rid not in score_map or score > score_map[rid]:
+                    score_map[rid] = score
     set_search_log_ctx(
-        result_count=len(all_ids),
-        result_ids=list(dict.fromkeys(all_ids)),
-        top_score=max(all_scores) if all_scores else None,
-        results=results,
+        result_count=len(score_map),
+        result_scores=score_map,
     )
 
     return {"results": results}

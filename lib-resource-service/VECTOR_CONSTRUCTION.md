@@ -6,7 +6,7 @@
 
 ## 1. 总览
 
-所有资源的向量数据通过 `app/services/vector_text_builder.py` 的 `ingest_vectors()` 函数统一入库，6 种资源类型（component / template / icon / illus / image / file）走**完全相同**的 payload 结构。
+所有资源的向量数据通过 `app/services/vector_text_builder.py` 的 `ingest_vectors()` 函数统一入库，5 种资源类型（component / icon / illus / image / file）走**完全相同**的 payload 结构。
 
 - **唯一入库入口**: `ingest_vectors()` (`vector_text_builder.py:13-67`)
 - **开关**: 受 `settings.VECTOR_SERVICE_ENABLED` 控制，关闭时直接 return
@@ -15,7 +15,6 @@
 | ResourceType | vec_type 字符串 |
 |--------------|----------------|
 | component (1) | `component` |
-| template (2) | `template` |
 | icon (3) | `icon` |
 | illus (4) | `illustration` |
 | image (5) | `image` |

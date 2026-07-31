@@ -210,7 +210,7 @@ def _batch_insert_db(saved_items: List[dict], resource_type: int, source_id: int
                     "search_text": item.get("search_text"),
                     "raw_data": item.get("raw_data") or item.get("meta_json"),
                     "tags": normalize_tags(item.get("tags", [])),
-                    "data_updated_at": datetime.utcnow(),
+                    "data_updated_at": datetime.now(),
                     "created_by": created_by,
                 }
                 resources_data.append(data)

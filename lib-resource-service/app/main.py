@@ -6,6 +6,7 @@ lib-resource-service 入口
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
@@ -23,6 +24,9 @@ from app.models.resource import ResourceSource
 from app.models import resource  # noqa: F401
 from app.models import search_log  # noqa: F401
 from app.models import search_app  # noqa: F401
+from app.models import search_log_filter  # noqa: F401
+from app.models import search_log_result  # noqa: F401
+from app.models import search_daily_stats  # noqa: F401
 
 from app.routers import resources, upload
 from app.routers import vector_router, group
@@ -31,6 +35,7 @@ from app.routers import resource_types
 from app.routers import import_task
 from app.routers import search_log
 from app.routers import search_app
+from app.routers import search_stats
 
 from app.middleware.search_log_middleware import SearchLogMiddleware
 
@@ -69,8 +74,34 @@ async def lifespan(app: FastAPI):
         finally:
             import_db.close()
 
+    # 定时聚合搜索统计（每天凌晨 2:00 聚合前一天数据）
+    scheduler = None
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from app.database import SessionLocal as _SessionLocal
+        from app.services import search_stats_service
+
+        def _refresh_yesterday():
+            db = _SessionLocal()
+            try:
+                yesterday = (datetime.now() - timedelta(days=1)).date()
+                logger.info("定时任务开始聚合: date=%s", yesterday)
+                search_stats_service.refresh_daily_stats(db, yesterday)
+            except Exception as e:
+                logger.warning("定时聚合搜索统计失败: %s", e)
+            finally:
+                db.close()
+
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(_refresh_yesterday, "cron", hour=2, minute=0, id="refresh_search_stats")
+        scheduler.start()
+        logger.info("APScheduler 已启动，每天 02:00 聚合搜索统计")
+    except ImportError:
+        logger.warning("apscheduler 未安装，跳过定时聚合任务（pip install apscheduler 后启用）")
+
     yield
-    # 关闭时无需额外清理
+    if scheduler:
+        scheduler.shutdown(wait=False)
 
 
 app = FastAPI(
@@ -104,6 +135,7 @@ app.include_router(resource_types.router)
 app.include_router(import_task.router)
 app.include_router(search_log.router)
 app.include_router(search_app.router)
+app.include_router(search_stats.router)
 
 # 静态文件服务：前端可通过 /static/{file_path} 直接访问上传文件
 if os.path.exists(settings.FILE_ROOT_DIR):

@@ -180,7 +180,10 @@ def _get_all_descendant_ids(db: Session, group_id: int) -> List[int]:
 def get_descendants_resource_count(db: Session, group_id: int) -> int:
     all_ids = _get_all_descendant_ids(db, group_id)
     all_ids.insert(0, group_id)
-    return db.query(Resource).filter(Resource.group_id.in_(all_ids)).count()
+    return db.query(Resource).filter(
+        Resource.group_id.in_(all_ids),
+        Resource.is_deleted == 0,
+    ).count()
 
 
 def delete_group(db: Session, group_id: int) -> bool:

@@ -102,7 +102,7 @@ def import_components(db: Session, source_id: Optional[int] = None, skip_vector:
             "file_path": meta["hex_file"],
             "file_size": file_size,
             "file_type": file_type,
-            "data_updated_at": datetime.utcnow(),
+            "data_updated_at": datetime.now(),
             "raw_data": {
                 "lib_name": meta["lib_name"],
                 "canvas_name": comp.get("canvasName"),

@@ -307,7 +307,7 @@ async def update_resource(
 
     if update_data:
         if text_changed:
-            update_data["data_updated_at"] = datetime.utcnow()
+            update_data["data_updated_at"] = datetime.now()
         logger.debug("用户修改数据: resource_id=%d, fields=%s", resource_id, list(update_data.keys()))
         
         for key, value in update_data.items():
@@ -319,7 +319,7 @@ async def update_resource(
         resource.tags = resource_service.normalize_tags(tags_list)
         text_changed = True
         if not (update_data and "data_updated_at" in update_data):
-            resource.data_updated_at = datetime.utcnow()
+            resource.data_updated_at = datetime.now()
         db.commit()
         db.refresh(resource)
     

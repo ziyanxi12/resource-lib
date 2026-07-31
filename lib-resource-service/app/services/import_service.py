@@ -305,7 +305,7 @@ def _create_db_records(
                 "search_text": item.get("search_text"),
                 "raw_data": item.get("raw_data"),
                 "tags": resource_service.normalize_tags(item.get("tags", [])),
-                "data_updated_at": datetime.utcnow(),
+                "data_updated_at": datetime.now(),
             }
             batch.append(Resource(**data))
             stats["resources_created"] += 1

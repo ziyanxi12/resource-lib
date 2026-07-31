@@ -20,6 +20,8 @@ from datetime import datetime
 from app.config import settings
 from app.database import SessionLocal
 from app.models.search_log import VectorSearchLog
+from app.models.search_log_filter import SearchLogFilter
+from app.models.search_log_result import SearchLogResult
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +63,39 @@ def _write_log(record: dict):
     try:
         db = SessionLocal()
         try:
-            db.add(VectorSearchLog(**record))
+            main_cols = set(VectorSearchLog.__table__.columns.keys())
+            main_data = {k: v for k, v in record.items() if k in main_cols}
+            log = VectorSearchLog(**main_data)
+            db.add(log)
+            db.commit()
+            db.refresh(log)
+
+            filter_rows = []
+            for ft, values in [
+                ("source_id", record.get("filter_sources", [])),
+                ("group_id", record.get("filter_groups", [])),
+                ("tags", record.get("filter_tags", [])),
+            ]:
+                for v in values:
+                    filter_rows.append(SearchLogFilter(
+                        log_id=log.id, filter_type=ft, filter_value=str(v)
+                    ))
+            if filter_rows:
+                db.bulk_save_objects(filter_rows)
+
+            result_rows = []
+            for rid, score in (record.get("result_scores") or {}).items():
+                result_rows.append(SearchLogResult(
+                    log_id=log.id, resource_id=int(rid), score=score
+                ))
+            if result_rows:
+                db.bulk_save_objects(result_rows)
+
             db.commit()
         finally:
             db.close()
     except Exception as e:
-        safe = {k: v for k, v in record.items() if k != "results"}
+        safe = {k: v for k, v in record.items() if k not in ("result_scores", "queries")}
         logger.warning("[search_log] 落库失败: %s  record=%s", e, safe)
 
 
@@ -90,12 +119,12 @@ class SearchLogMiddleware:
             return
 
         request_id = str(uuid.uuid4())
-        created_at = datetime.utcnow()
+        created_at = datetime.now()
         start = time.monotonic()
 
         headers = _decode_headers(scope.get("headers", []))
         client_ip = _get_client_ip(scope, headers)
-        app_id = headers.get("octo-vs-token") or client_ip
+        app_id = headers.get("octo-vs-token") or None
         user_agent = headers.get("user-agent", "")
         referer = headers.get("referer", "")
 
@@ -160,9 +189,6 @@ class SearchLogMiddleware:
             "queries": ctx.get("queries"),
             "filters": ctx.get("filters"),
             "result_count": ctx.get("result_count"),
-            "result_ids": ctx.get("result_ids"),
-            "top_score": ctx.get("top_score"),
-            "results": ctx.get("results"),
             "status": status,
             "http_status": status_code,
             "error_message": error_message,
@@ -172,6 +198,10 @@ class SearchLogMiddleware:
             "user_agent": user_agent,
             "referer": referer,
             "created_at": created_at,
+            "filter_sources": ctx.get("filter_sources", []),
+            "filter_groups": ctx.get("filter_groups", []),
+            "filter_tags": ctx.get("filter_tags", []),
+            "result_scores": ctx.get("result_scores", {}),
         }
 
         _executor.submit(_write_log, record)

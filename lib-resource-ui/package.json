@@ -1,7 +1,7 @@
 {
   "name": "lib-resource-ui",
   "private": true,
-  "version": "1.0.5",
+  "version": "1.0.7",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,6 +10,7 @@
     "upload": "node ./devTool/upload.cjs"
   },
   "dependencies": {
+    "@ant-design/charts": "^2.2.0",
     "@ant-design/icons": "^5.4.0",
     "antd": "^5.21.6",
     "compressing": "^2.1.1",

@@ -13,5 +13,5 @@ class SearchApp(Base):
     name        = Column(String(255), nullable=False, comment="应用名称")
     remark      = Column(Text, nullable=True, comment="备注")
     is_active   = Column(Integer, default=1, comment="1=启用 0=禁用(软删除)")
-    created_at  = Column(DateTime, default=datetime.utcnow)
-    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at  = Column(DateTime, default=datetime.now)
+    updated_at  = Column(DateTime, default=datetime.now, onupdate=datetime.now)
