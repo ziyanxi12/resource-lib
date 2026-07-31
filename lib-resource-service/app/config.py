@@ -58,6 +58,15 @@ class Settings:
     VECTOR_SERVICE_ENABLED: bool = os.getenv("VECTOR_SERVICE_ENABLED", "false").lower() == "true"
     VECTOR_SEARCH_MODE: str     = os.getenv("VECTOR_SEARCH_MODE", "vector")
 
+    # ── 搜索日志 ──────────────────────────────────────────────
+    # true = 采集 POST /api/vector/search 请求日志到 vector_search_logs 表
+    SEARCH_LOG_ENABLED: bool = os.getenv("SEARCH_LOG_ENABLED", "true").lower() == "true"
+
+    # ── 搜索应用导入 ──────────────────────────────────────────
+    # true = 启动时从 SEARCH_APPS_IMPORT_FILE 导入搜索应用（用于测试→生产迁移，首次导入后改回 false）
+    SEARCH_APPS_AUTO_IMPORT: bool = os.getenv("SEARCH_APPS_AUTO_IMPORT", "false").lower() == "true"
+    SEARCH_APPS_IMPORT_FILE: str = os.getenv("SEARCH_APPS_IMPORT_FILE", "./storage/search_apps.json")
+
     # ── Mock 开关 ─────────────────────────────────────────────
     # true = 不调用真实外部 API，全部返回模拟数据，便于本地开发
     USE_MOCK: bool = os.getenv("USE_MOCK", "true").lower() == "true"

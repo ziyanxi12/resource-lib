@@ -1,9 +1,14 @@
+import type { Resource } from './types'
+
 const BASE = import.meta.env.VITE_API_BASE ?? ''
 
 export const staticUrl = (path: string) => `${BASE}/static/${path}`
 
 async function request(url: string, options?: RequestInit) {
-  const res = await fetch(`${BASE}${url}`, options)
+  const res = await fetch(`${BASE}${url}`, {
+    ...options,
+    credentials: 'include',
+  })
   if (!res.ok) {
     const text = await res.text()
     throw new Error(text || `HTTP ${res.status}`)
@@ -26,6 +31,16 @@ export interface ResourceTypeItem {
   id: number
   name: string
   label: string
+}
+
+export interface SearchApp {
+  id: number
+  app_id: string
+  name: string
+  remark: string | null
+  is_active: number
+  created_at: string
+  updated_at: string
 }
 
 export const api = {
@@ -151,6 +166,9 @@ export const api = {
     return request(`/api/resources/tags?${q}`)
   },
 
+  getResource: (id: number): Promise<Resource> =>
+    request(`/api/resources/${id}`),
+
   updateResource: (id: number, data: Record<string, unknown> | FormData) => {
     if (data instanceof FormData) {
       return request(`/api/resources/${id}`, {
@@ -209,7 +227,7 @@ export const api = {
   }) => {
     const data = await request('/api/vector/search', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'octo-vs-token': 'octo_vs_986183500c8a8f7abdbb1690cc36ac58' },
       body: JSON.stringify({
         type: params.type,
         queries: [params.query],
@@ -304,11 +322,55 @@ export const api = {
     }),
 
   batchMoveResources: (ids: number[], groupId: number, type: string): Promise<{ moved: number }> =>
-    request('/api/resources/batch-move', {
+    request(`/api/resources/batch-move`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids, group_id: groupId, type }),
     }),
+
+  getSearchLogs: (params?: {
+    page?: number
+    limit?: number
+    status?: string
+    resource_type?: string
+    include_results?: boolean
+  }): Promise<{
+    items: Record<string, unknown>[]
+    total: number
+    page: number
+    limit: number
+  }> => {
+    const q = new URLSearchParams()
+    if (params?.page) q.set('page', String(params.page))
+    if (params?.limit) q.set('limit', String(params.limit))
+    if (params?.status) q.set('status', params.status)
+    if (params?.resource_type) q.set('resource_type', params.resource_type)
+    if (params?.include_results) q.set('include_results', 'true')
+    return request(`/api/search-logs?${q}`)
+  },
+
+  getSearchApps: (params?: { is_active?: number }): Promise<{ items: SearchApp[] }> => {
+    const q = new URLSearchParams()
+    if (params?.is_active !== undefined) q.set('is_active', String(params.is_active))
+    return request(`/api/search-apps?${q}`)
+  },
+
+  createSearchApp: (data: { name: string; remark?: string }): Promise<SearchApp> =>
+    request('/api/search-apps', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  updateSearchApp: (id: number, data: { name?: string; remark?: string }): Promise<SearchApp> =>
+    request(`/api/search-apps/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  deleteSearchApp: (id: number): Promise<{ message: string }> =>
+    request(`/api/search-apps/${id}`, { method: 'DELETE' }),
 }
 
 export interface GroupNode {

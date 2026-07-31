@@ -32,7 +32,7 @@ resources (主表)
 | 字段 | 类型 | 约束 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `id` | Integer | PK, 自增 | - | 主键，全局唯一 |
-| `resource_type` | SmallInteger | NOT NULL | - | 资源类型：1=组件 2=模版 3=图标 4=插画 5=图片 6=文件 |
+| `resource_type` | SmallInteger | NOT NULL | - | 资源类型：1=组件 3=图标 4=插画 5=图片 6=文件 |
 | `source_id` | Integer | FK, NOT NULL | - | 来源ID，关联 resource_sources.id |
 | `name` | String(255) | NOT NULL | - | 资源名称 |
 | `description` | Text | NULL | - | 描述文本 |
@@ -126,7 +126,6 @@ resources (主表)
 | 值 | 名称 | 中文标签 |
 |----|------|----------|
 | 1 | component | 组件集 |
-| 2 | template | 模版 |
 | 3 | icon | SVG |
 | 4 | illus | 插画 |
 | 5 | image | 图片 |

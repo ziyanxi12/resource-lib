@@ -2,7 +2,7 @@
 
 ## 一、项目概述
 
-资源库管理服务，统一管理六类设计资源：组件集、模版、SVG、插画、图片、文件。
+资源库管理服务，统一管理五类设计资源：组件集、SVG、插画、图片、文件。
 
 提供：
 - 资源的存储与检索（MySQL）
@@ -56,7 +56,6 @@ resources (主表)
 | resource_type值 | 类型名称 | 英文名 |
 |----------------|---------|--------|
 | 1 | 组件集 | component |
-| 2 | 模版 | template |
 | 3 | SVG图标 | icon |
 | 4 | 插画 | illus |
 | 5 | 图片 | image |
@@ -133,7 +132,7 @@ lib-resource-service/
 
 ```
 GET  /api/resources
-     ?type=component|template|icon|illus|image|file
+     ?type=component|icon|illus|image|file
      &source_id=1
      &group_id=1
      &search=关键词
@@ -151,7 +150,7 @@ POST /api/resources/sync-vectors?type=  向量同步
 ### 统一上传
 
 ```
-POST /api/upload?type=icon|illus|template|image|file
+POST /api/upload?type=icon|illus|image|file
 Content-Type: multipart/form-data
 
 参数：
@@ -223,7 +222,6 @@ POST /api/vector/search
 POST /api/init
 POST /api/init/component
 POST /api/init/icon
-POST /api/init/template
 ```
 
 ### 静态文件
@@ -306,7 +304,6 @@ def build_vector_text(resource) -> str:
 每个资源必须关联一个来源。默认来源：
 
 - `manual_component` - 手动上传-组件
-- `manual_template` - 手动上传-模版
 - `manual_icon` - 手动上传-SVG
 - `manual_illus` - 手动上传-插画
 - `manual_image` - 手动上传-图片

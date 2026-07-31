@@ -7,7 +7,6 @@ class ResourceType(IntEnum):
     数据库存整数，API 传/返字符串，在此处做双向转换
     """
     component = 1  # 组件集
-    template  = 2  # 模版
     icon      = 3  # SVG 图标
     illus     = 4  # 插画
     image     = 5  # 图片
@@ -23,7 +22,6 @@ class ResourceType(IntEnum):
         """返回中文展示名称"""
         _labels = {
             1: "组件集",
-            2: "模版",
             3: "SVG",
             4: "插画",
             5: "图片",

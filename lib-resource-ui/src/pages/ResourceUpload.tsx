@@ -27,7 +27,6 @@ interface ZipItem {
 
 const RESOURCE_TYPE_MAP: Record<string, number> = {
   component: 1,
-  template: 2,
   image: 5,
   file: 6,
   icon: 3,
@@ -36,7 +35,6 @@ const RESOURCE_TYPE_MAP: Record<string, number> = {
 
 const TYPE_LABELS: Record<string, string> = {
   component: '组件',
-  template: '模版',
   image: '图片',
   file: '文件',
   icon: '图标',
@@ -405,8 +403,8 @@ export default function ResourceUpload() {
               const dims = await getImageDimensions(thumbnailBlob)
               width = dims.width
               height = dims.height
-            } catch {
-              // 忽略错误，宽高保持 null
+            } catch (e) {
+              console.warn('读取缩略图宽高失败:', item.thumbnail_path, e)
             }
           }
         }
@@ -694,7 +692,7 @@ export default function ResourceUpload() {
 ### meta 字段（元信息）
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| type | string | 是 | 资源类型：component/icon/illus/template/image/file |
+| type | string | 是 | 资源类型：component/icon/illus/image/file |
 | source_id | number | 是 | 来源ID（已自动填充，请勿修改） |
 | group_id | number | 否 | 分组ID（已自动填充，请勿修改） |
 
@@ -910,7 +908,8 @@ export default function ResourceUpload() {
                                 errors: { ...i.errors, thumbnail_path: '' } 
                               } : i))
                             })
-                            .catch(() => {
+                            .catch((e) => {
+                              console.warn('读取缩略图宽高失败:', file.name, e)
                               setItems(prev => prev.map(i => i.uid === item.uid ? { 
                                 ...i, 
                                 thumbnailBlob: file, 
@@ -954,7 +953,8 @@ export default function ResourceUpload() {
                                 errors: { ...i.errors, thumbnail_path: '' } 
                               } : i))
                             })
-                            .catch(() => {
+                            .catch((e) => {
+                              console.warn('读取缩略图宽高失败:', file.name, e)
                               setItems(prev => prev.map(i => i.uid === item.uid ? { 
                                 ...i, 
                                 thumbnailBlob: file, 
@@ -1041,28 +1041,35 @@ export default function ResourceUpload() {
                     type="file"
                     accept={type === 'image' ? 'image/png,image/svg+xml,image/jpeg,image/webp' : undefined}
                     style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
-onChange={e => {
-                       const file = e.target.files?.[0]
-                       if (file) {
-                         const isPng = file.type === 'image/png'
-                         const isImageType = type === 'image'
-                         const fileName = file.name.replace(/\.[^/.]+$/, "")
-                         setItems(prev => prev.map(i => {
-                           if (i.uid !== item.uid) return i
-                           const updates: Partial<ZipItem> = { 
-                             fileBlob: file, 
-                             file_path: file.name,
-                             file_name: i.file_name || fileName,
-                           }
-                           if (isImageType && isPng) {
-                             updates.thumbnailBlob = file
-                             updates.thumbnailPreview = URL.createObjectURL(file)
-                             updates.thumbnail_path = file.name
-                           }
-                           return { ...i, ...updates }
-                         }))
-                       }
-                     }}
+ onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (file) {
+                          const isPng = file.type === 'image/png'
+                          const isImageType = type === 'image'
+                          const fileName = file.name.replace(/\.[^/.]+$/, "")
+                          setItems(prev => prev.map(i => {
+                            if (i.uid !== item.uid) return i
+                            const updates: Partial<ZipItem> = { 
+                              fileBlob: file, 
+                              file_path: file.name,
+                              file_name: i.file_name || fileName,
+                            }
+                            if (isImageType && isPng) {
+                              updates.thumbnailBlob = file
+                              updates.thumbnailPreview = URL.createObjectURL(file)
+                              updates.thumbnail_path = file.name
+                            }
+                            return { ...i, ...updates }
+                          }))
+                          if (isImageType && isPng) {
+                            getImageDimensions(file)
+                              .then(({ width, height }) => {
+                                setItems(prev => prev.map(i => i.uid === item.uid ? { ...i, width, height } : i))
+                              })
+                              .catch((e) => { console.warn('读取文件宽高失败:', file.name, e) })
+                          }
+                        }
+                      }}
                     disabled={uploading}
                   />
                 </div>

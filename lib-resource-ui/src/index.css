@@ -1,4 +1,4 @@
-* { box-sizing: border-box; overflow: hidden;}
+* { box-sizing: border-box;}
 
 body {
   margin: 0;
@@ -6,6 +6,11 @@ body {
     'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   -webkit-font-smoothing: antialiased;
   background: #f8fafc;
+  overflow: hidden;
+}
+
+html {
+   overflow: hidden;
 }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }

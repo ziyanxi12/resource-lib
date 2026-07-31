@@ -77,7 +77,7 @@ USE_MOCK=false
 | 资源类型 | 用哪张图 |
 |---|---|
 | 图片（resource_type=5） | 优先原图 `file_path`，无则用 `thumbnail_path` |
-| 组件集 / 模版 / SVG / 插画 | 预览图 `thumbnail_path` |
+| 组件集 / SVG / 插画 | 预览图 `thumbnail_path` |
 
 相对路径统一按 `FILE_ROOT_DIR + 相对路径` 解析为绝对路径后传给模块。
 
@@ -129,7 +129,7 @@ curl -X POST http://localhost:8009/api/resources/999999/understand   # 404 资�
 1. `USE_MOCK=true` 时上述 curl 返回 Mock 描述（说明链路通）
 2. `USE_MOCK=false` 时返回真实描述，且耗时在预期内
 3. 故意传一张损坏/超大的图片，确认返回 502 且 `detail` 可读
-4. 前端五个管理页（组件/模版/SVG/插画/图片）各点一次按钮走通
+4. 前端五个管理页（组件/SVG/插画/图片/文件）各点一次按钮走通
 
 ---
 

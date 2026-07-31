@@ -21,6 +21,7 @@ from app.enums import ResourceType
 from app.models.resource import Resource
 from app.services import resource_service, upload_service
 from app.services import vector_sync_service
+from app.services import image_meta_service
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +67,7 @@ def get_tags(
 
 @router.post("/sync-vectors")
 def sync_vectors(
-    type: str = Query(..., description="资源类型名，如 component、icon、illus、template、image、file"),
+    type: str = Query(..., description="资源类型名，如 component、icon、illus、image、file"),
     source_id: Optional[int] = Query(None, description="来源ID筛选"),
     db: Session = Depends(get_db),
 ):
@@ -125,7 +126,27 @@ def get_resource(resource_id: int, db: Session = Depends(get_db)):
     resource = resource_service.get_resource_by_id(db, resource_id)
     if not resource:
         raise HTTPException(status_code=404, detail="资源不存在")
+    _ensure_dimensions(db, resource)
     return _fmt(resource)
+
+
+def _ensure_dimensions(db: Session, resource: Resource) -> None:
+    """若 width/height 缺失，从缩略图读取并回写数据库（读一次即持久化）。"""
+    if resource.width is not None and resource.height is not None:
+        return
+    if not resource.thumbnail_path:
+        return
+    dims = image_meta_service.read_thumbnail_dimensions(resource.thumbnail_path)
+    if dims is None:
+        return
+    resource.width, resource.height = dims
+    try:
+        db.commit()
+        db.refresh(resource)
+        logger.info("回填宽高: resource_id=%s, width=%s, height=%s", resource.id, resource.width, resource.height)
+    except Exception as e:
+        db.rollback()
+        logger.error("回填宽高失败: resource_id=%s, error=%s", resource.id, e)
 
 
 @router.put("/batch-move")
@@ -144,7 +165,6 @@ def batch_move_to_group(
     if settings.VECTOR_SERVICE_ENABLED and moved_ids:
         vec_type_map = {
             ResourceType.component: "component",
-            ResourceType.template: "template",
             ResourceType.icon: "icon",
             ResourceType.illus: "illustration",
             ResourceType.image: "image",
@@ -236,8 +256,7 @@ async def update_resource(
                 ResourceType.component: "component",
                 ResourceType.icon: "icon",
                 ResourceType.illus: "illus",
-                ResourceType.template: "template",
-                ResourceType.file: "file",
+                    ResourceType.file: "file",
             }
             type_dir = type_dir_map.get(resource_type, "file")
             thumb_dir = os.path.join(settings.FILE_ROOT_DIR, type_dir, "image")
@@ -263,7 +282,6 @@ async def update_resource(
             ResourceType.component: "component",
             ResourceType.icon: "icon",
             ResourceType.illus: "illus",
-            ResourceType.template: "template",
             ResourceType.image: "image",
             ResourceType.file: "file",
         }
@@ -312,7 +330,6 @@ async def update_resource(
     if group_id_changed and not text_changed and settings.VECTOR_SERVICE_ENABLED:
         vec_type_map = {
             ResourceType.component: "component",
-            ResourceType.template: "template",
             ResourceType.icon: "icon",
             ResourceType.illus: "illustration",
             ResourceType.image: "image",
@@ -380,7 +397,6 @@ def batch_delete_resources(
     if settings.VECTOR_SERVICE_ENABLED and deleted_ids:
         vec_type_map = {
             ResourceType.component: "component",
-            ResourceType.template: "template",
             ResourceType.icon: "icon",
             ResourceType.illus: "illustration",
             ResourceType.image: "image",
@@ -413,7 +429,6 @@ def batch_delete_by_ids(
     if settings.VECTOR_SERVICE_ENABLED and deleted_ids:
         vec_type_map = {
             ResourceType.component: "component",
-            ResourceType.template: "template",
             ResourceType.icon: "icon",
             ResourceType.illus: "illustration",
             ResourceType.image: "image",
@@ -448,7 +463,6 @@ def delete_resource(resource_id: int, db: Session = Depends(get_db)):
         from app.enums import ResourceType as RT
         vec_type_map = {
             RT.component: "component",
-            RT.template: "template",
             RT.icon: "icon",
             RT.illus: "illustration",
             RT.image: "image",

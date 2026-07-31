@@ -20,7 +20,7 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `type` | string | 是 | 资源类型名：`component`/`icon`/`illus`/`template`/`image` |
+| `type` | string | 是 | 资源类型名：`component`/`icon`/`illus`/`image` |
 | `queries` | array | 是 | 搜索关键词列表（支持批量搜索） |
 | `top_k` | int | 否 | 每条 query 返回结果数，默认 10 |
 | `mode` | string | 否 | 搜索模式：`semantic`/`hybrid`/`keyword`，默认 `hybrid` |
@@ -109,7 +109,7 @@ curl -X POST http://localhost:8009/api/vector/search/llm \
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `type` | string | 是 | 资源类型：`component`/`icon`/`illus`/`template`/`image` |
+| `type` | string | 是 | 资源类型：`component`/`icon`/`illus`/`image` |
 | `data_id` | string | 是 | 从 `/search/llm` 返回的 `data_id` |
 
 ### 返回格式
@@ -261,7 +261,6 @@ LLM 告知用户：
 | 组件集 | `component` | `ComponentVariant.variant_key` | `abc123def456...`（长hash） |
 | SVG图标 | `icon` | `ResourceIcon.icon_id` | `100`（数字） |
 | 插画 | `illus` | `ResourceIllus.illus_id` | `EMPLY_ILL`（字符串） |
-| 模版 | `template` | `Resource.id` | `123`（数字） |
 | 图片 | `image` | `Resource.id` | `456`（数字） |
 
 **注意**：
@@ -279,14 +278,13 @@ LLM 告知用户：
 | 组件 | `组件名 类别 属性值 中文翻译` | `"按钮 基础类 normal 可用 正常 启用"` |
 | 图标 | `分类 中文名 英文全称 英文短名 描述` | `"navigation 首页 it home 房子图标"` |
 | 插画 | `插画ID 别名 描述 分类 标签 版本` | `"EMPLY_ILL 空状态 描述 领域A 标签 2.0"` |
-| 模版 | `名称 描述` | `"登录页面模版 适用于移动端"` |
 | 图片 | `名称 描述` | `"产品截图.jpg 首页展示图"` |
 
 **解析建议**：
 - 组件：提取"组件名"和"属性值"
 - 图标：提取"分类"和"中文名/英文名"
 - 插画：提取"别名"和"分类"
-- 模版/图片：提取"名称"
+- 图片：提取"名称"
 
 ---
 
@@ -305,7 +303,7 @@ LLM 告知用户：
 
 | 错误信息 | 原因 | 解决方案 |
 |---------|------|---------|
-| `"不支持的 type：xxx"` | type 参数错误 | 使用正确的类型名：component/icon/illus/template/image |
+| `"不支持的 type：xxx"` | type 参数错误 | 使用正确的类型名：component/icon/illus/image |
 | `"queries 不能为空"` | queries 参数缺失 | 添加搜索关键词数组 |
 | `"资源不存在或已删除"` | data_id 错误或资源已删除 | 检查 data_id 是否正确 |
 | `"向量服务调用失败"` | 向量服务未启动 | 等待服务启动或联系管理员 |

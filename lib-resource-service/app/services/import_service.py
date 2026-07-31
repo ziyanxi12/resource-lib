@@ -134,7 +134,7 @@ def _get_or_create_default_group(
     )
 
 
-def _resolve_ext(filename: str, default: str = "bin") -> str:
+def _resolve_ext(filename: str, default: str = "") -> str:
     return filename.rsplit(".", 1)[-1].lower() if "." in filename else default
 
 
@@ -175,13 +175,12 @@ def _precopy_files(
             if not os.path.exists(src):
                 errors.append({"group": group_label, "name": item_name, "reason": f"ZIP 内未找到文件: {file_path_in_zip}"})
                 continue
-            original_name = item.get("file_name") or os.path.basename(file_path_in_zip)
-            ext = _resolve_ext(original_name)
-            file_name = f"{file_uuid}.{ext}"
-            file_relative_path = f"{file_dir_name}/{file_name}"
-            file_abs_path = os.path.join(file_dir, file_name)
+            ext = _resolve_ext(os.path.basename(file_path_in_zip))
+            disk_name = f"{file_uuid}.{ext}" if ext else file_uuid
+            file_relative_path = f"{file_dir_name}/{disk_name}"
+            file_abs_path = os.path.join(file_dir, disk_name)
             shutil.copy2(src, file_abs_path)
-            saved["_file_name"] = file_name
+            saved["_file_name"] = item.get("file_name")
             saved["_file_relative_path"] = file_relative_path
             saved["_file_size"] = os.path.getsize(file_abs_path)
             saved["_file_type"] = ext

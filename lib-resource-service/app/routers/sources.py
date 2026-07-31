@@ -134,7 +134,7 @@ def restore_source(source_id: int, db: Session = Depends(get_db)):
 @router.post("/{source_id}/import")
 async def full_batch_import(
     source_id: int,
-    type: str = Query(..., description="资源类型名，如 icon、illus、template 等"),
+    type: str = Query(..., description="资源类型名，如 icon、illus 等"),
     request: Request = None,
     db: Session = Depends(get_db),
 ):

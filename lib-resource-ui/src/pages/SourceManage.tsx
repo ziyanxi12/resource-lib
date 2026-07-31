@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Button, Modal, Input, Select, message, List, Tabs, Tag } from 'antd'
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons'
-import { api, Source, GroupNode } from '../api'
+import { Button, Modal, Input, Select, message, List, Tabs, Tag, Table, Space, Tooltip } from 'antd'
+import type { ColumnsType } from 'antd/es/table'
+import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined } from '@ant-design/icons'
+import { api, Source, GroupNode, SearchApp } from '../api'
 
 const RESOURCE_TYPE_OPTIONS = [
   { value: 'component', label: '组件' },
-  { value: 'template', label: '模版' },
   { value: 'icon', label: '图标' },
   { value: 'illus', label: '插画' },
   { value: 'image', label: '图片' },
@@ -14,7 +14,6 @@ const RESOURCE_TYPE_OPTIONS = [
 
 const RESOURCE_TYPE_ID_TO_NAME: Record<number, string> = {
   1: 'component',
-  2: 'template',
   3: 'icon',
   4: 'illus',
   5: 'image',
@@ -27,6 +26,32 @@ const getTypeLabel = (resourceType: number) => {
 }
 
 export default function SourceManage() {
+  const [activeTab, setActiveTab] = useState('source')
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <Tabs
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+        items={[
+          {
+            key: 'source',
+            label: '来源与分组',
+            children: <SourcePanel />,
+          },
+          {
+            key: 'app',
+            label: '应用管理',
+            children: <SearchAppPanel />,
+          },
+        ]}
+      />
+    </div>
+  )
+}
+
+function SourcePanel() {
   const [sources, setSources] = useState<Source[]>([])
   const [selectedSource, setSelectedSource] = useState<Source | null>(null)
   const [groups, setGroups] = useState<GroupNode[]>([])
@@ -233,7 +258,7 @@ export default function SourceManage() {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <h2 style={{ margin: '0 0 16px 0', fontSize: 18, fontWeight: 600 }}>来源与分组管理</h2>
-      
+
       <div style={{ flex: 1, display: 'flex', gap: 16, minHeight: 0 }}>
         {/* 左侧：来源列表 */}
         <div style={{ 
@@ -472,6 +497,216 @@ export default function SourceManage() {
       >
         <p>确定删除来源「{deletingSource?.name}」吗？</p>
         <p style={{ color: '#94a3b8', fontSize: 12 }}>如果该来源下有资源，删除将失败。</p>
+      </Modal>
+    </div>
+  )
+}
+
+function SearchAppPanel() {
+  const [apps, setApps] = useState<SearchApp[]>([])
+  const [loading, setLoading] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newRemark, setNewRemark] = useState('')
+  const [editOpen, setEditOpen] = useState(false)
+  const [editingApp, setEditingApp] = useState<SearchApp | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editRemark, setEditRemark] = useState('')
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deletingApp, setDeletingApp] = useState<SearchApp | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+
+  const loadApps = async () => {
+    setLoading(true)
+    try {
+      const data = await api.getSearchApps()
+      setApps(data.items)
+    } catch {
+      message.error('加载应用失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadApps()
+  }, [])
+
+  const handleCreate = async () => {
+    if (!newName.trim()) {
+      message.error('请输入应用名称')
+      return
+    }
+    try {
+      await api.createSearchApp({ name: newName.trim(), remark: newRemark.trim() || undefined })
+      message.success('创建成功')
+      setCreateOpen(false)
+      setNewName('')
+      setNewRemark('')
+      loadApps()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '创建失败')
+    }
+  }
+
+  const handleEdit = async () => {
+    if (!editingApp || !editName.trim()) {
+      message.error('请输入应用名称')
+      return
+    }
+    try {
+      await api.updateSearchApp(editingApp.id, { name: editName.trim(), remark: editRemark.trim() || undefined })
+      message.success('修改成功')
+      setEditOpen(false)
+      setEditingApp(null)
+      loadApps()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '修改失败')
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deletingApp) return
+    setDeleteLoading(true)
+    try {
+      await api.deleteSearchApp(deletingApp.id)
+      message.success('删除成功')
+      setDeleteOpen(false)
+      setDeletingApp(null)
+      loadApps()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '删除失败')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  const copyAppId = (appId: string) => {
+    navigator.clipboard.writeText(appId).then(() => {
+      message.success('已复制 app_id')
+    }).catch(() => {
+      message.error('复制失败')
+    })
+  }
+
+  const columns: ColumnsType<SearchApp> = [
+    {
+      title: 'app_id',
+      dataIndex: 'app_id',
+      width: 320,
+      render: (v: string) => (
+        <Space>
+          <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</span>
+          <Tooltip title="复制">
+            <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copyAppId(v)} />
+          </Tooltip>
+        </Space>
+      ),
+    },
+    { title: '名称', dataIndex: 'name', width: 160 },
+    { title: '备注', dataIndex: 'remark', width: 200, render: (v: string | null) => v ?? '—' },
+    {
+      title: '状态', dataIndex: 'is_active', width: 80,
+      render: (v: number) => v === 1 ? <Tag color="green">启用</Tag> : <Tag color="default">禁用</Tag>,
+    },
+    { title: '创建时间', dataIndex: 'created_at', width: 180, render: (v: string) => v ?? '—' },
+    {
+      title: '操作', width: 120, fixed: 'right',
+      render: (_: unknown, record: SearchApp) => (
+        <Space>
+          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
+            setEditingApp(record)
+            setEditName(record.name)
+            setEditRemark(record.remark ?? '')
+            setEditOpen(true)
+          }} />
+          <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => {
+            setDeletingApp(record)
+            setDeleteOpen(true)
+          }} />
+        </Space>
+      ),
+    },
+  ]
+
+  return (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>应用管理</h2>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>新增应用</Button>
+      </div>
+
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <Table<SearchApp>
+          rowKey="id"
+          size="small"
+          loading={loading}
+          columns={columns}
+          dataSource={apps}
+          scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
+          pagination={false}
+        />
+      </div>
+
+      {/* 新增应用弹窗 */}
+      <Modal
+        title="新增应用"
+        open={createOpen}
+        onCancel={() => { setCreateOpen(false); setNewName(''); setNewRemark('') }}
+        onOk={handleCreate}
+        okText="确定"
+        cancelText="取消"
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>名称 <span style={{ color: '#ef4444' }}>*</span></div>
+          <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="请输入应用名称" />
+        </div>
+        <div>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>备注</div>
+          <Input.TextArea value={newRemark} onChange={e => setNewRemark(e.target.value)} placeholder="请输入备注（选填）" autoSize={{ minRows: 2 }} />
+        </div>
+        <div style={{ marginTop: 12, color: '#94a3b8', fontSize: 12 }}>
+          创建后系统自动生成 app_id（不可修改），可用于配置前端 VITE_FRONTEND_APP_ID。
+        </div>
+      </Modal>
+
+      {/* 编辑应用弹窗 */}
+      <Modal
+        title="编辑应用"
+        open={editOpen}
+        onCancel={() => { setEditOpen(false); setEditingApp(null) }}
+        onOk={handleEdit}
+        okText="确定"
+        cancelText="取消"
+      >
+        {editingApp && (
+          <div style={{ marginBottom: 16, padding: '8px 12px', background: '#f8fafc', borderRadius: 6 }}>
+            <span style={{ color: '#64748b', fontSize: 13 }}>app_id: </span>
+            <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{editingApp.app_id}</span>
+          </div>
+        )}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>名称 <span style={{ color: '#ef4444' }}>*</span></div>
+          <Input value={editName} onChange={e => setEditName(e.target.value)} placeholder="请输入应用名称" />
+        </div>
+        <div>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>备注</div>
+          <Input.TextArea value={editRemark} onChange={e => setEditRemark(e.target.value)} placeholder="请输入备注（选填）" autoSize={{ minRows: 2 }} />
+        </div>
+      </Modal>
+
+      {/* 删除应用弹窗 */}
+      <Modal
+        title="确认删除"
+        open={deleteOpen}
+        onCancel={() => { setDeleteOpen(false); setDeletingApp(null) }}
+        onOk={handleDelete}
+        okText="删除"
+        okButtonProps={{ danger: true, loading: deleteLoading }}
+        cancelText="取消"
+      >
+        <p>确定删除应用「{deletingApp?.name}」吗？</p>
+        <p style={{ color: '#94a3b8', fontSize: 12 }}>删除后该 app_id 的历史搜索日志保留，但无法再对应到应用名称。</p>
       </Modal>
     </div>
   )

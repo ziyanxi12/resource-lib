@@ -25,7 +25,6 @@ def get_file_dir(resource_type: ResourceType) -> str:
         ResourceType.component: "component",
         ResourceType.icon: "icon",
         ResourceType.illus: "illus",
-        ResourceType.template: "template",
         ResourceType.image: "image",
         ResourceType.file: "file",
     }[resource_type]

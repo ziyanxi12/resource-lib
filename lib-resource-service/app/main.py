@@ -21,12 +21,18 @@ from app.models.resource import ResourceSource
 
 # 导入所有 ORM 模型，确保 create_all 能扫描到表定义
 from app.models import resource  # noqa: F401
+from app.models import search_log  # noqa: F401
+from app.models import search_app  # noqa: F401
 
 from app.routers import resources, upload
 from app.routers import vector_router, group
 from app.routers import sources, init_router
 from app.routers import resource_types
 from app.routers import import_task
+from app.routers import search_log
+from app.routers import search_app
+
+from app.middleware.search_log_middleware import SearchLogMiddleware
 
 # ===== 移除上传限制 =====
 # 修改 Starlette 的内存阈值，避免大文件上传时的临时文件问题
@@ -49,13 +55,27 @@ async def lifespan(app: FastAPI):
     # 创建文件存储子目录
     for sub in ["component", "template", "icon", "illus", "image", "file"]:
         os.makedirs(os.path.join(settings.FILE_ROOT_DIR, sub), exist_ok=True)
+
+    # 启动时按需导入搜索应用（测试→生产迁移，SEARCH_APPS_AUTO_IMPORT=true 时生效）
+    if getattr(settings, "SEARCH_APPS_AUTO_IMPORT", False):
+        from app.database import SessionLocal
+        from app.services.search_app_service import import_apps_from_file
+        import_db = SessionLocal()
+        try:
+            result = import_apps_from_file(import_db)
+            logger.info("搜索应用导入完成: %s", result)
+        except Exception as e:
+            logger.warning("搜索应用导入失败: %s", e)
+        finally:
+            import_db.close()
+
     yield
     # 关闭时无需额外清理
 
 
 app = FastAPI(
     title="资源库管理服务",
-    description="统一管理六大类设计资源：组件集、模版、SVG、插画、图片、文件",
+    description="统一管理五类设计资源：组件集、SVG、插画、图片、文件",
     version=__version__,
     lifespan=lifespan,
     docs_url=None if settings.ROOT_PATH else "/docs",
@@ -71,6 +91,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(SearchLogMiddleware)
+
 # 注册各业务路由
 app.include_router(resources.router)
 app.include_router(upload.router)
@@ -80,6 +102,8 @@ app.include_router(sources.router)
 app.include_router(init_router.router)
 app.include_router(resource_types.router)
 app.include_router(import_task.router)
+app.include_router(search_log.router)
+app.include_router(search_app.router)
 
 # 静态文件服务：前端可通过 /static/{file_path} 直接访问上传文件
 if os.path.exists(settings.FILE_ROOT_DIR):

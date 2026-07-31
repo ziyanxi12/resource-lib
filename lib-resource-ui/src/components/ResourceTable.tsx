@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Table, Input, Button, Drawer, Tooltip, Image, message, Select, Modal, Upload, Tag } from 'antd'
-import { SearchOutlined } from '@ant-design/icons'
+import { SearchOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api } from '../api'
 import type { Resource } from '../types'
@@ -53,7 +53,7 @@ function SectionHeader({ title }: { title: string }) {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: React.ReactNode; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', padding: '5px 0', gap: 12, alignItems: 'flex-start' }}>
       <div style={{ width: 100, flexShrink: 0, fontSize: 12, color: '#94a3b8', paddingTop: 2, whiteSpace: 'nowrap' }}>{label}</div>
@@ -106,7 +106,7 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
     setNewFile(null)
     setRawDataString(item.raw_data ? JSON.stringify(item.raw_data, null, 2) : '')
     setRawDataError('')
-  }, [item])
+  }, [item?.id])
 
   const handleSave = async () => {
     if (!item) return
@@ -309,26 +309,34 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           <Field label="关键词">
             <Input.TextArea value={searchText} onChange={e => setSearchText(e.target.value)} autoSize={{ minRows: 1 }} size="small" />
           </Field>
-          <Field label="缩略图路径">
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-all' }}>{newThumbnail ? <span style={{ color: '#059669' }}>{newThumbnail.name}</span> : (item.thumbnail_path || emptyCell)}</span>
-              <Button 
-                size="small" 
-                disabled={!item.thumbnail_path || !!newThumbnail}
-                onClick={() => {
-                  const link = document.createElement('a')
-                  link.href = item.thumbnail_path!
-                  const thumbExt = getExtension(item.thumbnail_path!)
-                  const downloadName = fileName ? `${fileName}_thumb.${thumbExt}` : (item.thumbnail_path!.split('/').pop() || `thumbnail.${thumbExt}`)
-                  link.download = downloadName
-                  link.click()
+          <Field label="业务数据">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <Input.TextArea
+                value={rawDataString}
+                onChange={e => {
+                  const value = e.target.value
+                  setRawDataString(value)
+                  if (value.trim()) {
+                    try {
+                      const parsed = JSON.parse(value)
+                      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                        setRawDataError('JSON 必须是对象')
+                      } else {
+                        setRawDataError('')
+                      }
+                    } catch {
+                      setRawDataError('JSON 格式错误')
+                    }
+                  } else {
+                    setRawDataError('')
+                  }
                 }}
-              >
-                下载
-              </Button>
-              <Button size="small" onClick={() => thumbnailInputRef.current?.click()}>
-                更新
-              </Button>
+                autoSize={{ minRows: 3 }}
+                size="small"
+                style={{ fontFamily: 'ui-monospace, monospace' }}
+                status={rawDataError ? 'error' : undefined}
+              />
+              {rawDataError && <div style={{ color: '#ef4444', fontSize: 10 }}>{rawDataError}</div>}
             </div>
           </Field>
           <Field label="文件名">
@@ -365,34 +373,26 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
               }}
             />
           </Field>
-          <Field label="业务数据">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <Input.TextArea
-                value={rawDataString}
-                onChange={e => {
-                  const value = e.target.value
-                  setRawDataString(value)
-                  if (value.trim()) {
-                    try {
-                      const parsed = JSON.parse(value)
-                      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-                        setRawDataError('JSON 必须是对象')
-                      } else {
-                        setRawDataError('')
-                      }
-                    } catch {
-                      setRawDataError('JSON 格式错误')
-                    }
-                  } else {
-                    setRawDataError('')
-                  }
+          <Field label="缩略图路径">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ flex: 1, minWidth: 0, wordBreak: 'break-all' }}>{newThumbnail ? <span style={{ color: '#059669' }}>{newThumbnail.name}</span> : (item.thumbnail_path || emptyCell)}</span>
+              <Button 
+                size="small" 
+                disabled={!item.thumbnail_path || !!newThumbnail}
+                onClick={() => {
+                  const link = document.createElement('a')
+                  link.href = item.thumbnail_path!
+                  const thumbExt = getExtension(item.thumbnail_path!)
+                  const downloadName = fileName ? `${fileName}_thumb.${thumbExt}` : (item.thumbnail_path!.split('/').pop() || `thumbnail.${thumbExt}`)
+                  link.download = downloadName
+                  link.click()
                 }}
-                autoSize={{ minRows: 3 }}
-                size="small"
-                style={{ fontFamily: 'ui-monospace, monospace' }}
-                status={rawDataError ? 'error' : undefined}
-              />
-              {rawDataError && <div style={{ color: '#ef4444', fontSize: 10 }}>{rawDataError}</div>}
+              >
+                下载
+              </Button>
+              <Button size="small" onClick={() => thumbnailInputRef.current?.click()}>
+                更新
+              </Button>
             </div>
           </Field>
 
@@ -400,7 +400,15 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           <Field label="ID">{item.id}</Field>
           <Field label="资源宽度">{item.width ?? emptyCell}</Field>
           <Field label="资源高度">{item.height ?? emptyCell}</Field>
-          <Field label="向量文本"><div style={{ wordBreak: 'break-all' }}>{item.vector_text || emptyCell}</div></Field>
+          <Field label={
+              <span>向量文本
+                <Tooltip title="由名称、描述、标签、关键词拼接生成，用于向量检索">
+                  <InfoCircleOutlined style={{ marginLeft: 4, color: '#94a3b8' }} />
+                </Tooltip>
+              </span>
+            }>
+              <div style={{ wordBreak: 'break-all' }}>{item.vector_text || emptyCell}</div>
+            </Field>
           <Field label="文件类型">{item.file_type || emptyCell}</Field>
           <Field label="文件大小">{item.file_size ? formatSize(item.file_size) : emptyCell}</Field>
           <Field label="创建时间">{formatDateTime(item.created_at)}</Field>
@@ -694,12 +702,21 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
             columnWidth: 48,
           } : undefined}
           onRow={record => ({
-            onClick: () => { if (!isPreviewing) { setDetailItem(record); setDetailOpen(true) } },
+            onClick: () => {
+              if (isPreviewing) return
+              setDetailItem(record)
+              setDetailOpen(true)
+              const id = record.id
+              api.getResource(id)
+                .then(fresh => setDetailItem(prev => (prev && prev.id === id ? fresh : prev)))
+                .catch(() => { })
+            },
             style: { cursor: 'pointer' },
           })}
           pagination={searchMode ? false : {
             current: page, pageSize, total, onChange: setPage,
-            showSizeChanger: true, pageSizeOptions: ['10', '20', '50', '100'],
+            showSizeChanger: { getPopupContainer: () => document.body }, 
+            pageSizeOptions: ['10', '20', '50', '100'],
             onShowSizeChange: (_, size) => { setPage(1); setPageSize(size) },
             showQuickJumper: true, showTotal: t => `共 ${t} 条`,
             style: { padding: '12px 20px' },

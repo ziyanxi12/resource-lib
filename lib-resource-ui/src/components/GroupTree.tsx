@@ -13,7 +13,6 @@ interface GroupTreeProps {
 
 const RESOURCE_TYPE_MAP: Record<string, number> = {
   component: 1,
-  template: 2,
   icon: 3,
   illus: 4,
   image: 5,
@@ -400,8 +399,12 @@ const GroupTree = forwardRef<GroupTreeHandle, GroupTreeProps>(function GroupTree
       <style>{`
         .group-tree .ant-tree-treenode {
           padding: 1px 0 !important;
-          margin: 0 !important;
+          margin: 2px 0 0 0 !important;
           width: 100% !important;
+        }
+
+        .group-tree .ant-tree-node:first-child{
+          margin: 0;
         }
         .group-tree .ant-tree-node-content-wrapper {
           height: 28px !important;
@@ -410,7 +413,6 @@ const GroupTree = forwardRef<GroupTreeHandle, GroupTreeProps>(function GroupTree
           border-radius: 4px;
           transition: background 0.15s;
           max-width: calc(100% - 40px) !important;
-          overflow: hidden !important;
           text-overflow: ellipsis !important;
           white-space: nowrap !important;
         }

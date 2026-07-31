@@ -4,7 +4,6 @@ import zhCN from 'antd/locale/zh_CN'
 import {
   AppstoreOutlined,
   BlockOutlined,
-  FileTextOutlined,
   PictureOutlined,
   StarOutlined,
   FunctionOutlined,
@@ -15,12 +14,11 @@ import ResourceManage from './pages/ResourceManage'
 import ResourceUpload from './pages/ResourceUpload'
 import SourceManage from './pages/SourceManage'
 
-type PageKey = 'overview' | 'component' | 'template' | 'icon' | 'illus' | 'image' | 'file'
+type PageKey = 'overview' | 'component' | 'icon' | 'illus' | 'image' | 'file'
 
 const NAV: { key: PageKey; path: string; icon: React.ReactNode; label: string }[] = [
   { key: 'overview'  , path: '/'          , icon: <AppstoreOutlined />,  label: '数据总览' },
   { key: 'component' , path: '/component' , icon: <BlockOutlined />,     label: '组件' },
-  { key: 'template'  , path: '/template'  , icon: <FileTextOutlined />,  label: '模版' },
   { key: 'icon'      , path: '/icon'      , icon: <FunctionOutlined />, label: '图标' },
   { key: 'illus'     , path: '/illus'     , icon: <StarOutlined />,     label: '插画' },
   { key: 'image'     , path: '/image'     , icon: <PictureOutlined />,  label: '图片' },

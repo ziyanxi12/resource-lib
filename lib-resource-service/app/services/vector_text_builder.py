@@ -33,7 +33,6 @@ def ingest_vectors(
     
     vec_type_map = {
         ResourceType.component: "component",
-        ResourceType.template: "template",
         ResourceType.icon: "icon",
         ResourceType.illus: "illustration",
         ResourceType.image: "image",

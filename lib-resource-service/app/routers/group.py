@@ -25,7 +25,7 @@ router = APIRouter(prefix="/api/groups", tags=["分组管理"])
 
 @router.get("")
 def get_groups(
-    type: str = Query(..., description="资源类型名，如 component、template、icon、illus、image、file"),
+    type: str = Query(..., description="资源类型名，如 component、icon、illus、image、file"),
     source_id: Optional[int] = Query(None, description="来源ID筛选"),
     exclude_default: bool = Query(True, description="是否排除默认分组"),
     db: Session = Depends(get_db),

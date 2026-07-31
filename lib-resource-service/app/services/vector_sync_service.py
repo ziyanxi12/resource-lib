@@ -44,7 +44,6 @@ def detect_missing_resources(
     from app.enums import ResourceType as RT
     vec_type_map = {
         RT.component: "component",
-        RT.template: "template",
         RT.icon: "icon",
         RT.illus: "illustration",
         RT.image: "image",
@@ -178,7 +177,6 @@ def sync_vectors_by_type(db: Session, resource_type: ResourceType, source_id: in
 
 _VEC_TYPE_MAP = {
     ResourceType.component: "component",
-    ResourceType.template: "template",
     ResourceType.icon: "icon",
     ResourceType.illus: "illustration",
     ResourceType.image: "image",

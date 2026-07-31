@@ -1,6 +1,6 @@
 """
 统一批量上传路由
-POST /api/upload?type=component|icon|illus|template|image|file
+POST /api/upload?type=component|icon|illus|image|file
 """
 
 import json
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/upload", tags=["批量上传"])
 @router.post("", response_model=BatchUploadResponse)
 async def batch_upload(
     request: Request,
-    type: str = Query(..., description="资源类型：icon/illus/template/image/file"),
+    type: str = Query(..., description="资源类型：icon/illus/image/file"),
     db: Session = Depends(get_db),
 ):
     """

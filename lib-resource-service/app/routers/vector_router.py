@@ -19,6 +19,7 @@ from app.clients import vector_client
 from app.config import settings
 from app.database import get_db
 from app.enums import ResourceType
+from app.middleware.search_log_middleware import set_search_log_ctx
 from app.models.resource import Resource, ResourceGroup
 from app.routers.resources import _fmt
 from app.services.vector_sync_service import detect_missing_resources, sync_vectors_by_type, rebuild_all_vectors_by_type
@@ -72,7 +73,6 @@ def _resolve_vec_type(req_type: str) -> Optional[str]:
     from app.enums import ResourceType as RT
     vec_type_map = {
         RT.component: "component",
-        RT.template: "template",
         RT.icon: "icon",
         RT.illus: "illustration",
         RT.image: "image",
@@ -153,7 +153,7 @@ def _build_complete_response(resource: Resource, raw_result: dict) -> dict:
     return item
 
 
-@router.post("/search/llm")
+# @router.post("/search/llm")  # 已隐藏，不对外开发（保留代码，取消注释可恢复）
 async def vector_search_llm(req: SearchRequest, db: Session = Depends(get_db)):
     """向量搜索 - LLM 精简版（仅返回 data_id + vector_text + score）"""
     vec_type = _resolve_vec_type(req.type)
@@ -182,7 +182,7 @@ async def vector_search_llm(req: SearchRequest, db: Session = Depends(get_db)):
 
 @router.get("/detail")
 def get_resource_by_data_id(
-    type: str = Query(..., description="资源类型：component/icon/illus/template/image"),
+    type: str = Query(..., description="资源类型：component/icon/illus/image"),
     data_id: str = Query(..., description="向量库唯一标识"),
     db: Session = Depends(get_db),
 ):
@@ -206,7 +206,7 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
     向量搜索接口（支持批量、三种响应模式）
     
     参数说明：
-    - type: 资源类型名（component/template/icon/illus/image/file）
+    - type: 资源类型名（component/icon/illus/image/file）
     - queries: 批量搜索文本数组
     - mode: 搜索模式（hybrid/sparse/dense）
     - top_k: 每个 query 返回的数量
@@ -230,6 +230,17 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"无效的 response_mode: {req.response_mode}，可选值: basic/normal/complete")
 
     filters = _resolve_filters(db, req.filters)
+
+    set_search_log_ctx(
+        resource_type=req.type,
+        search_mode=req.mode,
+        response_mode=req.response_mode,
+        top_k=req.top_k,
+        hybrid_weight=req.hybrid_weight,
+        query_count=len(req.queries),
+        queries=req.queries,
+        filters=req.filters,
+    )
 
     try:
         batch_raw = await vector_client.batch_search_async(
@@ -266,6 +277,15 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
                 group_results.append(response_builder(res_row, r))
         
         results.append(group_results)
+
+    all_ids = [item["id"] for group in results for item in group if "id" in item]
+    all_scores = [item["score"] for group in results for item in group if "score" in item and item["score"] is not None]
+    set_search_log_ctx(
+        result_count=len(all_ids),
+        result_ids=list(dict.fromkeys(all_ids)),
+        top_score=max(all_scores) if all_scores else None,
+        results=results,
+    )
 
     return {"results": results}
 
@@ -304,9 +324,11 @@ def get_missing(
 
 @router.post("/rebuild")
 def rebuild_vectors(
-    resource_type: int = Query(..., description="资源类型 ID：1=component 2=template 3=icon 4=illus 5=image"),
+        resource_type: int = Query(..., description="资源类型 ID：1=component 3=icon 4=illus 5=image"),
     db: Session = Depends(get_db),
 ):
+
+
     """
     全量重建向量库：触发时间戳同步
 
@@ -336,7 +358,7 @@ def rebuild_vectors(
 
 @router.post("/full-rebuild")
 def full_rebuild_vectors(
-    resource_type: int = Query(..., description="资源类型 ID：1=component 2=template 3=icon 4=illus 5=image 6=file"),
+    resource_type: int = Query(..., description="资源类型 ID：1=component 3=icon 4=illus 5=image 6=file"),
     source_id: Optional[int] = Query(None, description="来源ID筛选"),
     db: Session = Depends(get_db),
 ):

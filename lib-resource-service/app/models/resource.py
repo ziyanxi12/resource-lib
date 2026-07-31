@@ -8,7 +8,7 @@ class Resource(Base):
     __tablename__ = "resources"
 
     id              = Column(Integer, primary_key=True, autoincrement=True)
-    resource_type   = Column(SmallInteger, nullable=False, comment="1=component 2=template 3=icon 4=illus 5=image 6=file")
+    resource_type   = Column(SmallInteger, nullable=False, comment="1=component 3=icon 4=illus 5=image 6=file")
     source_id       = Column(Integer, ForeignKey("resource_sources.id", ondelete="RESTRICT"), nullable=False, comment="来源ID")
     name            = Column(String(255), nullable=False)
     description     = Column(Text, nullable=True)

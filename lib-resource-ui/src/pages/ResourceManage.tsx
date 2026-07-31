@@ -8,7 +8,6 @@ import { api, Source, GroupNode } from '../api'
 
 const RESOURCE_TYPE_MAP: Record<string, number> = {
   component: 1,
-  template: 2,
   icon: 3,
   illus: 4,
   image: 5,
