@@ -333,7 +333,7 @@ def import_logs_to_db(db: Session, logs_dir: str = None) -> dict:
         from app.config import settings
         logs_dir = settings.LOG_DIR
 
-    log_files = sorted(glob.glob(os.path.join(logs_dir, "app-*.txt")))
+    log_files = sorted(glob.glob(os.path.join(logs_dir, "app*.txt")))
 
     all_records = []
     file_stats = []
