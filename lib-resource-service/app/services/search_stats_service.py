@@ -8,6 +8,7 @@ import os
 import re
 import uuid
 from datetime import date, datetime
+from typing import Optional
 
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
@@ -104,6 +105,16 @@ def refresh_all_stats(db: Session) -> dict:
         total_rows += result["rows"]
 
     return {"dates": len(dates), "rows": total_rows}
+
+
+def _get_last_updated(db: Session) -> Optional[int]:
+    """返回全表最后一次聚合更新时间（epoch 秒），不受日期范围过滤。"""
+    last_updated = db.query(func.max(SearchDailyStats.updated_at)).scalar()
+    if last_updated is None:
+        return None
+    if isinstance(last_updated, datetime):
+        return int(last_updated.timestamp())
+    return int(last_updated)
 
 
 def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "month") -> dict:
@@ -233,6 +244,7 @@ def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "mo
         "pie": pie,
         "bar": bar,
         "apps": apps,
+        "last_updated": _get_last_updated(db),
     }
 
 

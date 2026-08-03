@@ -165,6 +165,7 @@ function SearchStatsSection() {
   const [granularity, setGranularity] = useState<Granularity>('month')
   const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState({ api_call_count: 0, resource_return_count: 0 })
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null)
   const [pieData, setPieData] = useState<Array<{ type: string; value: number }>>([])
   const [barData, setBarData] = useState<Array<{ resource_type: string; period: string; value: number }>>([])
   const [apps, setApps] = useState<AppRow[]>([])
@@ -180,6 +181,7 @@ function SearchStatsSection() {
       granularity: granularityKey,
     }).then(data => {
       setSummary(data.summary)
+      setLastUpdated(typeof data.last_updated === 'number' ? data.last_updated : null)
       setPieData(
         data.pie.map(d => ({
           type: RESOURCE_TYPE_LABELS[d.resource_type] ?? d.resource_type,
@@ -215,21 +217,21 @@ function SearchStatsSection() {
 
   const appColumns: ColumnsType<AppRow> = [
     {
-      title: 'AppID', dataIndex: 'app_id', width: 200,
+      title: 'AppID', dataIndex: 'app_id',
       render: (v: string | null) => v ?? <span style={{ color: '#94a3b8' }}>—</span>,
     },
-    { title: '应用名称', dataIndex: 'app_name', width: 140 },
+    { title: '应用名称', dataIndex: 'app_name' },
     {
-      title: '调用类型', dataIndex: 'resource_type', width: 100,
+      title: '调用类型', dataIndex: 'resource_type',
       render: (v: string) => RESOURCE_TYPE_LABELS[v] ?? v,
     },
     {
-      title: '接口调用次数', dataIndex: 'api_call_count', width: 120,
+      title: '接口调用次数', dataIndex: 'api_call_count',
       sorter: (a, b) => a.api_call_count - b.api_call_count,
       render: (v: number) => v.toLocaleString(),
     },
     {
-      title: '资源返回数', dataIndex: 'resource_return_count', width: 120,
+      title: '资源返回数', dataIndex: 'resource_return_count',
       sorter: (a, b) => a.resource_return_count - b.resource_return_count,
       render: (v: number) => v.toLocaleString(),
     },
@@ -296,7 +298,12 @@ function SearchStatsSection() {
   return (
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>调用统计</h2>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>调用统计</h2>
+          <span style={{ fontSize: 13, color: '#94a3b8' }}>
+            上次更新时间：{lastUpdated ? dayjs(lastUpdated * 1000).format('YYYY-MM-DD HH:mm:ss') : '—'}
+          </span>
+        </div>
         <Space wrap>
           <DatePicker.RangePicker
             value={dateRange}
@@ -389,7 +396,7 @@ function SearchStatsSection() {
             columns={appColumns}
             dataSource={apps}
             pagination={false}
-            scroll={{ x: 'max-content' }}
+            tableLayout="fixed"
           />
         </div>
       </Spin>

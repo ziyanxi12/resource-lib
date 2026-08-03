@@ -377,6 +377,7 @@ export const api = {
     pie: Array<{ resource_type: string; api_call_count: number; resource_return_count: number }>
     bar: Array<{ resource_type: string; period: string; api_call_count: number; resource_return_count: number }>
     apps: Array<{ app_id: string | null; app_name: string; resource_type: string; api_call_count: number; resource_return_count: number }>
+    last_updated: number | null
   }> =>
     request(`/api/search-stats?start_date=${params.start_date}&end_date=${params.end_date}&granularity=${params.granularity ?? 'month'}`),
 
