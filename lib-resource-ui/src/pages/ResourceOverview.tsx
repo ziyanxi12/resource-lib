@@ -9,11 +9,11 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { api } from '../api'
 
 const STATS = [
-  { key: 'component', label: '组件',  icon: <BlockOutlined />,    color: '#6366f1', bg: '#eef2ff' },
-  { key: 'icon',      label: '图标',  icon: <FunctionOutlined />, color: '#0891b2', bg: '#ecfeff' },
-  { key: 'illus',     label: '插画',  icon: <StarOutlined />,     color: '#d97706', bg: '#fffbeb' },
-  { key: 'image',     label: '图片',  icon: <PictureOutlined />,  color: '#059669', bg: '#ecfdf5' },
-  { key: 'file',      label: '文件',  icon: <FileOutlined />,     color: '#f59e0b', bg: '#fffbeb' },
+  { key: 'component', label: '组件',  icon: <BlockOutlined />,    bg: '#faf5ff', color: '#9333ea' },
+  { key: 'icon',      label: '图标',  icon: <FunctionOutlined />, bg: '#eff6ff', color: '#2563eb' },
+  { key: 'illus',     label: '插画',  icon: <StarOutlined />,     bg: '#fffbeb', color: '#d97706' },
+  { key: 'image',     label: '图片',  icon: <PictureOutlined />,  bg: '#ecfdf5', color: '#059669' },
+  { key: 'file',      label: '文件',  icon: <FileOutlined />,     bg: '#fff1f2', color: '#e11d48' },
 ]
 
 const RESOURCE_TYPE_LABELS: Record<string, string> = {
@@ -25,29 +25,42 @@ const RESOURCE_TYPE_LABELS: Record<string, string> = {
   unknown: '未知',
 }
 
+const EXTRA_COLOR_PALETTE = ['#94a3b8', '#a78bfa', '#22d3ee', '#fb923c', '#a3e635', '#f472b6', '#64748b', '#f43f5e']
+
+function buildColorScale(types: string[]): { domain: string[]; range: string[] } {
+  const unique = [...new Set(types)]
+  const colorMap: Record<string, string> = {}
+  STATS.forEach(s => { colorMap[RESOURCE_TYPE_LABELS[s.key]] = s.color })
+  let paletteIdx = 0
+  const domain: string[] = []
+  const range: string[] = []
+  for (const t of unique) {
+    if (colorMap[t] === undefined) {
+      colorMap[t] = EXTRA_COLOR_PALETTE[paletteIdx++ % EXTRA_COLOR_PALETTE.length]
+    }
+    domain.push(t)
+    range.push(colorMap[t])
+  }
+  return { domain, range }
+}
+
 function StatCard({
   label, icon, color, bg, count,
 }: {
   label: string; icon: React.ReactNode; color: string; bg: string; count: number | null
 }) {
-  const [hov, setHov] = useState(false)
   return (
     <div
-      onMouseEnter={() => setHov(true)}
-      onMouseLeave={() => setHov(false)}
       style={{
-        background: hov ? bg : '#fff',
+        background: '#fff',
         borderRadius: 14,
-        border: `1.5px solid ${hov ? color : '#e2e8f0'}`,
+        border: '1.5px solid #e2e8f0',
         padding: '24px 28px',
         display: 'flex',
         alignItems: 'center',
         gap: 18,
         flex: 1,
-        cursor: 'default',
-        transition: 'all 0.18s ease',
-        boxShadow: hov ? `0 4px 20px ${color}22` : '0 1px 3px rgba(0,0,0,0.04)',
-        transform: hov ? 'translateY(-2px)' : 'none',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
       }}
     >
       <div
@@ -55,23 +68,22 @@ function StatCard({
           width: 52,
           height: 52,
           borderRadius: 13,
-          background: hov ? color : bg,
-          color: hov ? '#fff' : color,
+          background: bg,
+          color: color,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           fontSize: 22,
           flexShrink: 0,
-          transition: 'all 0.18s',
         }}
       >
         {icon}
       </div>
       <div>
-        <div style={{ fontSize: 28, fontWeight: 800, color: hov ? color : '#0f172a', lineHeight: 1.1, transition: 'color 0.18s' }}>
+        <div style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
           {count ?? '—'}
         </div>
-        <div style={{ fontSize: 14, color: hov ? color : '#64748b', marginTop: 4, fontWeight: hov ? 600 : 400, whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 14, color: '#64748b', marginTop: 4, whiteSpace: 'nowrap' }}>
           {label}
         </div>
       </div>
@@ -128,6 +140,14 @@ const METRIC_LABELS: Record<MetricType, string> = {
   resource_return_count: '资源返回数',
 }
 
+type Granularity = 'day' | 'week' | 'month'
+
+const GRANULARITY_LABELS: Record<Granularity, string> = {
+  day: '天',
+  week: '周',
+  month: '月',
+}
+
 interface AppRow {
   app_id: string | null
   app_name: string
@@ -142,38 +162,42 @@ function SearchStatsSection() {
     dayjs(),
   ])
   const [metric, setMetric] = useState<MetricType>('api_call_count')
+  const [granularity, setGranularity] = useState<Granularity>('month')
   const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState({ api_call_count: 0, resource_return_count: 0 })
   const [pieData, setPieData] = useState<Array<{ type: string; value: number }>>([])
-  const [barData, setBarData] = useState<Array<{ resource_type: string; month: string; value: number }>>([])
+  const [barData, setBarData] = useState<Array<{ resource_type: string; period: string; value: number }>>([])
   const [apps, setApps] = useState<AppRow[]>([])
 
-  const fetchData = useCallback((range?: [Dayjs, Dayjs]) => {
+  const fetchData = useCallback((range?: [Dayjs, Dayjs], m?: MetricType, g?: Granularity) => {
     const [start, end] = range ?? dateRange
+    const metricKey = m ?? metric
+    const granularityKey = g ?? granularity
     setLoading(true)
     api.getSearchStats({
       start_date: start.format('YYYY-MM-DD'),
       end_date: end.format('YYYY-MM-DD'),
+      granularity: granularityKey,
     }).then(data => {
       setSummary(data.summary)
       setPieData(
         data.pie.map(d => ({
           type: RESOURCE_TYPE_LABELS[d.resource_type] ?? d.resource_type,
-          value: d[metric],
+          value: d[metricKey],
         }))
       )
       setBarData(
         data.bar.map(d => ({
           resource_type: RESOURCE_TYPE_LABELS[d.resource_type] ?? d.resource_type,
-          month: d.month,
-          value: d[metric],
+          period: d.period,
+          value: d[metricKey],
         }))
       )
       setApps(data.apps)
     }).catch(err => {
       message.error(err.message || '加载统计数据失败')
     }).finally(() => setLoading(false))
-  }, [dateRange, metric])
+  }, [dateRange, metric, granularity])
 
   useEffect(() => {
     fetchData()
@@ -181,28 +205,12 @@ function SearchStatsSection() {
 
   const handleMetricChange = (m: MetricType) => {
     setMetric(m)
-    const [start, end] = dateRange
-    setLoading(true)
-    api.getSearchStats({
-      start_date: start.format('YYYY-MM-DD'),
-      end_date: end.format('YYYY-MM-DD'),
-    }).then(data => {
-      setPieData(
-        data.pie.map(d => ({
-          type: RESOURCE_TYPE_LABELS[d.resource_type] ?? d.resource_type,
-          value: d[m],
-        }))
-      )
-      setBarData(
-        data.bar.map(d => ({
-          resource_type: RESOURCE_TYPE_LABELS[d.resource_type] ?? d.resource_type,
-          month: d.month,
-          value: d[m],
-        }))
-      )
-    }).catch(err => {
-      message.error(err.message || '加载统计数据失败')
-    }).finally(() => setLoading(false))
+    fetchData(undefined, m)
+  }
+
+  const handleGranularityChange = (g: Granularity) => {
+    setGranularity(g)
+    fetchData(undefined, undefined, g)
   }
 
   const appColumns: ColumnsType<AppRow> = [
@@ -227,45 +235,56 @@ function SearchStatsSection() {
     },
   ]
 
+  const pieColorScale = buildColorScale(pieData.map(d => d.type))
+
   const pieConfig = {
     data: pieData,
     angleField: 'value',
     colorField: 'type',
-    radius: 0.9,
     label: {
-      text: 'type',
-      position: 'outside' as const,
-      connector: true,
+      text: 'value',
+      position: 'outside',
     },
     legend: {
       color: {
-        position: 'right' as const,
+        title: false,
+        position: 'right',
+        rowPadding: 5,
       },
     },
-    tooltip: (d: { type: string; value: number }) => ({
-      title: d.type,
-      items: [{ value: d.value, name: '数量' }],
-    }),
+    scale: {
+      color: pieColorScale,
+    },
     height: 300,
   }
 
+  const barColorScale = buildColorScale(barData.map(d => d.resource_type))
+
   const columnConfig = {
     data: barData,
-    xField: 'month',
+    xField: 'period',
     yField: 'value',
     colorField: 'resource_type',
     stack: true,
-    maxWidth: 40,
+    style: { maxWidth: 40 },
+    scrollbar: granularity === 'day' ? { x: {} } : undefined,
     legend: {
       color: {
-        position: 'right' as const,
+        title: false,
+        position: 'right',
       },
     },
-    tooltip: (d: { resource_type: string; month: string; value: number }) => ({
-      title: d.month,
-      items: [{ name: d.resource_type, value: d.value }],
-    }),
+    scale: {
+      color: barColorScale,
+    },
+    tooltip: {
+      title: (d: { resource_type: string; period: string; value: number }) => d.period,
+      items: [(d: { resource_type: string; period: string; value: number }) => ({ name: d.resource_type, value: d.value })],
+    },
     axis: {
+      x: {
+        labelFormatter: (v: string) => v.slice(5),
+      },
       y: {
         title: METRIC_LABELS[metric],
         labelFormatter: (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v),
@@ -308,7 +327,7 @@ function SearchStatsSection() {
             border: '1px solid #e2e8f0', flex: 1, textAlign: 'center',
           }}>
             <div style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>接口调用次数</div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: '#6366f1' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#0f172a' }}>
               {summary.api_call_count.toLocaleString()}
             </div>
           </div>
@@ -317,7 +336,7 @@ function SearchStatsSection() {
             border: '1px solid #e2e8f0', flex: 1, textAlign: 'center',
           }}>
             <div style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>资源返回数</div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: '#0891b2' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#0f172a' }}>
               {summary.resource_return_count.toLocaleString()}
             </div>
           </div>
@@ -337,9 +356,22 @@ function SearchStatsSection() {
             background: '#fff', borderRadius: 12, padding: 16,
             border: '1px solid #e2e8f0', flex: 1.5, minWidth: 0,
           }}>
-            <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: '#475569' }}>
-              各类资源按月分布
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#475569' }}>
+                各类资源按{GRANULARITY_LABELS[granularity]}分布
+              </h3>
+              <Radio.Group
+                size="small"
+                value={granularity}
+                onChange={e => handleGranularityChange(e.target.value)}
+                optionType="button"
+                buttonStyle="solid"
+              >
+                <Radio.Button value="day">按天</Radio.Button>
+                <Radio.Button value="week">按周</Radio.Button>
+                <Radio.Button value="month">按月</Radio.Button>
+              </Radio.Group>
+            </div>
             <Column {...columnConfig} />
           </div>
         </div>

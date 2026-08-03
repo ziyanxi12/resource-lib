@@ -28,9 +28,17 @@ def _parse_date(s: str) -> date:
 def get_stats(
     start_date: str = Query(..., description="开始日期 YYYY-MM-DD"),
     end_date: str = Query(..., description="结束日期 YYYY-MM-DD"),
+    granularity: str = Query("month", description="柱状图统计粒度 day/week/month"),
     db: Session = Depends(get_db),
 ):
-    return search_stats_service.get_dashboard_data(db, _parse_date(start_date), _parse_date(end_date))
+    if granularity not in {"day", "week", "month"}:
+        raise HTTPException(status_code=400, detail=f"无效的 granularity: {granularity}，可选值: day/week/month")
+    return search_stats_service.get_dashboard_data(
+        db,
+        _parse_date(start_date),
+        _parse_date(end_date),
+        granularity=granularity,
+    )
 
 
 @router.post("/refresh")

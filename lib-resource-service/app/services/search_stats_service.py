@@ -9,7 +9,7 @@ import re
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.database import _is_sqlite
@@ -106,8 +106,14 @@ def refresh_all_stats(db: Session) -> dict:
     return {"dates": len(dates), "rows": total_rows}
 
 
-def get_dashboard_data(db: Session, start_date, end_date) -> dict:
-    """一次返回看板所需的全部统计数据。"""
+def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "month") -> dict:
+    """一次返回看板所需的全部统计数据。
+
+    granularity: 柱状图统计粒度，day/week/month。
+    """
+    if granularity not in {"day", "week", "month"}:
+        raise ValueError(f"无效的 granularity: {granularity}，可选值: day/week/month")
+
     # 1. 汇总数字
     summary_row = (
         db.query(
@@ -149,16 +155,31 @@ def get_dashboard_data(db: Session, start_date, end_date) -> dict:
         for r in pie_rows
     ]
 
-    # 3. 柱状图：按资源类型 + 月份
-    if _is_sqlite:
-        month_expr = func.strftime("%Y-%m", SearchDailyStats.stat_date)
+    # 3. 柱状图：按资源类型 + 统计粒度（天/周/月）
+    if granularity == "day":
+        if _is_sqlite:
+            period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date)
+        else:
+            period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m-%d")
+    elif granularity == "week":
+        if _is_sqlite:
+            # 取本周周一日期作为分组标签，跨年排序也正确
+            period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date, "weekday 1", "-7 days")
+        else:
+            period_expr = func.date_format(
+                func.date_sub(SearchDailyStats.stat_date, text("interval weekday(stat_date) day")),
+                "%Y-%m-%d",
+            )
     else:
-        month_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m")
+        if _is_sqlite:
+            period_expr = func.strftime("%Y-%m", SearchDailyStats.stat_date)
+        else:
+            period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m")
 
     bar_rows = (
         db.query(
             SearchDailyStats.resource_type,
-            month_expr.label("month"),
+            period_expr.label("period"),
             func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
             func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
         )
@@ -166,13 +187,13 @@ def get_dashboard_data(db: Session, start_date, end_date) -> dict:
             SearchDailyStats.stat_date >= start_date,
             SearchDailyStats.stat_date <= end_date,
         )
-        .group_by(SearchDailyStats.resource_type, month_expr)
+        .group_by(SearchDailyStats.resource_type, period_expr)
         .all()
     )
     bar = [
         {
             "resource_type": r.resource_type,
-            "month": r.month,
+            "period": r.period,
             "api_call_count": int(r.api_call_count),
             "resource_return_count": int(r.resource_return_count),
         }

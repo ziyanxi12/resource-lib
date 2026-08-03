@@ -2,7 +2,7 @@
 
 ## 项目概览
 
-设计资源库管理系统，管理六类资源：**组件集 / 模版 / SVG / 插画 / 图片 / 文件**。
+设计资源库管理系统，管理五类资源：**组件集 / SVG / 插画 / 图片 / 文件**。
 
 - 后端：`lib-resource-service/`（Python FastAPI + SQLAlchemy + MySQL）
 - 前端：`lib-resource-ui/`（React 18 + Ant Design 5 + Vite）
@@ -49,7 +49,6 @@ lib-resource-service/
 │   ├── component/           # 组件集文件
 │   ├── icon/                # SVG 文件
 │   ├── illus/               # 插画文件
-│   ├── template/            # 模版文件
 │   ├── image/               # 图片文件（含缩略图）
 │   └── file/                # 通用文件
 ├── requirements.txt
@@ -79,7 +78,7 @@ resources (主表)
 
 | 字段 | 说明 |
 |------|------|
-| `resource_type` | 1=组件集 2=模版 3=SVG 4=插画 5=图片 6=文件 |
+| `resource_type` | 1=组件集 3=SVG 4=插画 5=图片 6=文件 |
 | `source_id` | 来源ID（必填），关联 resource_sources 表 |
 | `name` | 资源名称 |
 | `file_name` | 文件名，如 `abc.svg` |
@@ -100,7 +99,7 @@ resources (主表)
 所有资源类型使用统一的上传接口：
 
 ```
-POST /api/upload?type={icon|illus|template|image|file}
+POST /api/upload?type={icon|illus|image|file}
 ```
 
 **请求参数**（multipart/form-data）：
@@ -195,7 +194,7 @@ POST   /api/resources/{id}/understand  语义理解
 POST   /api/resources/sync-vectors     向量同步
 
 # 统一上传
-POST   /api/upload?type={icon|illus|template|image|file}  批量上传
+POST   /api/upload?type={icon|illus|image|file}  批量上传
 
 # 来源管理
 GET    /api/sources                来源列表
@@ -217,7 +216,6 @@ POST   /api/vector/search          向量搜索
 POST   /api/init                   初始化全部
 POST   /api/init/component         初始化组件
 POST   /api/init/icon              初始化图标+插画
-POST   /api/init/template          初始化模版
 
 # 静态文件
 GET    /static/{file_path}         访问上传文件
