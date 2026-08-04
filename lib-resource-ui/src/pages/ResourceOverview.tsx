@@ -9,11 +9,11 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { api } from '../api'
 
 const STATS = [
-  { key: 'component', label: '组件',  icon: <BlockOutlined />,    bg: '#faf5ff', color: '#9333ea' },
-  { key: 'icon',      label: '图标',  icon: <FunctionOutlined />, bg: '#eff6ff', color: '#2563eb' },
-  { key: 'illus',     label: '插画',  icon: <StarOutlined />,     bg: '#fffbeb', color: '#d97706' },
-  { key: 'image',     label: '图片',  icon: <PictureOutlined />,  bg: '#ecfdf5', color: '#059669' },
-  { key: 'file',      label: '文件',  icon: <FileOutlined />,     bg: '#fff1f2', color: '#e11d48' },
+  { key: 'component', label: '组件',  icon: <BlockOutlined />,    bg: '#f2effe', color: '#715AFB' },
+  { key: 'icon',      label: '图标',  icon: <FunctionOutlined />, bg: '#e8f1fe', color: '#2070F3' },
+  { key: 'illus',     label: '插画',  icon: <StarOutlined />,     bg: '#fff5ea', color: '#F69E39' },
+  { key: 'image',     label: '图片',  icon: <PictureOutlined />,  bg: '#eef8e4', color: '#62B42E' },
+  { key: 'file',      label: '文件',  icon: <FileOutlined />,     bg: '#e6f7f8', color: '#2CBBC9' },
 ]
 
 const RESOURCE_TYPE_LABELS: Record<string, string> = {
