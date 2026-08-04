@@ -220,3 +220,66 @@ POST   /api/init/icon              初始化图标+插画
 # 静态文件
 GET    /static/{file_path}         访问上传文件
 ```
+
+---
+
+## 编码规范（AI 必读）
+
+以下规范是全项目统一约定，写新代码或改现有代码时**必须遵守**。
+
+### 时间处理
+
+| 层 | 规范 | 禁止 |
+|----|------|------|
+| DB 模型 `default=` | `datetime.now`（本地 naive） | `datetime.utcnow` |
+| API 返回时间字段 | `int(dt.timestamp() * 1000)`（epoch 毫秒） | `.isoformat()` 作为 API 返回值 |
+| `_fmt()` / `_format_*()` | `int(dt.timestamp() * 1000) if dt else None` | 无 None 守卫的 `.timestamp()` 调用 |
+| 前端 TS 类型 | `number`（epoch ms） | `string` |
+| 前端格式化 | `dayjs(ms).format(...)` 或 `new Date(ms)` | 原样展示 ISO 字符串 |
+| `last_updated` 类字段 | epoch 毫秒（与其他字段统一） | epoch 秒 |
+
+**已统一的 `_fmt` 函数清单**（新增时间字段时在这些函数中添加）：
+
+| 函数 | 文件 |
+|------|------|
+| `_fmt(r)` | `routers/resources.py` |
+| `_format_source(s)` | `routers/sources.py` |
+| `_fmt(log)` | `routers/search_log.py` |
+| `_format_app(app)` | `routers/search_app.py` |
+
+### 资源类型命名
+
+| 层 | 名称 | 说明 |
+|----|------|------|
+| DB 枚举 | `ResourceType.illus` (4) | `enums.py` 中定义 |
+| API `type` 参数/返回 | `illus` | 禁止用 `illustration` |
+| 向量服务集合名 | `illustration` | 仅在 `vector_client` / `_resolve_vec_type` 中用于外部服务调用 |
+| 日志导入归一化 | 解析阶段保持原文，入库时调 `_normalize_rtype()` | 不要在 `_process_log_file` 中提前归一化（会破坏 fail 行匹配） |
+
+### API 序列化
+
+| 规则 | 说明 |
+|------|------|
+| 返回 plain dict | 所有端点返回 dict，不声明 `response_model` |
+| `_fmt()` 是唯一序列化层 | 新增字段在 `_fmt()` 中添加，不要依赖 Pydantic schema |
+| Pydantic schemas 休眠 | `ResourceOut` / `SourceOut` 当前未生效，不要作为序列化路径 |
+| 唯一例外 | `upload.py` 的 `response_model=BatchUploadResponse`（不含时间字段） |
+
+### 前端类型
+
+| 规则 | 说明 |
+|------|------|
+| `api.ts` | 定义 `Source` / `SearchApp` / `ResourceTypeItem` 等接口 |
+| `types.ts` | 仅定义 `Resource` 接口 |
+| 禁止重复定义 | 两文件不得定义同名接口 |
+| 时间字段 | 统一 `number`（epoch ms） |
+| 日期库 | `dayjs`（antd 传递依赖，需显式 import） |
+
+### 不改动项
+
+| 项目 | 理由 |
+|------|------|
+| DB 表结构 | `create_all` 自动建表，不手动迁移 |
+| `search_app_service.py` export/import | ISO 字符串 round-trip 自洽，改了破坏存量导出文件 |
+| `period` / `stat_date` 字段 | 日期字符串（`YYYY-MM-DD`），不是时间戳 |
+| 向量同步时间比较 | `vector_updated_at < data_updated_at`，两边均 `datetime.now()`，已自洽 |

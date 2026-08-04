@@ -199,6 +199,7 @@ def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "mo
             SearchDailyStats.stat_date <= end_date,
         )
         .group_by(SearchDailyStats.resource_type, period_expr)
+        .order_by(period_expr)
         .all()
     )
     bar = [

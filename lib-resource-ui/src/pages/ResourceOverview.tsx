@@ -28,19 +28,31 @@ const RESOURCE_TYPE_LABELS: Record<string, string> = {
 const EXTRA_COLOR_PALETTE = ['#94a3b8', '#a78bfa', '#22d3ee', '#fb923c', '#a3e635', '#f472b6', '#64748b', '#f43f5e']
 
 function buildColorScale(types: string[]): { domain: string[]; range: string[] } {
-  const unique = [...new Set(types)]
+  const present = new Set(types)
   const colorMap: Record<string, string> = {}
   STATS.forEach(s => { colorMap[RESOURCE_TYPE_LABELS[s.key]] = s.color })
-  let paletteIdx = 0
+
   const domain: string[] = []
   const range: string[] = []
-  for (const t of unique) {
-    if (colorMap[t] === undefined) {
-      colorMap[t] = EXTRA_COLOR_PALETTE[paletteIdx++ % EXTRA_COLOR_PALETTE.length]
+
+  for (const s of STATS) {
+    const label = RESOURCE_TYPE_LABELS[s.key]
+    if (present.has(label)) {
+      domain.push(label)
+      range.push(s.color)
     }
-    domain.push(t)
-    range.push(colorMap[t])
   }
+
+  let paletteIdx = 0
+  for (const t of present) {
+    if (!colorMap[t]) {
+      const c = EXTRA_COLOR_PALETTE[paletteIdx++ % EXTRA_COLOR_PALETTE.length]
+      colorMap[t] = c
+      domain.push(t)
+      range.push(c)
+    }
+  }
+
   return { domain, range }
 }
 
@@ -244,8 +256,20 @@ function SearchStatsSection() {
     angleField: 'value',
     colorField: 'type',
     label: {
-      text: 'value',
+      text: (d: { type: string; value: number }, i: number, data: { type: string; value: number }[]) => {
+        const total = data.reduce((s, x) => s + x.value, 0)
+        return total > 0 ? `${(d.value / total * 100).toFixed(1)}%` : '0%'
+      },
       position: 'outside',
+      connectorLength: 16,
+      connectorLength2: 8,
+      connectorDistance: 2,
+      transform: [
+        { type: 'overlapDodgeY' },
+      ],
+    },
+    tooltip: {
+      items: [(d: { type: string; value: number }) => ({ name: d.type, value: d.value.toLocaleString() })],
     },
     legend: {
       color: {
@@ -257,6 +281,7 @@ function SearchStatsSection() {
     scale: {
       color: pieColorScale,
     },
+    radius: 0.75,
     height: 300,
   }
 
@@ -268,7 +293,17 @@ function SearchStatsSection() {
     yField: 'value',
     colorField: 'resource_type',
     stack: true,
-    style: { maxWidth: 40 },
+    style: { maxWidth: 20 },
+    label: {
+      text: (d: { resource_type: string; period: string; value: number }, i: number, data: any[]) => {
+        const samePeriod = data.filter((x: any) => x.period === d.period)
+        if (d !== samePeriod[samePeriod.length - 1]) return ''
+        const total = samePeriod.reduce((s: number, x: any) => s + x.value, 0)
+        return total > 0 ? total.toLocaleString() : ''
+      },
+      position: 'top',
+      dy: -16,
+    },
     scrollbar: granularity === 'day' ? { x: {} } : undefined,
     legend: {
       color: {
