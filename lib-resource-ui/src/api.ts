@@ -23,8 +23,8 @@ export interface Source {
   is_sync_source: boolean
   config: string | null
   is_active: boolean
-  created_at: string
-  updated_at: string
+  created_at: number
+  updated_at: number
 }
 
 export interface ResourceTypeItem {
@@ -39,8 +39,8 @@ export interface SearchApp {
   name: string
   remark: string | null
   is_active: number
-  created_at: string
-  updated_at: string
+  created_at: number
+  updated_at: number
 }
 
 export const api = {

@@ -301,7 +301,7 @@ function SearchStatsSection() {
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: '#0f172a' }}>调用统计</h2>
           <span style={{ fontSize: 13, color: '#94a3b8' }}>
-            上次更新时间：{lastUpdated ? dayjs(lastUpdated * 1000).format('YYYY-MM-DD HH:mm:ss') : '—'}
+              上次更新时间：{lastUpdated ? dayjs(lastUpdated).format('YYYY-MM-DD HH:mm:ss') : '—'}
           </span>
         </div>
         <Space wrap>

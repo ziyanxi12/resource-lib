@@ -26,8 +26,8 @@ def _format_source(s):
         "is_sync_source": s.is_sync_source,
         "config": s.config,
         "is_active": s.is_active,
-        "created_at": s.created_at.isoformat(),
-        "updated_at": s.updated_at.isoformat(),
+        "created_at": int(s.created_at.timestamp() * 1000) if s.created_at else None,
+        "updated_at": int(s.updated_at.timestamp() * 1000) if s.updated_at else None,
     }
 
 

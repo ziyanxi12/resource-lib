@@ -25,8 +25,8 @@ def _format_app(app) -> dict:
         "name": app.name,
         "remark": app.remark,
         "is_active": app.is_active,
-        "created_at": app.created_at.isoformat() if app.created_at else None,
-        "updated_at": app.updated_at.isoformat() if app.updated_at else None,
+        "created_at": int(app.created_at.timestamp() * 1000) if app.created_at else None,
+        "updated_at": int(app.updated_at.timestamp() * 1000) if app.updated_at else None,
     }
 
 

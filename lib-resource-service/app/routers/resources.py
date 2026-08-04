@@ -511,9 +511,9 @@ def _fmt(r) -> dict:
         "group_id": r.group_id,
         "group_path": r.group.real_path if r.group else None,
         "created_by": r.created_by,
-        "created_at": r.created_at.isoformat() if r.created_at else None,
-        "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-        "data_updated_at": r.data_updated_at.isoformat() if r.data_updated_at else None,
-        "vector_updated_at": r.vector_updated_at.isoformat() if r.vector_updated_at else None,
+        "created_at": int(r.created_at.timestamp() * 1000) if r.created_at else None,
+        "updated_at": int(r.updated_at.timestamp() * 1000) if r.updated_at else None,
+        "data_updated_at": int(r.data_updated_at.timestamp() * 1000) if r.data_updated_at else None,
+        "vector_updated_at": int(r.vector_updated_at.timestamp() * 1000) if r.vector_updated_at else None,
         "tags": r.tags or [],
     }

@@ -113,7 +113,7 @@ def _get_last_updated(db: Session) -> Optional[int]:
     if last_updated is None:
         return None
     if isinstance(last_updated, datetime):
-        return int(last_updated.timestamp())
+        return int(last_updated.timestamp() * 1000)
     return int(last_updated)
 
 

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button, Modal, Input, Select, message, List, Tabs, Tag, Table, Space, Tooltip } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
 import { api, Source, GroupNode, SearchApp } from '../api'
 
 const RESOURCE_TYPE_OPTIONS = [
@@ -609,7 +610,7 @@ function SearchAppPanel() {
       title: '状态', dataIndex: 'is_active', width: 80,
       render: (v: number) => v === 1 ? <Tag color="green">启用</Tag> : <Tag color="default">禁用</Tag>,
     },
-    { title: '创建时间', dataIndex: 'created_at', width: 180, render: (v: string) => v ?? '—' },
+    { title: '创建时间', dataIndex: 'created_at', width: 180, render: (v: number) => v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '—' },
     {
       title: '操作', width: 120, fixed: 'right',
       render: (_: unknown, record: SearchApp) => (
