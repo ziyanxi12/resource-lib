@@ -265,6 +265,13 @@ _PATTERN_FAIL = re.compile(
 )
 
 
+def _normalize_rtype(rtype: str) -> str:
+    """归一化资源类型：历史日志中的 illustration 统一为 illus。"""
+    if rtype == "illustration":
+        return "illus"
+    return rtype
+
+
 def _parse_queries(queries_str: str) -> list:
     try:
         parsed = ast.literal_eval(queries_str)
@@ -386,7 +393,7 @@ def import_logs_to_db(db: Session, logs_dir: str = None) -> dict:
         log = VectorSearchLog(
             request_id=str(uuid.uuid4()),
             api_path="/api/vector/search",
-            resource_type=r["resource_type"],
+            resource_type=_normalize_rtype(r["resource_type"]),
             search_mode=r["search_mode"],
             response_mode=None,
             top_k=r["top_k"],
@@ -430,3 +437,18 @@ def import_logs_to_db(db: Session, logs_dir: str = None) -> dict:
         "results_inserted": result_count,
         "file_details": file_stats,
     }
+
+
+def migrate_illustration_to_illus(db: Session) -> dict:
+    """将 vector_search_logs 中 resource_type='illustration' 的记录修正为 'illus'。
+
+    仅修正日志主表，不重建汇总表（如需更新看板，请手动调用 refresh_all_stats）。
+    """
+    updated = (
+        db.query(VectorSearchLog)
+        .filter(VectorSearchLog.resource_type == "illustration")
+        .update({VectorSearchLog.resource_type: "illus"}, synchronize_session=False)
+    )
+    db.commit()
+    logger.info("修正 vector_search_logs illustration -> illus: %d 条", updated)
+    return {"logs_updated": int(updated)}

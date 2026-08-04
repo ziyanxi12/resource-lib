@@ -3,6 +3,7 @@
 GET  /api/search-stats?start_date=&end_date=   看板数据
 POST /api/search-stats/refresh?target_date=    聚合指定日期（不传则全量重建）
 POST /api/search-stats/import-logs             从历史日志文件导入搜索记录
+POST /api/search-stats/migrate-illustration    将日志表 illustration 修正为 illus
 """
 
 from datetime import date, datetime, timedelta
@@ -58,3 +59,13 @@ def import_logs(db: Session = Depends(get_db)):
     """从历史日志文件导入搜索调用记录到采集表。导入前请先清空采集表。"""
     result = search_stats_service.import_logs_to_db(db)
     return {"message": "导入完成", **result}
+
+
+@router.post("/migrate-illustration")
+def migrate_illustration(db: Session = Depends(get_db)):
+    """将 vector_search_logs 中 resource_type='illustration' 的记录修正为 'illus'。
+
+    仅修正日志主表，不重建汇总表。如需更新看板，请再调用 /refresh 全量重建。
+    """
+    result = search_stats_service.migrate_illustration_to_illus(db)
+    return {"message": "修正完成", **result}
