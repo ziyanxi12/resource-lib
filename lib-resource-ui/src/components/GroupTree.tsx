@@ -403,7 +403,7 @@ const GroupTree = forwardRef<GroupTreeHandle, GroupTreeProps>(function GroupTree
           width: 100% !important;
         }
 
-        .group-tree .ant-tree-node:first-child{
+        .group-tree .ant-tree-treenode:first-child{
           margin: 0;
         }
         .group-tree .ant-tree-node-content-wrapper {

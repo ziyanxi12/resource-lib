@@ -163,14 +163,7 @@ def batch_move_to_group(
     moved_ids, count = resource_service.batch_move_group(db, req.ids, req.group_id)
 
     if settings.VECTOR_SERVICE_ENABLED and moved_ids:
-        vec_type_map = {
-            ResourceType.component: "component",
-            ResourceType.icon: "icon",
-            ResourceType.illus: "illustration",
-            ResourceType.image: "image",
-            ResourceType.file: "file",
-        }
-        vec_type = vec_type_map.get(resource_type)
+        vec_type = resource_type.vec_type
         if vec_type:
             try:
                 from app.models.resource import Resource as ResModel
@@ -328,14 +321,7 @@ async def update_resource(
         db.commit()
 
     if group_id_changed and not text_changed and settings.VECTOR_SERVICE_ENABLED:
-        vec_type_map = {
-            ResourceType.component: "component",
-            ResourceType.icon: "icon",
-            ResourceType.illus: "illustration",
-            ResourceType.image: "image",
-            ResourceType.file: "file",
-        }
-        vec_type = vec_type_map.get(ResourceType(resource.resource_type))
+        vec_type = ResourceType(resource.resource_type).vec_type
         if vec_type:
             try:
                 from app.clients import vector_client
@@ -395,14 +381,7 @@ def batch_delete_resources(
     )
 
     if settings.VECTOR_SERVICE_ENABLED and deleted_ids:
-        vec_type_map = {
-            ResourceType.component: "component",
-            ResourceType.icon: "icon",
-            ResourceType.illus: "illustration",
-            ResourceType.image: "image",
-            ResourceType.file: "file",
-        }
-        vec_type = vec_type_map.get(ResourceType(resource_type_int))
+        vec_type = ResourceType(resource_type_int).vec_type
         if vec_type:
             try:
                 from app.clients import vector_client
@@ -427,14 +406,7 @@ def batch_delete_by_ids(
     deleted_ids, count = resource_service.batch_soft_delete_by_ids(db, req.ids)
 
     if settings.VECTOR_SERVICE_ENABLED and deleted_ids:
-        vec_type_map = {
-            ResourceType.component: "component",
-            ResourceType.icon: "icon",
-            ResourceType.illus: "illustration",
-            ResourceType.image: "image",
-            ResourceType.file: "file",
-        }
-        vec_type = vec_type_map.get(ResourceType(resource_type_int))
+        vec_type = ResourceType(resource_type_int).vec_type
         if vec_type:
             try:
                 from app.clients import vector_client
@@ -460,15 +432,7 @@ def delete_resource(resource_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="资源不存在")
 
     if settings.VECTOR_SERVICE_ENABLED:
-        from app.enums import ResourceType as RT
-        vec_type_map = {
-            RT.component: "component",
-            RT.icon: "icon",
-            RT.illus: "illustration",
-            RT.image: "image",
-            RT.file: "file",
-        }
-        vec_type = vec_type_map.get(RT(resource_type))
+        vec_type = ResourceType(resource_type).vec_type
         if vec_type:
             try:
                 from app.clients import vector_client

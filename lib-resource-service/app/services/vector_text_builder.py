@@ -24,25 +24,16 @@ def ingest_vectors(
     """
     if skip_vector or not settings.VECTOR_SERVICE_ENABLED:
         return
-    
+
     if not pairs:
         return
-    
-    from app.enums import ResourceType
-    from app.services.resource_service import build_vector_text
-    
-    vec_type_map = {
-        ResourceType.component: "component",
-        ResourceType.icon: "icon",
-        ResourceType.illus: "illustration",
-        ResourceType.image: "image",
-        ResourceType.file: "file",
-    }
-    
-    vec_type = vec_type_map.get(resource_type)
+
+    vec_type = resource_type.vec_type
     if vec_type is None:
         return
-    
+
+    from app.services.resource_service import build_vector_text
+
     items = [
         {
             "data_id":  str(res.id),

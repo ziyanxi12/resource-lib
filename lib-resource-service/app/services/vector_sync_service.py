@@ -40,17 +40,8 @@ def detect_missing_resources(
     }
     """
     logger.info("检测缺失数据: type=%s", resource_type.name)
-    
-    from app.enums import ResourceType as RT
-    vec_type_map = {
-        RT.component: "component",
-        RT.icon: "icon",
-        RT.illus: "illustration",
-        RT.image: "image",
-        RT.file: "file",
-    }
-    
-    vec_type = vec_type_map.get(resource_type)
+
+    vec_type = resource_type.vec_type
     if vec_type is None:
         logger.warning("未找到向量配置: type=%s", resource_type.name)
         return {
@@ -175,15 +166,6 @@ def sync_vectors_by_type(db: Session, resource_type: ResourceType, source_id: in
     }
 
 
-_VEC_TYPE_MAP = {
-    ResourceType.component: "component",
-    ResourceType.icon: "icon",
-    ResourceType.illus: "illustration",
-    ResourceType.image: "image",
-    ResourceType.file: "file",
-}
-
-
 def rebuild_all_vectors_by_type(
     db: Session,
     resource_type: ResourceType,
@@ -214,7 +196,7 @@ def rebuild_all_vectors_by_type(
         logger.info("向量服务未启用，跳过全量重建")
         return {"total": 0, "synced": 0, "failed": 0, "orphans_deleted": 0, "message": "向量服务未启用"}
 
-    vec_type = _VEC_TYPE_MAP.get(resource_type)
+    vec_type = resource_type.vec_type
     if vec_type is None:
         return {"total": 0, "synced": 0, "failed": 0, "orphans_deleted": 0, "message": f"未找到向量配置: type={resource_type.name}"}
 

@@ -9,9 +9,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import SessionLocal, get_db
-from app.services import source_service, import_service, import_task_registry
+from app.services import source_service, import_service, import_task_registry, vector_sync_service
 from app.enums import ResourceType
+from app.clients import vector_client
 
 logger = logging.getLogger(__name__)
 
@@ -115,20 +117,66 @@ def update_source(source_id: int, data: dict, db: Session = Depends(get_db)):
 
 @router.delete("/{source_id}")
 def delete_source(source_id: int, db: Session = Depends(get_db)):
-    """软删除来源（移入回收站）"""
-    success = source_service.delete_source(db, source_id)
-    if not success:
+    """软删除来源（移入回收站），并同步删除关联资源的向量数据"""
+    result = source_service.delete_source(db, source_id)
+    if result is None:
         raise HTTPException(status_code=404, detail="来源不存在")
+
+    _success, deleted_ids, resource_type = result
+
+    if settings.VECTOR_SERVICE_ENABLED and deleted_ids and resource_type is not None:
+        vec_type = ResourceType(resource_type).vec_type
+        try:
+            vector_client.batch_delete(vec_type, [str(i) for i in deleted_ids])
+        except Exception as e:
+            logger.warning("删除来源时向量批量删除异常 (source_id=%s, type=%s): %s", source_id, vec_type, e)
+
     return {"message": "已移入回收站"}
 
 
 @router.post("/{source_id}/restore")
 def restore_source(source_id: int, db: Session = Depends(get_db)):
-    """从回收站恢复来源"""
-    source = source_service.restore_source(db, source_id)
-    if not source:
+    """从回收站恢复来源，并重新 ingest 关联资源的向量数据"""
+    result = source_service.restore_source(db, source_id)
+    if result is None:
         raise HTTPException(status_code=404, detail="来源不存在或不在回收站中")
+
+    source, restored_ids, resource_type = result
+
+    if (
+        settings.VECTOR_SERVICE_ENABLED
+        and restored_ids
+        and resource_type is not None
+    ):
+        # 置空 vector_updated_at，使 sync_vectors_by_type 强制识别为待同步
+        source_service.reset_vector_time_by_source(db, source_id)
+        try:
+            vector_sync_service.sync_vectors_by_type(
+                db, ResourceType(resource_type), source_id=source_id
+            )
+        except Exception as e:
+            logger.warning("恢复来源时向量重新入库异常 (source_id=%s): %s", source_id, e)
+
     return _format_source(source)
+
+
+@router.delete("/{source_id}/purge")
+def purge_source_data(source_id: int, db: Session = Depends(get_db)):
+    """彻底清除回收站来源的资源向量数据（DB 记录保持软删除状态不动）"""
+    result = source_service.purge_source_data(db, source_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="来源不存在或不在回收站中")
+
+    resource_ids, resource_type = result
+
+    if settings.VECTOR_SERVICE_ENABLED and resource_ids and resource_type is not None:
+        vec_type = ResourceType(resource_type).vec_type
+        try:
+            vector_client.batch_delete(vec_type, [str(i) for i in resource_ids])
+        except Exception as e:
+            logger.warning("purge 来源时向量批量删除异常 (source_id=%s, type=%s): %s", source_id, vec_type, e)
+
+    return {"purged": len(resource_ids), "source_id": source_id}
 
 
 @router.post("/{source_id}/import")

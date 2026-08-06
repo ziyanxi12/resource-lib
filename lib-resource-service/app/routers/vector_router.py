@@ -70,24 +70,14 @@ class SearchRequest(BaseModel):
 
 def _resolve_vec_type(req_type: str) -> Optional[str]:
     """将前端传入的 type 字符串解析为向量服务集合名。"""
-    from app.enums import ResourceType as RT
-    vec_type_map = {
-        RT.component: "component",
-        RT.icon: "icon",
-        RT.illus: "illustration",
-        RT.image: "image",
-        RT.file: "file",
-    }
-    
     try:
-        rt = ResourceType[req_type]
-        return vec_type_map.get(rt)
+        return ResourceType[req_type].vec_type
     except KeyError:
         pass
-    
-    if req_type in vec_type_map.values():
+
+    if req_type in {rt.vec_type for rt in ResourceType}:
         return req_type
-    
+
     return None
 
 

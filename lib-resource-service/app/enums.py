@@ -28,3 +28,15 @@ class ResourceType(IntEnum):
             6: "文件",
         }
         return _labels[self.value]
+
+    @property
+    def vec_type(self) -> str:
+        """返回向量服务集合名（illus → illustration，其余与枚举名一致）"""
+        _vec_types = {
+            1: "component",
+            3: "icon",
+            4: "illustration",
+            5: "image",
+            6: "file",
+        }
+        return _vec_types[self.value]
