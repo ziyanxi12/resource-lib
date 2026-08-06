@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Select, TreeSelect, message, Modal, Input, Spin, Dropdown, Upload, Progress, Alert } from 'antd'
-import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined, SwapOutlined, ImportOutlined, CloseOutlined } from '@ant-design/icons'
+import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined, SwapOutlined, ImportOutlined, CloseOutlined, DownloadOutlined } from '@ant-design/icons'
+import JSZip from 'jszip'
 import ResourceTable, { type ResourceTableHandle } from '../components/ResourceTable'
 import GroupTree, { type GroupTreeHandle } from '../components/GroupTree'
 import { api, Source, GroupNode } from '../api'
@@ -484,6 +485,119 @@ export default function ResourceManage() {
     setImporting(false)
   }
 
+  const downloadImportTemplate = async () => {
+    const zip = new JSZip()
+
+    const config = {
+      group: [
+        {
+          label: '示例分组',
+          data: [
+            {
+              name: '示例资源',
+              file_name: 'example.svg',
+              file_path: 'data/example.svg',
+              thumbnail_path: 'image/example.png',
+              description: '示例描述',
+              tags: ['示例'],
+              search_text: '关键词',
+              raw_data: {},
+            },
+          ],
+          children: [
+            { label: '子分组', data: [] },
+          ],
+        },
+      ],
+    }
+
+    zip.file('config.json', JSON.stringify(config, null, 2))
+
+    const readme = `# 全量批量导入 ZIP 模板说明
+
+## 文件结构
+\`\`\`
+├── config.json      # 配置文件（必填，含分组树）
+├── image/           # 缩略图目录
+│   └── example.png
+└── data/            # 资源文件目录
+    └── example.svg
+\`\`\`
+
+## config.json 格式
+
+config.json 的顶层是 \`group\` 数组，每个元素是一个分组节点，支持递归 \`children\` 嵌套：
+
+\`\`\`json
+{
+  "group": [
+    {
+      "label": "分组名称",
+      "data": [ { ...资源项... } ],
+      "children": [
+        { "label": "子分组", "data": [] }
+      ]
+    }
+  ]
+}
+\`\`\`
+
+### 分组节点字段
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| label | string | 是 | 分组名称 |
+| data | array | 否 | 该分组下的资源列表 |
+| children | array | 否 | 子分组列表（递归结构） |
+
+## 分组说明
+
+1. **顶层分组放置规则**：\`group\` 数组中的每个分组，都会作为该来源下"默认分组"的子分组创建。
+   - "默认分组"是系统自动创建的根分组（\`is_default=1\`）。
+   - 已存在则自动复用，不存在则自动创建。
+2. **不去重，直接创建**：每次导入都会创建全新的分组和全新的资源，不会与已有同名分组合并，也不会覆盖已有数据。
+   - 多次导入同一 ZIP 会产生重复的分组和资源。
+3. **递归嵌套**：\`children\` 中的子分组会挂在对应父分组下，层级无限制。
+
+### data 字段（资源列表）
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 是 | 资源名称 |
+| file_name | string | 否 | 展示文件名（用于前端显示） |
+| file_path | string | 否 | 文件在ZIP中的相对路径 |
+| thumbnail_path | string | 否 | 缩略图在ZIP中的相对路径（支持 PNG/SVG/JPEG 格式，宽高自动读取），可选 |
+| description | string | 否 | 资源描述 |
+| tags | array | 否 | 标签数组 |
+| search_text | string | 否 | 搜索关键词 |
+| raw_data | object | 否 | 自定义元数据 |
+
+## 注意事项
+1. 导入会在选中来源下递归创建分组树及资源
+2. 顶层分组会自动放在"默认分组"下，默认分组已存在则复用，否则自动创建
+3. 导入不去重，直接创建新分组和新数据，不会与已有同名分组合并，也不会覆盖已有数据
+4. file_path 指向的文件必须存在于 ZIP 包内
+5. thumbnail_path 指向的缩略图也必须存在于 ZIP 包内
+`
+
+    zip.file('README.md', readme)
+
+    // 1x1 像素 PNG
+    const minPNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='
+    const pngBlob = await fetch(minPNG).then(r => r.blob())
+    zip.file('image/example.png', pngBlob)
+
+    // 最小 SVG
+    const minSVG = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="#ccc"/></svg>'
+    zip.file('data/example.svg', minSVG)
+
+    const blob = await zip.generateAsync({ type: 'blob' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${type}_import_template.zip`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (pageLoading) {
     return (
       <div style={{ 
@@ -782,6 +896,14 @@ export default function ResourceManage() {
         footer={[
           <Button key="close" onClick={closeImportModal} danger={importing}>
             {importPhase === 'uploading' ? '取消上传' : '关闭'}
+          </Button>,
+          <Button
+            key="template"
+            icon={<DownloadOutlined />}
+            onClick={downloadImportTemplate}
+            disabled={importing}
+          >
+            下载模板
           </Button>,
           <Button
             key="upload"
