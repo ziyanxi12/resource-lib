@@ -36,6 +36,7 @@ def _fmt(log: VectorSearchLog):
         "app_id": log.app_id,
         "user_agent": log.user_agent,
         "referer": log.referer,
+        "business_data": log.business_data,
         "created_at": int(log.created_at.timestamp() * 1000) if log.created_at else None,
     }
 

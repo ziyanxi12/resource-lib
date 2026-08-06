@@ -197,6 +197,7 @@ class SearchLogMiddleware:
             "app_id": app_id,
             "user_agent": user_agent,
             "referer": referer,
+            "business_data": ctx.get("business_data"),
             "created_at": created_at,
             "filter_sources": ctx.get("filter_sources", []),
             "filter_groups": ctx.get("filter_groups", []),

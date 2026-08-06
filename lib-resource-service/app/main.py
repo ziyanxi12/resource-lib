@@ -50,12 +50,30 @@ MultiPartParser.max_file_size = 10 * 1024 * 1024 * 1024  # 10GB
 logger = logging.getLogger(__name__)
 
 
+def _ensure_column(engine, table: str, column: str, ddl: str):
+    """检查表是否已有某列，没有则 ALTER TABLE 补上（兼容 SQLite/MySQL），幂等可重复执行。"""
+    try:
+        from sqlalchemy import inspect, text
+        insp = inspect(engine)
+        if table in insp.get_table_names():
+            existing = {c["name"] for c in insp.get_columns(table)}
+            if column not in existing:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
+                logger.info("自动迁移：%s 表新增列 %s", table, column)
+    except Exception as e:
+        logger.warning("自动补列失败 %s.%s: %s", table, column, e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用启动时：初始化日志 + 自动建表 + 创建文件存储子目录"""
     setup_logging(settings.LOG_DIR, settings.LOG_LEVEL)
     logger.info("lib-resource-service v%s 启动", __version__)
     Base.metadata.create_all(bind=engine)
+
+    # 增量补列（create_all 只建新表，不修改已有表结构）
+    _ensure_column(engine, "vector_search_logs", "business_data", "TEXT")
     
     # 创建文件存储子目录
     for sub in ["component", "template", "icon", "illus", "image", "file"]:
@@ -106,7 +124,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="资源库管理服务",
-    description="统一管理五类设计资源：组件集、SVG、插画、图片、文件",
+    description="统一管理五类设计资源：组件集、图标、插画、图片、文件",
     version=__version__,
     lifespan=lifespan,
     docs_url=None if settings.ROOT_PATH else "/docs",

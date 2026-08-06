@@ -66,6 +66,7 @@ class SearchRequest(BaseModel):
     filters: Optional[Dict[str, Any]] = None
     response_mode: str = Field(default="complete", description="响应模式：basic/normal/complete")
     hybrid_weight: float = 0.7
+    business_data: Optional[str] = Field(default=None, alias="businessData", description="业务数据 JSON 字符串")
 
 
 def _resolve_vec_type(req_type: str) -> Optional[str]:
@@ -247,6 +248,7 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
         filter_sources=filter_sources,
         filter_groups=filter_groups,
         filter_tags=filter_tags,
+        business_data=req.business_data or None,
     )
 
     try:
