@@ -11,6 +11,7 @@ POST /api/vector/full-rebuild  全量重建向量库 + 清理孤儿数据
 """
 
 from typing import Any, Dict, List, Optional
+import json
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -236,6 +237,13 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
         t = raw_filters["tags"]
         filter_tags = list(t) if isinstance(t, list) else [t]
 
+    business_data = req.business_data or None
+    if business_data is not None:
+        try:
+            business_data = json.loads(business_data)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
     set_search_log_ctx(
         resource_type=req.type,
         search_mode=req.mode,
@@ -248,7 +256,7 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
         filter_sources=filter_sources,
         filter_groups=filter_groups,
         filter_tags=filter_tags,
-        business_data=req.business_data or None,
+        business_data=business_data,
     )
 
     try:

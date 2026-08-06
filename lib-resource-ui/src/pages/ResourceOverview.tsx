@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   BlockOutlined, FunctionOutlined, StarOutlined, PictureOutlined, FileOutlined,
 } from '@ant-design/icons'
@@ -23,6 +23,26 @@ const RESOURCE_TYPE_LABELS: Record<string, string> = {
   image: '图片',
   file: '文件',
   unknown: '未知',
+}
+
+const FIXED_TYPE_ORDER = STATS.map(s => s.key)
+
+function appKeyOf(row: AppRow): string {
+  return row.app_id ?? ''
+}
+
+function getRowSpan(rows: AppRow[], index: number | undefined): number {
+  if (index === undefined) return 1
+  const current = rows[index]
+  const key = appKeyOf(current)
+  const prev = rows[index - 1]
+  if (prev && appKeyOf(prev) === key) return 0
+  let span = 1
+  for (let i = index + 1; i < rows.length; i++) {
+    if (appKeyOf(rows[i]) === key) span++
+    else break
+  }
+  return span
 }
 
 const EXTRA_COLOR_PALETTE = ['#94a3b8', '#a78bfa', '#22d3ee', '#fb923c', '#a3e635', '#f472b6', '#64748b', '#f43f5e']
@@ -227,24 +247,69 @@ function SearchStatsSection() {
     fetchData(undefined, undefined, g)
   }
 
+  const groupedApps = useMemo(() => {
+    const byApp = new Map<string, { key: string; rows: Map<string, AppRow> }>()
+    for (const row of apps) {
+      const key = row.app_id ?? ''
+      let entry = byApp.get(key)
+      if (!entry) {
+        entry = { key, rows: new Map() }
+        byApp.set(key, entry)
+      }
+      entry.rows.set(row.resource_type, row)
+    }
+
+    const ordered: AppRow[] = []
+    for (const entry of Array.from(byApp.values()).sort((a, b) => {
+      if (!a.key) return 1
+      if (!b.key) return -1
+      return a.key.localeCompare(b.key)
+    })) {
+      const base = entry.rows.values().next().value as AppRow | undefined
+      const appName = base?.app_name ?? '匿名调用'
+      const appId = base?.app_id ?? null
+      const types = new Set(entry.rows.keys())
+      const order = [...FIXED_TYPE_ORDER, ...Array.from(types).filter(t => !FIXED_TYPE_ORDER.includes(t))]
+      for (const t of order) {
+        const existing = entry.rows.get(t)
+        ordered.push(existing ?? {
+          app_id: appId,
+          app_name: appName,
+          resource_type: t,
+          api_call_count: 0,
+          resource_return_count: 0,
+        })
+      }
+    }
+    return ordered
+  }, [apps])
+
   const appColumns: ColumnsType<AppRow> = [
     {
       title: 'AppID', dataIndex: 'app_id',
+      onCell: (record, index) => {
+        const span = getRowSpan(groupedApps, index)
+        return { rowSpan: span }
+      },
       render: (v: string | null) => v ?? <span style={{ color: '#94a3b8' }}>—</span>,
     },
-    { title: '应用名称', dataIndex: 'app_name' },
+    {
+      title: '应用名称', dataIndex: 'app_name',
+      onCell: (record, index) => {
+        const span = getRowSpan(groupedApps, index)
+        return { rowSpan: span }
+      },
+    },
     {
       title: '调用类型', dataIndex: 'resource_type',
       render: (v: string) => RESOURCE_TYPE_LABELS[v] ?? v,
     },
     {
       title: '接口调用次数', dataIndex: 'api_call_count',
-      sorter: (a, b) => a.api_call_count - b.api_call_count,
       render: (v: number) => v.toLocaleString(),
     },
     {
       title: '资源返回数', dataIndex: 'resource_return_count',
-      sorter: (a, b) => a.resource_return_count - b.resource_return_count,
       render: (v: number) => v.toLocaleString(),
     },
   ]
@@ -429,7 +494,7 @@ function SearchStatsSection() {
             rowKey={(r) => `${r.app_id ?? 'anonymous'}-${r.resource_type}`}
             size="small"
             columns={appColumns}
-            dataSource={apps}
+            dataSource={groupedApps}
             pagination={false}
             tableLayout="fixed"
           />

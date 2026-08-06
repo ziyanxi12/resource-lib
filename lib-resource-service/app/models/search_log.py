@@ -28,5 +28,5 @@ class VectorSearchLog(Base):
     app_id        = Column(String(50), index=True, comment="octo-vs-token 请求头，缺省回退 client_ip")
     user_agent    = Column(String(500), nullable=True)
     referer       = Column(String(500), nullable=True)
-    business_data = Column(Text, nullable=True, comment="业务数据 JSON 字符串")
+    business_data = Column(JSON, nullable=True, comment="业务数据 JSON")
     created_at    = Column(DateTime, index=True, default=datetime.now)

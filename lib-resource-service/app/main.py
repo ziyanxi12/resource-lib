@@ -73,7 +73,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
 
     # 增量补列（create_all 只建新表，不修改已有表结构）
-    _ensure_column(engine, "vector_search_logs", "business_data", "TEXT")
+    _ensure_column(engine, "vector_search_logs", "business_data", "JSON")
     
     # 创建文件存储子目录
     for sub in ["component", "template", "icon", "illus", "image", "file"]:
