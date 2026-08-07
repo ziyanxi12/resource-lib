@@ -41,3 +41,13 @@ deploy.sh
 # Temporary files
 reset.sh
 A.md
+
+# SQLite WAL/shared memory
+*.db-shm
+*.db-wal
+
+# Test scripts
+lib-resource-service/tests/
+
+# Local nginx config & built assets
+nginx/
