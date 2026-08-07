@@ -270,47 +270,55 @@ function SearchStatsSection() {
       const appId = base?.app_id ?? null
       const types = new Set(entry.rows.keys())
       const order = [...FIXED_TYPE_ORDER, ...Array.from(types).filter(t => !FIXED_TYPE_ORDER.includes(t))]
+      let totalApiCall = 0
+      let totalResourceReturn = 0
       for (const t of order) {
         const existing = entry.rows.get(t)
-        ordered.push(existing ?? {
-          app_id: appId,
-          app_name: appName,
-          resource_type: t,
-          api_call_count: 0,
-          resource_return_count: 0,
-        })
+        if (!existing) continue
+        if (existing.api_call_count === 0 && existing.resource_return_count === 0) continue
+        ordered.push(existing)
+        totalApiCall += existing.api_call_count
+        totalResourceReturn += existing.resource_return_count
       }
+      ordered.push({
+        app_id: appId,
+        app_name: appName,
+        resource_type: '__total__',
+        api_call_count: totalApiCall,
+        resource_return_count: totalResourceReturn,
+      })
     }
     return ordered
   }, [apps])
 
   const appColumns: ColumnsType<AppRow> = [
     {
-      title: 'AppID', dataIndex: 'app_id',
-      onCell: (record, index) => {
-        const span = getRowSpan(groupedApps, index)
-        return { rowSpan: span }
-      },
-      render: (v: string | null) => v ?? <span style={{ color: '#94a3b8' }}>—</span>,
-    },
-    {
       title: '应用名称', dataIndex: 'app_name',
       onCell: (record, index) => {
         const span = getRowSpan(groupedApps, index)
         return { rowSpan: span }
       },
+      render: (v: string, record: AppRow) => {
+        if (record.app_id) {
+          return `${v}（${record.app_id}）`
+        }
+        return v
+      },
     },
     {
       title: '调用类型', dataIndex: 'resource_type',
-      render: (v: string) => RESOURCE_TYPE_LABELS[v] ?? v,
+      render: (v: string) => v === '__total__' ? <span style={{ fontWeight: 600 }}>合计</span> : RESOURCE_TYPE_LABELS[v] ?? v,
+      onCell: (record: AppRow) => record.resource_type === '__total__' ? { style: { background: '#fafafa' } } : {},
     },
     {
       title: '接口调用次数', dataIndex: 'api_call_count',
-      render: (v: number) => v.toLocaleString(),
+      render: (v: number, record: AppRow) => record.resource_type === '__total__' ? <span style={{ fontWeight: 600 }}>{v.toLocaleString()}</span> : v.toLocaleString(),
+      onCell: (record: AppRow) => record.resource_type === '__total__' ? { style: { background: '#fafafa' } } : {},
     },
     {
       title: '资源返回数', dataIndex: 'resource_return_count',
-      render: (v: number) => v.toLocaleString(),
+      render: (v: number, record: AppRow) => record.resource_type === '__total__' ? <span style={{ fontWeight: 600 }}>{v.toLocaleString()}</span> : v.toLocaleString(),
+      onCell: (record: AppRow) => record.resource_type === '__total__' ? { style: { background: '#fafafa' } } : {},
     },
   ]
 
