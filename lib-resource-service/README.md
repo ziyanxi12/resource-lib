@@ -1,6 +1,6 @@
 # lib-resource-service
 
-资源库管理服务（Python / FastAPI），统一管理六类设计资源：组件集、模版、SVG、插画、图片、文件。
+资源库管理服务（Python / FastAPI），统一管理五类设计资源：组件集、SVG、插画、图片、文件。
 
 ---
 
@@ -43,7 +43,6 @@ lib-resource-service/
 │   ├── component/            # 组件集文件
 │   ├── icon/                 # SVG 文件
 │   ├── illus/                # 插画文件
-│   ├── template/             # 模版文件
 │   ├── image/                # 图片文件（含缩略图）
 │   └── file/                 # 通用文件
 ├── requirements.txt
@@ -122,7 +121,6 @@ VECTOR_SERVICE_URL=http://localhost:8008
 | POST | `/api/init` | 一次性导入全部类型 |
 | POST | `/api/init/component` | 仅导入组件集 |
 | POST | `/api/init/icon` | 仅导入 SVG + 插画 |
-| POST | `/api/init/template` | 仅导入模版 |
 
 ---
 
@@ -143,7 +141,7 @@ POST   /api/resources/sync-vectors     向量同步
 ### 统一上传
 
 ```
-POST   /api/upload?type={icon|illus|template|image|file}
+POST   /api/upload?type={icon|illus|image|file}
 ```
 
 请求参数（multipart/form-data）：
@@ -204,7 +202,6 @@ GET    /docs                       Swagger API 文档
 | 值 | 名称 | 中文 |
 |----|------|------|
 | 1 | component | 组件集 |
-| 2 | template | 模版 |
 | 3 | icon | SVG |
 | 4 | illus | 插画 |
 | 5 | image | 图片 |

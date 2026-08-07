@@ -462,6 +462,7 @@ def _fmt(r) -> dict:
         "source_id": r.source_id,
         "name": r.name,
         "description": r.description,
+        "ai_description": r.ai_description,
         "search_text": r.search_text,
         "vector_text": r.vector_text,
         "file_name": r.file_name,

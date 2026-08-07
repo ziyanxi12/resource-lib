@@ -36,6 +36,7 @@ from app.routers import import_task
 from app.routers import search_log
 from app.routers import search_app
 from app.routers import search_stats
+from app.routers import ai_enrich
 
 from app.middleware.search_log_middleware import SearchLogMiddleware
 
@@ -65,6 +66,21 @@ def _ensure_column(engine, table: str, column: str, ddl: str):
         logger.warning("自动补列失败 %s.%s: %s", table, column, e)
 
 
+def _ensure_index(engine, table: str, index_name: str, columns: str):
+    """检查索引是否存在，不存在则创建（兼容 SQLite/MySQL），幂等可重复执行。"""
+    try:
+        from sqlalchemy import inspect, text
+        insp = inspect(engine)
+        if table in insp.get_table_names():
+            existing = {i["name"] for i in insp.get_indexes(table)}
+            if index_name not in existing:
+                with engine.begin() as conn:
+                    conn.execute(text(f"CREATE INDEX {index_name} ON {table} ({columns})"))
+                logger.info("自动迁移：%s 表新增索引 %s", table, index_name)
+    except Exception as e:
+        logger.warning("自动补索引失败 %s.%s: %s", table, index_name, e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用启动时：初始化日志 + 自动建表 + 创建文件存储子目录"""
@@ -74,6 +90,12 @@ async def lifespan(app: FastAPI):
 
     # 增量补列（create_all 只建新表，不修改已有表结构）
     _ensure_column(engine, "vector_search_logs", "business_data", "JSON")
+    _ensure_column(engine, "resources", "ai_description", "TEXT")
+
+    # 增量补索引（create_all 只建新表的索引，不补已有表）
+    _ensure_index(engine, "resources", "idx_resources_type_source_deleted", "resource_type, source_id, is_deleted")
+    _ensure_index(engine, "resources", "idx_resources_group", "group_id")
+    _ensure_index(engine, "resources", "idx_resources_created_at", "created_at")
     
     # 创建文件存储子目录
     for sub in ["component", "template", "icon", "illus", "image", "file"]:
@@ -154,6 +176,7 @@ app.include_router(import_task.router)
 app.include_router(search_log.router)
 app.include_router(search_app.router)
 app.include_router(search_stats.router)
+app.include_router(ai_enrich.router)
 
 # 静态文件服务：前端可通过 /static/{file_path} 直接访问上传文件
 if os.path.exists(settings.FILE_ROOT_DIR):

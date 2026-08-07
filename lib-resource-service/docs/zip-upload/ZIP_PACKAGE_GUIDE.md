@@ -11,7 +11,6 @@
 | 组件 | `component` | 组件集 |
 | 图标 | `icon` | SVG 图标 |
 | 插画 | `illus` | 插画素材 |
-| 模版 | `template` | 设计模版 |
 | 图片 | `image` | 图片素材 |
 | 文件 | `file` | 通用文件 |
 
@@ -90,7 +89,7 @@ icons-20240115.zip
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `type` | string | 是 | 资源类型：`icon`/`illus`/`template`/`image`/`file` |
+| `type` | string | 是 | 资源类型：`icon`/`illus`/`image`/`file` |
 | `source_id` | number | 是 | 来源 ID，需先通过 API 获取 |
 
 ### data 数组字段

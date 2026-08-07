@@ -9863,7 +9863,7 @@ var require_lib3 = __commonJS({
 // validate.js
 var fs = require("fs");
 var path = require("path");
-var VALID_TYPES = ["component", "icon", "illus", "template", "image", "file"];
+var VALID_TYPES = ["component", "icon", "illus", "image", "file"];
 var MAX_UPLOAD_COUNT = 500;
 var MAX_ZIP_SIZE_MB = 100;
 function validateConfig(config, zipFiles = null) {

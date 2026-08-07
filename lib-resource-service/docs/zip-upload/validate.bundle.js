@@ -9863,7 +9863,7 @@ var require_lib3 = __commonJS({
 // validate.js
 var fs = require("fs");
 var path = require("path");
-var VALID_TYPES = ["icon", "illus", "template", "image", "file"];
+var VALID_TYPES = ["icon", "illus", "image", "file"];
 function validateConfig(config, zipFiles = null) {
   const errors = [];
   if (!config.meta) {

@@ -3,7 +3,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const VALID_TYPES = ['component', 'icon', 'illus', 'template', 'image', 'file']
+const VALID_TYPES = ['component', 'icon', 'illus', 'image', 'file']
 const MAX_UPLOAD_COUNT = 500
 const MAX_ZIP_SIZE_MB = 100
 

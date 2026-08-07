@@ -1,11 +1,16 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, SmallInteger, Float, String, Text, JSON, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, SmallInteger, Float, String, Text, JSON, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from app.database import Base
 
 
 class Resource(Base):
     __tablename__ = "resources"
+    __table_args__ = (
+        Index("idx_resources_type_source_deleted", "resource_type", "source_id", "is_deleted"),
+        Index("idx_resources_group", "group_id"),
+        Index("idx_resources_created_at", "created_at"),
+    )
 
     id              = Column(Integer, primary_key=True, autoincrement=True)
     resource_type   = Column(SmallInteger, nullable=False, comment="1=component 3=icon 4=illus 5=image 6=file")
@@ -13,7 +18,8 @@ class Resource(Base):
     name            = Column(String(255), nullable=False)
     description     = Column(Text, nullable=True)
     search_text     = Column(Text, nullable=True, comment="业务搜索关键词")
-    vector_text     = Column(Text, nullable=True, comment="向量文本（四个字段拼接）")
+    ai_description  = Column(Text, nullable=True, comment="AI 生成的视觉/场景补充描述")
+    vector_text     = Column(Text, nullable=True, comment="向量文本（五个字段拼接）")
     file_name       = Column(String(255), nullable=True, comment="文件名，如 abc.svg")
     file_url        = Column(String(500), nullable=True, comment="文件链接（外部）")
     file_path       = Column(String(500), nullable=True, comment="文件相对路径，如 icon/abc.svg")
