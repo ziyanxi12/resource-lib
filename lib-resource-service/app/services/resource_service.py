@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Optional, List, Tuple
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_, func
 from app.models.resource import Resource, ResourceGroup
 from app.enums import ResourceType
@@ -62,7 +62,8 @@ def get_resources(
 
     total = query.count()
     items = (
-        query.order_by(Resource.created_at.desc())
+        query.options(joinedload(Resource.group))
+             .order_by(Resource.created_at.desc())
              .offset((page - 1) * limit)
              .limit(limit)
              .all()
@@ -297,14 +298,15 @@ def batch_update_vector_time(db: Session, resource_ids: List[int]) -> int:
 
 def build_vector_text(resource: Resource) -> str:
     """
-    构造向量文本：name + description + tags + search_text
+    构造向量文本：name + description + tags + search_text + ai_description
     """
     tags_str = ' '.join(resource.tags or [])
     parts = [
         resource.name or '',
         resource.description or '',
         tags_str,
-        resource.search_text or ''
+        resource.search_text or '',
+        resource.ai_description or ''
     ]
     vector_text = ' '.join(filter(None, parts))
     return ' '.join(vector_text.split())
