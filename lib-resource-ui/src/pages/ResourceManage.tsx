@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Button, Select, TreeSelect, message, Modal, Input, Spin, Dropdown, Upload, Progress, Alert } from 'antd'
-import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined, SwapOutlined, ImportOutlined, CloseOutlined, DownloadOutlined } from '@ant-design/icons'
+import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined, SwapOutlined, ImportOutlined, CloseOutlined, DownloadOutlined, FileTextOutlined } from '@ant-design/icons'
 import JSZip from 'jszip'
 import ResourceTable, { type ResourceTableHandle } from '../components/ResourceTable'
 import GroupTree, { type GroupTreeHandle } from '../components/GroupTree'
+import OperationLogModal from '../components/OperationLogModal'
 import { api, Source, GroupNode } from '../api'
 
 const RESOURCE_TYPE_MAP: Record<string, number> = {
@@ -62,6 +63,7 @@ export default function ResourceManage() {
   const xhrRef = useRef<XMLHttpRequest | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const importTaskIdRef = useRef<string | null>(null)
+  const [logModalOpen, setLogModalOpen] = useState(false)
 
   useEffect(() => {
     setPageLoading(true)
@@ -639,6 +641,8 @@ config.json 的顶层是 \`group\` 数组，每个元素是一个分组节点，
                     { type: 'divider' as const },
                     { key: 'sync', label: '向量同步', icon: <SyncOutlined spin={syncing} /> },
                     { key: 'import', label: '全量批量导入', icon: <ImportOutlined /> },
+                    { type: 'divider' as const },
+                    { key: 'log', label: '操作日志', icon: <FileTextOutlined /> },
                   ],
                   onClick: ({ key }) => {
                     if (key === 'edit') {
@@ -655,6 +659,7 @@ config.json 的顶层是 \`group\` 数组，每个元素是一个分组节点，
                       setImportProgress(0)
                       setImportModalOpen(true)
                     }
+                    if (key === 'log') setLogModalOpen(true)
                   },
                 }}
                 trigger={['click']}
@@ -688,6 +693,17 @@ config.json 的顶层是 \`group\` 数组，每个元素是一个分组节点，
             )}
             options={sources.map(s => ({ value: s.id, label: s.name }))}
           />
+
+          {sourceId && (() => {
+            const src = sources.find(s => s.id === sourceId)
+            if (!src) return null
+            return (
+              <div style={{ marginTop: 4, fontSize: 11, color: '#94a3b8', display: 'flex', gap: 8 }}>
+                {src.created_by && <span>创建人: {src.created_by}</span>}
+                {src.updated_by && <span>编辑人: {src.updated_by}</span>}
+              </div>
+            )
+          })()}
 
           {importTaskId && importPhase === 'processing' && (
             <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -948,6 +964,8 @@ config.json 的顶层是 \`group\` 数组，每个元素是一个分组节点，
           </div>
         )}
       </Modal>
+
+      <OperationLogModal sourceId={sourceId} open={logModalOpen} onClose={() => setLogModalOpen(false)} />
     </div>
   )
 }

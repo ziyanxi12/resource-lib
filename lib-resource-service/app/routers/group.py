@@ -8,13 +8,15 @@ PUT    /api/groups/{id}/move 移动分组
 PUT    /api/groups/reorder   批量重排序
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 
 from app.database import get_db
 from app.enums import ResourceType
 from app.services import group_service
+from app.services import operation_log_service
+from app.services.operator import get_operator
 from app.schemas.group import (
     GroupCreate, GroupUpdate, GroupMove,
     GroupReorderRequest, GroupTreeResponse
@@ -45,7 +47,7 @@ def get_groups(
 
 
 @router.post("")
-def create_group(body: GroupCreate, db: Session = Depends(get_db)):
+def create_group(body: GroupCreate, request: Request, db: Session = Depends(get_db)):
     try:
         resource_type = ResourceType.from_name(body.type)
     except KeyError:
@@ -62,6 +64,19 @@ def create_group(body: GroupCreate, db: Session = Depends(get_db)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    account, name = get_operator(request)
+    operation_log_service.create_log(
+        db,
+        source_id=body.source_id,
+        resource_type=int(resource_type),
+        operator=name,
+        operator_account=account,
+        action="create",
+        target_type="group",
+        target_id=group.id,
+        target_name=group.name,
+    )
+
     return {
         "id": group.id,
         "name": group.name,
@@ -74,13 +89,26 @@ def create_group(body: GroupCreate, db: Session = Depends(get_db)):
 
 
 @router.put("/{group_id}")
-def update_group(group_id: int, body: GroupUpdate, db: Session = Depends(get_db)):
+def update_group(group_id: int, body: GroupUpdate, request: Request, db: Session = Depends(get_db)):
     if not body.name:
         raise HTTPException(status_code=400, detail="名称不能为空")
 
     group = group_service.update_group(db, group_id, body.name)
     if not group:
         raise HTTPException(status_code=404, detail="分组不存在")
+
+    account, name = get_operator(request)
+    operation_log_service.create_log(
+        db,
+        source_id=group.source_id,
+        resource_type=group.resource_type,
+        operator=name,
+        operator_account=account,
+        action="update",
+        target_type="group",
+        target_id=group.id,
+        target_name=group.name,
+    )
 
     return {"id": group_id, "name": group.name}
 
@@ -92,18 +120,39 @@ def get_resource_count(group_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{group_id}")
-def delete_group(group_id: int, db: Session = Depends(get_db)):
+def delete_group(group_id: int, request: Request, db: Session = Depends(get_db)):
+    group = group_service.get_group_by_id(db, group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="分组不存在")
+    g_name = group.name
+    g_source_id = group.source_id
+    g_type = group.resource_type
+
     try:
         ok = group_service.delete_group(db, group_id)
         if not ok:
             raise HTTPException(status_code=404, detail="分组不存在")
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    account, name = get_operator(request)
+    operation_log_service.create_log(
+        db,
+        source_id=g_source_id,
+        resource_type=g_type,
+        operator=name,
+        operator_account=account,
+        action="delete",
+        target_type="group",
+        target_id=group_id,
+        target_name=g_name,
+    )
+
     return {"id": group_id, "message": "删除成功"}
 
 
 @router.put("/{group_id}/move")
-def move_group(group_id: int, body: GroupMove, db: Session = Depends(get_db)):
+def move_group(group_id: int, body: GroupMove, request: Request, db: Session = Depends(get_db)):
     try:
         group = group_service.move_group(
             db,
@@ -116,6 +165,20 @@ def move_group(group_id: int, body: GroupMove, db: Session = Depends(get_db)):
 
     if not group:
         raise HTTPException(status_code=404, detail="分组不存在")
+
+    account, name = get_operator(request)
+    operation_log_service.create_log(
+        db,
+        source_id=group.source_id,
+        resource_type=group.resource_type,
+        operator=name,
+        operator_account=account,
+        action="move",
+        target_type="group",
+        target_id=group.id,
+        target_name=group.name,
+        detail={"parent_id": body.parent_id},
+    )
 
     return {
         "id": group_id,

@@ -163,9 +163,6 @@ def _precopy_files(
 
         file_path_in_zip = item.get("file_path")
         file_url = item.get("file_url")
-        if not file_path_in_zip and not file_url:
-            errors.append({"group": group_label, "name": item_name, "reason": "file_path 和 file_url 至少填一个"})
-            continue
 
         saved = {"_file_uuid": file_uuid}
 
@@ -258,6 +255,7 @@ def _create_db_records(
     source_id: int,
     stats: Dict[str, Any],
     task_id: Optional[str] = None,
+    created_by: Optional[str] = None,
 ) -> None:
     """
     Phase 2：快速创建 DB 记录（无文件 I/O，事务极短）。
@@ -306,6 +304,7 @@ def _create_db_records(
                 "raw_data": item.get("raw_data"),
                 "tags": resource_service.normalize_tags(item.get("tags", [])),
                 "data_updated_at": datetime.now(),
+                "created_by": created_by,
             }
             batch.append(Resource(**data))
             stats["resources_created"] += 1
@@ -329,6 +328,7 @@ def full_batch_import(
     zip_bytes: bytes,
     skip_vector: bool = False,
     task_id: Optional[str] = None,
+    created_by: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     全量批量导入：三阶段处理（预复制文件 → 快速DB入库 → 向量同步）。
@@ -421,6 +421,7 @@ def full_batch_import(
             source_id,
             stats,
             task_id=task_id,
+            created_by=created_by,
         )
         db.commit()
         logger.info("Phase 2 完成: %d 个分组, %d 个资源", stats["groups_created"], stats["resources_created"])

@@ -5,14 +5,16 @@ POST /api/upload?type=component|icon|illus|image|file
 
 import json
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query
-from starlette.requests import Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from starlette.requests import Request as StarletteRequest
 from starlette.datastructures import UploadFile
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.enums import ResourceType
 from app.services import upload_service
+from app.services import operation_log_service
+from app.services.operator import get_operator
 from app.schemas.upload import BatchUploadResponse
 from app.config import settings
 
@@ -134,6 +136,18 @@ async def batch_upload(
         items=items_list,
         source_id=source_id,
         created_by=created_by,
+    )
+
+    account, op_name = get_operator(request)
+    operation_log_service.create_log(
+        db,
+        source_id=source_id,
+        resource_type=int(resource_type),
+        operator=op_name,
+        operator_account=account,
+        action="batch_upload",
+        target_type="resource",
+        detail={"count": result.get("count", 0), "type": type},
     )
 
     return BatchUploadResponse(**result)

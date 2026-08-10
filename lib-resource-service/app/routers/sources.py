@@ -12,6 +12,9 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import SessionLocal, get_db
 from app.services import source_service, import_service, import_task_registry, vector_sync_service
+from app.services import operation_log_service
+from app.services.operator import get_operator
+from app.services.user_service import resolve_display_names
 from app.enums import ResourceType
 from app.clients import vector_client
 
@@ -20,7 +23,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sources", tags=["来源管理"])
 
 
-def _format_source(s):
+def _format_source(s, display_map=None):
+    def _display(val):
+        if not val:
+            return val
+        if display_map:
+            return display_map.get(val, val)
+        return val
     return {
         "id": s.id,
         "name": s.name,
@@ -28,6 +37,8 @@ def _format_source(s):
         "is_sync_source": s.is_sync_source,
         "config": s.config,
         "is_active": s.is_active,
+        "created_by": _display(s.created_by),
+        "updated_by": _display(s.updated_by),
         "created_at": int(s.created_at.timestamp() * 1000) if s.created_at else None,
         "updated_at": int(s.updated_at.timestamp() * 1000) if s.updated_at else None,
     }
@@ -48,7 +59,12 @@ def list_sources(
             raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
     
     sources = source_service.get_sources(db, resource_type=resource_type_int, is_active=is_active)
-    return {"items": [_format_source(s) for s in sources]}
+    accounts = set()
+    for s in sources:
+        if s.created_by: accounts.add(s.created_by)
+        if s.updated_by: accounts.add(s.updated_by)
+    display_map = resolve_display_names(db, list(accounts))
+    return {"items": [_format_source(s, display_map) for s in sources]}
 
 
 @router.get("/trash")
@@ -65,7 +81,12 @@ def list_trash_sources(
             raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
     
     sources = source_service.get_deleted_sources(db, resource_type=resource_type_int)
-    return {"items": [_format_source(s) for s in sources]}
+    accounts = set()
+    for s in sources:
+        if s.created_by: accounts.add(s.created_by)
+        if s.updated_by: accounts.add(s.updated_by)
+    display_map = resolve_display_names(db, list(accounts))
+    return {"items": [_format_source(s, display_map) for s in sources]}
 
 
 @router.get("/{source_id}")
@@ -74,11 +95,12 @@ def get_source(source_id: int, db: Session = Depends(get_db)):
     source = source_service.get_source_by_id(db, source_id)
     if not source:
         raise HTTPException(status_code=404, detail="来源不存在")
-    return _format_source(source)
+    display_map = resolve_display_names(db, [x for x in [source.created_by, source.updated_by] if x])
+    return _format_source(source, display_map)
 
 
 @router.post("")
-def create_source(data: dict, db: Session = Depends(get_db)):
+def create_source(data: dict, request: Request, db: Session = Depends(get_db)):
     """创建来源"""
     if "type" not in data:
         raise HTTPException(status_code=400, detail="type is required")
@@ -88,36 +110,73 @@ def create_source(data: dict, db: Session = Depends(get_db)):
     except KeyError:
         raise HTTPException(status_code=400, detail=f"未知资源类型: {data['type']}")
     
+    account, name = get_operator(request)
     create_data = {
         "name": data.get("name"),
         "resource_type": int(resource_type),
         "is_sync_source": data.get("is_sync_source", 0),
         "config": data.get("config"),
         "is_active": data.get("is_active", 1),
+        "created_by": account,
+        "updated_by": account,
     }
     
     try:
         source = source_service.create_source(db, create_data)
-        return _format_source(source)
+        operation_log_service.create_log(
+            db,
+            source_id=source.id,
+            resource_type=int(resource_type),
+            operator=name,
+            operator_account=account,
+            action="create",
+            target_type="source",
+            target_id=source.id,
+            target_name=source.name,
+        )
+        display_map = resolve_display_names(db, [account])
+        return _format_source(source, display_map)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.put("/{source_id}")
-def update_source(source_id: int, data: dict, db: Session = Depends(get_db)):
+def update_source(source_id: int, data: dict, request: Request, db: Session = Depends(get_db)):
     """更新来源"""
+    account, name = get_operator(request)
+    if "name" in data:
+        data["updated_by"] = account
     try:
         source = source_service.update_source(db, source_id, data)
         if not source:
             raise HTTPException(status_code=404, detail="来源不存在")
-        return _format_source(source)
+        operation_log_service.create_log(
+            db,
+            source_id=source.id,
+            resource_type=source.resource_type,
+            operator=name,
+            operator_account=account,
+            action="update",
+            target_type="source",
+            target_id=source.id,
+            target_name=source.name,
+            detail={"fields": list(data.keys())},
+        )
+        display_map = resolve_display_names(db, [x for x in [source.created_by, source.updated_by] if x])
+        return _format_source(source, display_map)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/{source_id}")
-def delete_source(source_id: int, db: Session = Depends(get_db)):
+def delete_source(source_id: int, request: Request, db: Session = Depends(get_db)):
     """软删除来源（移入回收站），并同步删除关联资源的向量数据"""
+    source = source_service.get_source_by_id(db, source_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="来源不存在")
+    s_name = source.name
+    s_type = source.resource_type
+
     result = source_service.delete_source(db, source_id)
     if result is None:
         raise HTTPException(status_code=404, detail="来源不存在")
@@ -131,11 +190,25 @@ def delete_source(source_id: int, db: Session = Depends(get_db)):
         except Exception as e:
             logger.warning("删除来源时向量批量删除异常 (source_id=%s, type=%s): %s", source_id, vec_type, e)
 
+    account, name = get_operator(request)
+    operation_log_service.create_log(
+        db,
+        source_id=source_id,
+        resource_type=s_type,
+        operator=name,
+        operator_account=account,
+        action="delete",
+        target_type="source",
+        target_id=source_id,
+        target_name=s_name,
+        detail={"deleted_resources": len(deleted_ids)},
+    )
+
     return {"message": "已移入回收站"}
 
 
 @router.post("/{source_id}/restore")
-def restore_source(source_id: int, db: Session = Depends(get_db)):
+def restore_source(source_id: int, request: Request, db: Session = Depends(get_db)):
     """从回收站恢复来源，并重新 ingest 关联资源的向量数据"""
     result = source_service.restore_source(db, source_id)
     if result is None:
@@ -157,7 +230,22 @@ def restore_source(source_id: int, db: Session = Depends(get_db)):
         except Exception as e:
             logger.warning("恢复来源时向量重新入库异常 (source_id=%s): %s", source_id, e)
 
-    return _format_source(source)
+    account, name = get_operator(request)
+    operation_log_service.create_log(
+        db,
+        source_id=source_id,
+        resource_type=source.resource_type,
+        operator=name,
+        operator_account=account,
+        action="restore",
+        target_type="source",
+        target_id=source.id,
+        target_name=source.name,
+        detail={"restored_resources": len(restored_ids)},
+    )
+
+    display_map = resolve_display_names(db, [x for x in [source.created_by, source.updated_by] if x])
+    return _format_source(source, display_map)
 
 
 @router.delete("/{source_id}/purge")
@@ -182,8 +270,8 @@ def purge_source_data(source_id: int, db: Session = Depends(get_db)):
 @router.post("/{source_id}/import")
 async def full_batch_import(
     source_id: int,
+    request: Request,
     type: str = Query(..., description="资源类型名，如 icon、illus 等"),
-    request: Request = None,
     db: Session = Depends(get_db),
 ):
     """全量批量导入：上传 ZIP 包，在指定来源下递归创建分组及资源。
@@ -210,6 +298,9 @@ async def full_batch_import(
     if not zip_bytes:
         raise HTTPException(status_code=400, detail="未接收到文件内容")
 
+    # 提取操作人信息（在请求线程中，传入后台线程）
+    account, op_name = get_operator(request)
+
     # 创建任务
     task = import_task_registry.create_task(source_id, type)
 
@@ -223,15 +314,52 @@ async def full_batch_import(
                 resource_type=resource_type,
                 zip_bytes=zip_bytes,
                 task_id=task.task_id,
+                created_by=account,
+            )
+            operation_log_service.create_log(
+                import_db,
+                source_id=source_id,
+                resource_type=int(resource_type),
+                operator=op_name,
+                operator_account=account,
+                action="batch_import",
+                target_type="resource",
+                detail={
+                    "task_id": task.task_id,
+                    "type": type,
+                    "status": "success",
+                    "groups_created": import_task_registry.get_task(task.task_id).groups_created,
+                    "resources_created": import_task_registry.get_task(task.task_id).resources_created,
+                },
             )
         except import_service.ImportCancelled:
             import_task_registry.update_task(
                 task.task_id, status="cancelled", phase_label="已取消"
             )
+            operation_log_service.create_log(
+                import_db,
+                source_id=source_id,
+                resource_type=int(resource_type),
+                operator=op_name,
+                operator_account=account,
+                action="batch_import",
+                target_type="resource",
+                detail={"task_id": task.task_id, "type": type, "status": "cancelled"},
+            )
             logger.info("导入已取消: task=%s", task.task_id)
         except Exception as e:
             import_task_registry.update_task(
                 task.task_id, status="failed", message=str(e), phase_label="失败"
+            )
+            operation_log_service.create_log(
+                import_db,
+                source_id=source_id,
+                resource_type=int(resource_type),
+                operator=op_name,
+                operator_account=account,
+                action="batch_import",
+                target_type="resource",
+                detail={"task_id": task.task_id, "type": type, "status": "failed", "message": str(e)},
             )
             logger.exception("导入失败: task=%s, source_id=%s, type=%s", task.task_id, source_id, type)
         finally:

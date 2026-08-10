@@ -4,6 +4,7 @@ import { Button, Input, Select, message, Progress, Image, Tooltip, Upload, Spin 
 import { ArrowLeftOutlined, DeleteOutlined, FileZipOutlined, PlusOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons'
 import JSZip from 'jszip'
 import { api, Source, GroupNode } from '../api'
+import { getUserInfo } from '../utils/auth'
 
 interface ZipItem {
   uid: string
@@ -603,6 +604,13 @@ export default function ResourceUpload() {
         raw_data: item.raw_data,
       }))))
       formData.append('source_id', String(sourceId))
+
+      let createdBy = ''
+      try {
+        const user = getUserInfo()
+        if (user?.account) createdBy = String(user.account)
+      } catch { /* ignore */ }
+      if (createdBy) formData.append('created_by', createdBy)
 
       setProgress(50)
 

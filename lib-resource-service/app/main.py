@@ -27,6 +27,8 @@ from app.models import search_app  # noqa: F401
 from app.models import search_log_filter  # noqa: F401
 from app.models import search_log_result  # noqa: F401
 from app.models import search_daily_stats  # noqa: F401
+from app.models import operation_log  # noqa: F401
+from app.models import user  # noqa: F401
 
 from app.routers import resources, upload
 from app.routers import vector_router, group
@@ -37,8 +39,10 @@ from app.routers import search_log
 from app.routers import search_app
 from app.routers import search_stats
 from app.routers import ai_enrich
+from app.routers import operation_log
 
 from app.middleware.search_log_middleware import SearchLogMiddleware
+from app.middleware.auth_middleware import AuthMiddleware
 
 # ===== 移除上传限制 =====
 # 修改 Starlette 的内存阈值，避免大文件上传时的临时文件问题
@@ -91,6 +95,9 @@ async def lifespan(app: FastAPI):
     # 增量补列（create_all 只建新表，不修改已有表结构）
     _ensure_column(engine, "vector_search_logs", "business_data", "JSON")
     _ensure_column(engine, "resources", "ai_description", "TEXT")
+    _ensure_column(engine, "resources", "updated_by", "VARCHAR(100)")
+    _ensure_column(engine, "resource_sources", "created_by", "VARCHAR(100)")
+    _ensure_column(engine, "resource_sources", "updated_by", "VARCHAR(100)")
 
     # 增量补索引（create_all 只建新表的索引，不补已有表）
     _ensure_index(engine, "resources", "idx_resources_type_source_deleted", "resource_type, source_id, is_deleted")
@@ -163,6 +170,7 @@ app.add_middleware(
 )
 
 app.add_middleware(SearchLogMiddleware)
+app.add_middleware(AuthMiddleware)
 
 # 注册各业务路由
 app.include_router(resources.router)
@@ -177,6 +185,7 @@ app.include_router(search_log.router)
 app.include_router(search_app.router)
 app.include_router(search_stats.router)
 app.include_router(ai_enrich.router)
+app.include_router(operation_log.router)
 
 # 静态文件服务：前端可通过 /static/{file_path} 直接访问上传文件
 if os.path.exists(settings.FILE_ROOT_DIR):

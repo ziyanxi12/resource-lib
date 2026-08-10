@@ -11,7 +11,7 @@ import logging
 import re
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Form, File, UploadFile, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,9 @@ from app.models.resource import Resource
 from app.services import resource_service, upload_service
 from app.services import vector_sync_service
 from app.services import image_meta_service
+from app.services import operation_log_service
+from app.services.operator import get_operator
+from app.services.user_service import resolve_display_names
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +70,7 @@ def get_tags(
 
 @router.post("/sync-vectors")
 def sync_vectors(
+    request: Request,
     type: str = Query(..., description="资源类型名，如 component、icon、illus、image、file"),
     source_id: Optional[int] = Query(None, description="来源ID筛选"),
     db: Session = Depends(get_db),
@@ -81,6 +85,19 @@ def sync_vectors(
         raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
     
     result = vector_sync_service.sync_vectors_by_type(db, resource_type, source_id)
+
+    account, name = get_operator(request)
+    operation_log_service.create_log(
+        db,
+        source_id=source_id,
+        resource_type=int(resource_type),
+        operator=name,
+        operator_account=account,
+        action="vector_sync",
+        target_type="resource",
+        detail={"type": type, "synced": result.get("synced"), "skipped": result.get("skipped")},
+    )
+
     return result
 
 
@@ -112,11 +129,17 @@ def list_resources(
         group_id=group_id,
     )
 
+    accounts = set()
+    for r in items:
+        if r.created_by: accounts.add(r.created_by)
+        if r.updated_by: accounts.add(r.updated_by)
+    display_map = resolve_display_names(db, list(accounts))
+
     return {
         "total": total,
         "page":  page,
         "limit": limit,
-        "items": [_fmt(r) for r in items],
+        "items": [_fmt(r, display_map) for r in items],
     }
 
 
@@ -127,7 +150,8 @@ def get_resource(resource_id: int, db: Session = Depends(get_db)):
     if not resource:
         raise HTTPException(status_code=404, detail="资源不存在")
     _ensure_dimensions(db, resource)
-    return _fmt(resource)
+    display_map = resolve_display_names(db, [x for x in [resource.created_by, resource.updated_by] if x])
+    return _fmt(resource, display_map)
 
 
 def _ensure_dimensions(db: Session, resource: Resource) -> None:
@@ -152,6 +176,7 @@ def _ensure_dimensions(db: Session, resource: Resource) -> None:
 @router.put("/batch-move")
 def batch_move_to_group(
     req: BatchMoveRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """批量移动资源到指定分组，并同步向量库 metadata"""
@@ -182,12 +207,31 @@ def batch_move_to_group(
             except Exception as e:
                 logger.warning("向量 metadata 更新异常 (批量移动 type=%s): %s", req.type, e)
 
+    account, name = get_operator(request)
+    source_id_val = None
+    if moved_ids:
+        from app.models.resource import Resource as ResModel
+        res = db.query(ResModel).filter(ResModel.id == moved_ids[0]).first()
+        if res:
+            source_id_val = res.source_id
+    operation_log_service.create_log(
+        db,
+        source_id=source_id_val,
+        resource_type=int(resource_type),
+        operator=name,
+        operator_account=account,
+        action="batch_move",
+        target_type="resource",
+        detail={"count": count, "target_group_id": req.group_id, "ids": moved_ids},
+    )
+
     return {"moved": count}
 
 
 @router.put("/{resource_id}")
 async def update_resource(
     resource_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     name: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
@@ -335,14 +379,32 @@ async def update_resource(
 
     logger.debug("数据修改完成: resource_id=%d, data_updated_at=%s", resource_id, resource.data_updated_at)
 
+    account, name = get_operator(request)
+    resource.updated_by = account
+    db.commit()
+
+    operation_log_service.create_log(
+        db,
+        source_id=resource.source_id,
+        resource_type=resource.resource_type,
+        operator=name,
+        operator_account=account,
+        action="update",
+        target_type="resource",
+        target_id=resource.id,
+        target_name=resource.name,
+        detail={"fields": list(update_data.keys()) + (["tags"] if tags_list is not None else [])},
+    )
+
     return {"message": "更新成功", "id": resource_id}
 
 
 @router.post("/{resource_id}/understand")
 def understand_resource(
     resource_id: int,
+    request: Request,
     db: Session = Depends(get_db),
-    request: Optional[UnderstandRequest] = None,
+    request_body: Optional[UnderstandRequest] = None,
 ):
     """
     对资源的预览图生成语义描述（图片类型用原图，其他类型用缩略图）。
@@ -354,14 +416,31 @@ def understand_resource(
         request: 请求体，包含 prompt（可选，引导生成方向）和 image_base64
                  （可选，前端构造的图片 base64，不含 data: 前缀；为空时后端从磁盘读取兜底）
     """
-    prompt = request.prompt if request else None
-    image_base64 = request.image_base64 if request else None
+    prompt = request_body.prompt if request_body else None
+    image_base64 = request_body.image_base64 if request_body else None
     description = upload_service.understand_image(db, resource_id, prompt, image_base64=image_base64)
+
+    account, name = get_operator(request)
+    resource = resource_service.get_resource_by_id(db, resource_id)
+    operation_log_service.create_log(
+        db,
+        source_id=resource.source_id if resource else None,
+        resource_type=resource.resource_type if resource else None,
+        operator=name,
+        operator_account=account,
+        action="ai_understand",
+        target_type="resource",
+        target_id=resource_id,
+        target_name=resource.name if resource else None,
+        detail={"prompt": prompt},
+    )
+
     return {"id": resource_id, "description": description}
 
 
 @router.delete("/batch")
 def batch_delete_resources(
+    request: Request,
     type: str = Query(..., description="资源类型名"),
     source_id: Optional[int] = Query(None, description="来源ID筛选"),
     group_id: Optional[int] = Query(None, description="分组ID筛选"),
@@ -389,12 +468,25 @@ def batch_delete_resources(
             except Exception as e:
                 logger.warning("向量批量删除异常 (type=%s): %s", type, e)
 
+    account, name = get_operator(request)
+    operation_log_service.create_log(
+        db,
+        source_id=source_id,
+        resource_type=resource_type_int,
+        operator=name,
+        operator_account=account,
+        action="batch_clear" if group_id else "batch_delete",
+        target_type="resource",
+        detail={"count": count, "filters": {"type": type, "source_id": source_id, "group_id": group_id}},
+    )
+
     return {"deleted": count}
 
 
 @router.delete("/batch-ids")
 def batch_delete_by_ids(
     req: BatchIdsRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """按 ID 列表批量软删除资源"""
@@ -414,11 +506,29 @@ def batch_delete_by_ids(
             except Exception as e:
                 logger.warning("向量批量删除异常 (type=%s): %s", req.type, e)
 
+    account, name = get_operator(request)
+    source_id_val = None
+    if deleted_ids:
+        from app.models.resource import Resource as ResModel
+        res = db.query(ResModel).filter(ResModel.id == deleted_ids[0]).first()
+        if res:
+            source_id_val = res.source_id
+    operation_log_service.create_log(
+        db,
+        source_id=source_id_val,
+        resource_type=resource_type_int,
+        operator=name,
+        operator_account=account,
+        action="batch_delete",
+        target_type="resource",
+        detail={"count": count, "ids": req.ids},
+    )
+
     return {"deleted": count}
 
 
 @router.delete("/{resource_id}")
-def delete_resource(resource_id: int, db: Session = Depends(get_db)):
+def delete_resource(resource_id: int, request: Request, db: Session = Depends(get_db)):
     """软删除资源"""
     resource = resource_service.get_resource_by_id(db, resource_id)
     if not resource:
@@ -426,6 +536,8 @@ def delete_resource(resource_id: int, db: Session = Depends(get_db)):
 
     resource_type = resource.resource_type
     rid = resource.id
+    r_name = resource.name
+    r_source_id = resource.source_id
 
     ok = resource_service.soft_delete_resource(db, resource_id)
     if not ok:
@@ -439,6 +551,19 @@ def delete_resource(resource_id: int, db: Session = Depends(get_db)):
                 vector_client.delete(vec_type, str(rid))
             except Exception as e:
                 logger.warning("向量删除异常 (resource_id=%s): %s", rid, e)
+
+    account, name = get_operator(request)
+    operation_log_service.create_log(
+        db,
+        source_id=r_source_id,
+        resource_type=resource_type,
+        operator=name,
+        operator_account=account,
+        action="delete",
+        target_type="resource",
+        target_id=rid,
+        target_name=r_name,
+    )
 
     return {"message": "删除成功", "id": resource_id}
 
@@ -454,7 +579,13 @@ def _to_public_url(path: Optional[str]) -> Optional[str]:
     return f"{settings.ROOT_PATH}/static/{path}"
 
 
-def _fmt(r) -> dict:
+def _fmt(r, display_map=None) -> dict:
+    def _display(val):
+        if not val:
+            return val
+        if display_map:
+            return display_map.get(val, val)
+        return val
     return {
         "id": r.id,
         "resource_type": r.resource_type,
@@ -475,7 +606,8 @@ def _fmt(r) -> dict:
         "raw_data": r.raw_data,
         "group_id": r.group_id,
         "group_path": r.group.real_path if r.group else None,
-        "created_by": r.created_by,
+        "created_by": _display(r.created_by),
+        "updated_by": _display(r.updated_by),
         "created_at": int(r.created_at.timestamp() * 1000) if r.created_at else None,
         "updated_at": int(r.updated_at.timestamp() * 1000) if r.updated_at else None,
         "data_updated_at": int(r.data_updated_at.timestamp() * 1000) if r.data_updated_at else None,

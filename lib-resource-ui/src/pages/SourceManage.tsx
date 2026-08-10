@@ -306,6 +306,9 @@ function SourcePanel() {
                     <div style={{ fontSize: 13, color: '#64748b' }}>ID: {item.id}</div>
                     <div style={{ fontWeight: 500 }}>{item.name}</div>
                     <div style={{ fontSize: 12, color: '#94a3b8' }}>{getTypeLabel(item.resource_type)}</div>
+                    {item.created_by && (
+                      <div style={{ fontSize: 11, color: '#cbd5e1' }}>创建人: {item.created_by}</div>
+                    )}
                   </div>
                   <Button 
                     type="text" 

@@ -18,6 +18,7 @@ export interface Resource {
   group_id: number | null
   group_path: string | null
   created_by: string | null
+  updated_by: string | null
   created_at: number | null
   updated_at: number | null
   data_updated_at: number | null
@@ -41,6 +42,8 @@ export interface Source {
   is_sync_source: boolean
   config: string | null
   is_active: boolean
+  created_by: string | null
+  updated_by: string | null
   created_at: number
   updated_at: number
 }

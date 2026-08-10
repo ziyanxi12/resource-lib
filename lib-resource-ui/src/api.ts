@@ -1,12 +1,20 @@
 import type { Resource } from './types'
+import { getEncryptedUserData } from './utils/auth'
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
 
 export const staticUrl = (path: string) => `${BASE}/static/${path}`
 
 async function request(url: string, options?: RequestInit) {
+  const headers: Record<string, string> = { ...(options?.headers as Record<string, string>) }
+  try {
+    const encrypted = await getEncryptedUserData()
+    if (encrypted) headers['X-User-Data'] = encrypted
+  } catch { /* ignore */ }
+
   const res = await fetch(`${BASE}${url}`, {
     ...options,
+    headers,
     credentials: 'include',
   })
   if (!res.ok) {
@@ -23,6 +31,8 @@ export interface Source {
   is_sync_source: boolean
   config: string | null
   is_active: boolean
+  created_by: string | null
+  updated_by: string | null
   created_at: number
   updated_at: number
 }
@@ -41,6 +51,20 @@ export interface SearchApp {
   is_active: number
   created_at: number
   updated_at: number
+}
+
+export interface OperationLog {
+  id: number
+  source_id: number | null
+  resource_type: number | null
+  operator: string
+  operator_account: string
+  action: string
+  target_type: string
+  target_id: number | null
+  target_name: string | null
+  detail: Record<string, unknown> | null
+  created_at: number | null
 }
 
 export const api = {
@@ -101,6 +125,13 @@ export const api = {
       xhr.timeout = opts?.timeoutMs ?? 2 * 60 * 1000
 
       if (opts?.getXhr) opts.getXhr(xhr)
+
+      getEncryptedUserData().then(encrypted => {
+        if (encrypted) xhr.setRequestHeader('X-User-Data', encrypted)
+        xhr.send(formData)
+      }).catch(() => {
+        xhr.send(formData)
+      })
 
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && opts?.onProgress) {
@@ -383,6 +414,22 @@ export const api = {
 
   refreshSearchStats: (target_date?: string): Promise<{ message: string; date?: string; rows?: number; dates?: number }> =>
     request(`/api/search-stats/refresh${target_date ? `?target_date=${target_date}` : ''}`, { method: 'POST' }),
+
+  getOperationLogs: (params: {
+    source_id: number
+    page?: number
+    limit?: number
+    action?: string
+    target_type?: string
+  }): Promise<{ items: OperationLog[]; total: number; page: number; limit: number }> => {
+    const q = new URLSearchParams()
+    q.set('source_id', String(params.source_id))
+    if (params.page) q.set('page', String(params.page))
+    if (params.limit) q.set('limit', String(params.limit))
+    if (params.action) q.set('action', params.action)
+    if (params.target_type) q.set('target_type', params.target_type)
+    return request(`/api/operation-logs?${q}`)
+  },
 }
 
 export interface GroupNode {

@@ -67,6 +67,10 @@ class Settings:
     SEARCH_APPS_AUTO_IMPORT: bool = os.getenv("SEARCH_APPS_AUTO_IMPORT", "false").lower() == "true"
     SEARCH_APPS_IMPORT_FILE: str = os.getenv("SEARCH_APPS_IMPORT_FILE", "./storage/search_apps.json")
 
+    # ── 用户认证加密 ──────────────────────────────────────────
+    # AES-256-CBC 密钥（32字节 base64），前后端必须一致
+    AUTH_AES_KEY: str = os.getenv("AUTH_AES_KEY", "")
+
     # ── Mock 开关 ─────────────────────────────────────────────
     # true = 不调用真实外部 API，全部返回模拟数据，便于本地开发
     USE_MOCK: bool = os.getenv("USE_MOCK", "true").lower() == "true"

@@ -414,6 +414,8 @@ function DetailDrawer({ item, open, onClose, onSaved, type }: {
           <Field label="创建时间">{formatDateTime(item.created_at)}</Field>
           <Field label="数据库更新时间">{formatDateTime(item.updated_at)}</Field>
           <Field label="向量库更新时间">{formatDateTime(item.vector_updated_at)}</Field>
+          <Field label="创建人">{item.created_by || emptyCell}</Field>
+          <Field label="编辑人">{item.updated_by || emptyCell}</Field>
         </div>
       </div>
     </Drawer>

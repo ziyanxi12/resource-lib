@@ -13,6 +13,8 @@ import ResourceOverview from './pages/ResourceOverview'
 import ResourceManage from './pages/ResourceManage'
 import ResourceUpload from './pages/ResourceUpload'
 import SourceManage from './pages/SourceManage'
+import { AuthGuard } from './components/AuthGuard'
+import { getUserInfo, logout } from './utils/auth'
 
 type PageKey = 'overview' | 'component' | 'icon' | 'illus' | 'image' | 'file'
 
@@ -73,10 +75,11 @@ function NavItem({
   )
 }
 
-function AppLayout() {
+function AppContent() {
   const location = useLocation()
   const navigate = useNavigate()
   const uploadPage = isUploadPage(location.pathname)
+  const user = getUserInfo()
 
   const pathParts = location.pathname.split('/').filter(Boolean)
   const currentNavKey = NAV.find(item => item.path === `/${pathParts[0] || ''}`)?.key || 'overview'
@@ -156,11 +159,21 @@ function AppLayout() {
             style={{
               padding: '14px 20px',
               borderTop: '1px solid rgba(255,255,255,0.06)',
-              fontSize: 11,
-              color: '#334155',
             }}
           >
-            v{__APP_VERSION__}
+            {user && (
+              <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
+                {user.nickName}
+              </div>
+            )}
+            <div style={{ fontSize: 11, color: '#334155', display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span>v{__APP_VERSION__}</span>
+              {user && (
+                <span style={{ color: '#475569', cursor: 'pointer' }} onClick={() => logout()}>
+                  退出登录
+                </span>
+              )}
+            </div>
           </div>
         </aside>
       )}
@@ -188,6 +201,14 @@ function AppLayout() {
         </div>
       </main>
     </div>
+  )
+}
+
+function AppLayout() {
+  return (
+    <AuthGuard>
+      <AppContent />
+    </AuthGuard>
   )
 }
 

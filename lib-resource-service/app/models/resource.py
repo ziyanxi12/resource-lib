@@ -31,6 +31,7 @@ class Resource(Base):
     raw_data        = Column(JSON, nullable=True, comment="原始数据 JSON")
     group_id        = Column(Integer, ForeignKey("resource_groups.id", ondelete="SET NULL"), nullable=True, comment="所属分组ID")
     created_by      = Column(String(100), nullable=True)
+    updated_by      = Column(String(100), nullable=True, comment="最后编辑人")
     is_deleted      = Column(Integer, nullable=False, default=0)
     created_at      = Column(DateTime, nullable=False, default=datetime.now)
     updated_at      = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
@@ -52,6 +53,8 @@ class ResourceSource(Base):
     is_sync_source = Column(Integer, default=0, comment="是否同步来源")
     config         = Column(JSON, nullable=True, comment="来源配置（API 地址、认证信息等）")
     is_active      = Column(Integer, default=1, comment="是否启用：1=正常 0=已删除(回收站)")
+    created_by     = Column(String(100), nullable=True, comment="创建人")
+    updated_by     = Column(String(100), nullable=True, comment="最后编辑人")
     created_at     = Column(DateTime, nullable=False, default=datetime.now)
     updated_at     = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
 
