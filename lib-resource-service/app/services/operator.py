@@ -8,27 +8,27 @@ class OperatorInfo:
     新代码可直接 op = get_operator(request); op.dept
     """
 
-    __slots__ = ("account", "dept", "deptcode", "nick_name", "role_id", "roles", "uid", "uuid")
+    __slots__ = ("account", "dept", "dept_code", "nick_name", "role_id", "roles", "uid", "user_id")
 
     def __init__(
         self,
         account: str = "unknown",
-        dept: str = "",
-        deptcode: str = "",
+        dept: list = None,
+        dept_code: list = None,
         nick_name: str = "unknown",
         role_id: str = "",
-        roles: str = "",
-        uid: str = "",
-        uuid: str = "",
+        roles: list = None,
+        uid: int = 0,
+        user_id: str = "",
     ):
         self.account = account
-        self.dept = dept
-        self.deptcode = deptcode
+        self.dept = dept or []
+        self.dept_code = dept_code or []
         self.nick_name = nick_name
         self.role_id = role_id
-        self.roles = roles
+        self.roles = roles or []
         self.uid = uid
-        self.uuid = uuid
+        self.user_id = user_id
 
     @property
     def name(self) -> str:

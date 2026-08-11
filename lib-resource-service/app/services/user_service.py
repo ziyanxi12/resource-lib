@@ -1,5 +1,5 @@
-import logging
 from datetime import datetime
+import logging
 from typing import List
 
 from sqlalchemy.orm import Session
@@ -41,23 +41,23 @@ def upsert_user(db: Session, user_data: dict) -> None:
         now = datetime.now()
         if existing:
             existing.dept = user_data.get("dept", existing.dept)
-            existing.deptcode = user_data.get("deptcode", existing.deptcode)
+            existing.dept_code = user_data.get("deptCode", existing.dept_code)
             existing.nick_name = user_data.get("nickName", existing.nick_name)
-            existing.role_id = user_data.get("roleId", existing.role_id)
+            existing.role_id = user_data.get("roleID", existing.role_id)
             existing.roles = user_data.get("roles", existing.roles)
             existing.uid = user_data.get("uid", existing.uid)
-            existing.uuid = user_data.get("uuid", existing.uuid)
+            existing.user_id = user_data.get("userID", existing.user_id)
             existing.last_login_at = now
         else:
             db.add(User(
                 account=account,
-                dept=user_data.get("dept", ""),
-                deptcode=user_data.get("deptcode", ""),
+                dept=user_data.get("dept", []),
+                dept_code=user_data.get("deptCode", []),
                 nick_name=user_data.get("nickName", ""),
-                role_id=user_data.get("roleId", ""),
-                roles=user_data.get("roles", ""),
-                uid=user_data.get("uid", ""),
-                uuid=user_data.get("uuid", ""),
+                role_id=user_data.get("roleID", ""),
+                roles=user_data.get("roles", []),
+                uid=user_data.get("uid", 0),
+                user_id=user_data.get("userID", ""),
                 last_login_at=now,
             ))
         db.commit()

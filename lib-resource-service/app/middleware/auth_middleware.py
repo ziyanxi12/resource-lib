@@ -57,13 +57,13 @@ class AuthMiddleware:
                 user_data = decrypt_user_data(encrypted)
                 operator = OperatorInfo(
                     account=user_data.get("account", "unknown"),
-                    dept=user_data.get("dept", ""),
-                    deptcode=user_data.get("deptcode", ""),
+                    dept=user_data.get("dept", []),
+                    dept_code=user_data.get("deptCode", []),
                     nick_name=user_data.get("nickName", "unknown"),
-                    role_id=user_data.get("roleId", ""),
-                    roles=user_data.get("roles", ""),
-                    uid=user_data.get("uid", ""),
-                    uuid=user_data.get("uuid", ""),
+                    role_id=user_data.get("roleID", ""),
+                    roles=user_data.get("roles", []),
+                    uid=user_data.get("uid", 0),
+                    user_id=user_data.get("userID", ""),
                 )
                 _executor.submit(_do_upsert, user_data)
             except Exception as e:

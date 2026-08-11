@@ -1,17 +1,17 @@
 const STORAGE_KEYS = [
-  'account', 'dept', 'deptcode', 'nickName',
-  'roleId', 'roles', 'uid', 'uuid',
+  'account', 'dept', 'deptCode', 'nickName',
+  'roleID', 'roles', 'uid', 'userID',
 ] as const
 
 export interface UserInfo {
   account: string
   dept: string[]
-  deptcode: string[]
+  deptCode: string[]
   nickName: string
-  roleId: string
-  roles: string
-  uid: string
-  uuid: string
+  roleID: string
+  roles: string[]
+  uid: number
+  userID: string
 }
 
 export function getUserInfo(): UserInfo | null {
@@ -19,15 +19,17 @@ export function getUserInfo(): UserInfo | null {
   const nickName = localStorage.getItem('nickName')
   if (!account || !nickName) return null
   try {
+    const uid = Number(localStorage.getItem('uid'))
+    if (!Number.isFinite(uid)) return null
     return {
       account,
       nickName,
       dept: JSON.parse(localStorage.getItem('dept') ?? '[]'),
-      deptcode: JSON.parse(localStorage.getItem('deptcode') ?? '[]'),
-      roleId: localStorage.getItem('roleId') ?? '',
-      roles: localStorage.getItem('roles') ?? '',
-      uid: localStorage.getItem('uid') ?? '',
-      uuid: localStorage.getItem('uuid') ?? '',
+      deptCode: JSON.parse(localStorage.getItem('deptCode') ?? '[]'),
+      roleID: localStorage.getItem('roleID') ?? '',
+      roles: JSON.parse(localStorage.getItem('roles') ?? '[]'),
+      uid,
+      userID: localStorage.getItem('userID') ?? '',
     }
   } catch {
     return null
@@ -46,9 +48,11 @@ export async function getEncryptedUserData(): Promise<string> {
 }
 
 export function redirectToLogin(): void {
+  const redirect = window.location.href
+  localStorage.setItem('login_redirect', redirect)
   window.location.href =
     '/signIn/index.html?model=web&redirect=' +
-    encodeURIComponent(window.location.href)
+    encodeURIComponent(redirect)
 }
 
 export function logout(): void {
