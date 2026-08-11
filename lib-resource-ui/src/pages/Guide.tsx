@@ -1,7 +1,6 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { Spin } from 'antd'
 import { marked } from 'marked'
-// @ts-ignore
-import guideContent from '../../../docs/USER_GUIDE.md?raw'
 
 marked.setOptions({
   breaks: true,
@@ -165,8 +164,25 @@ const css = `
 
 export default function Guide() {
   const containerRef = useRef<HTMLDivElement>(null)
+  const [html, setHtml] = useState('')
 
-  const html = useMemo(() => addHeadingIds(marked.parse(guideContent as string) as string), [])
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${import.meta.env.BASE_URL}USER_GUIDE.md`)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.text()
+      })
+      .then(text => {
+        if (cancelled) return
+        setHtml(addHeadingIds(marked.parse(text) as string))
+      })
+      .catch(() => {
+        if (cancelled) return
+        setHtml('<p style="color:#94a3b8;padding:32px">加载指南内容失败</p>')
+      })
+    return () => { cancelled = true }
+  }, [])
 
   const handleClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
@@ -184,7 +200,13 @@ export default function Guide() {
   return (
     <div ref={containerRef} style={{ height: '100%', overflowY: 'auto', background: '#fff' }}>
       <style>{css}</style>
-      <div className="guide-body" dangerouslySetInnerHTML={{ __html: html }} onClick={handleClick} />
+      {html ? (
+        <div className="guide-body" dangerouslySetInnerHTML={{ __html: html }} onClick={handleClick} />
+      ) : (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 200 }}>
+          <Spin tip="加载中..." />
+        </div>
+      )}
     </div>
   )
 }

@@ -393,7 +393,7 @@ async def update_resource(
         target_type="resource",
         target_id=resource.id,
         target_name=resource.name,
-        detail={"fields": list(update_data.keys()) + (["tags"] if tags_list is not None else [])},
+        detail={"fields": list(update_data.keys()) + (["tags"] if tags_list is not None else []), "group_id": resource.group_id},
     )
 
     return {"message": "更新成功", "id": resource_id}
@@ -538,6 +538,7 @@ def delete_resource(resource_id: int, request: Request, db: Session = Depends(ge
     rid = resource.id
     r_name = resource.name
     r_source_id = resource.source_id
+    r_group_id = resource.group_id
 
     ok = resource_service.soft_delete_resource(db, resource_id)
     if not ok:
@@ -563,6 +564,7 @@ def delete_resource(resource_id: int, request: Request, db: Session = Depends(ge
         target_type="resource",
         target_id=rid,
         target_name=r_name,
+        detail={"group_id": r_group_id},
     )
 
     return {"message": "删除成功", "id": resource_id}

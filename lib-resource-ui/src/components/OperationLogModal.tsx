@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Modal, List, Tag, Pagination, Spin, message } from 'antd'
+import { Modal, List, Tag, Spin, message } from 'antd'
 import dayjs from 'dayjs'
 import { api, OperationLog } from '../api'
 
@@ -27,20 +27,32 @@ const TARGET_TYPE_LABEL: Record<string, string> = {
 
 function formatLogText(log: OperationLog): string {
   const d = log.detail || {}
-  const name = log.target_name ? `「${log.target_name}」` : ''
   const typeLabel = TARGET_TYPE_LABEL[log.target_type] || log.target_type
+
+  const idStr = log.target_id != null ? String(log.target_id) : ''
+  const nameStr = log.target_name ?? ''
+
+  let subject: string
+  if (log.target_type === 'group') {
+    subject = `分组 ID: ${idStr || '?'} 分组名: ${nameStr || '?'}`
+  } else if (log.target_type === 'resource') {
+    const gid = d.group_id
+    subject = `资源 ID: ${idStr || '?'} 资源名: ${nameStr || '?'} 位于分组 ID: ${gid != null ? String(gid) : '无'}`
+  } else if (log.target_type === 'source') {
+    subject = `来源「${nameStr || '?'}」`
+  } else {
+    subject = `${typeLabel}「${nameStr}」`
+  }
 
   switch (log.action) {
     case 'create':
-      return `创建了${typeLabel}${name}`
+      return `创建了${subject}`
 
-    case 'update': {
-      const fields = d.fields as string[] | undefined
-      return `修改了${typeLabel}${name}${fields ? ` — 字段: ${fields.join(', ')}` : ''}`
-    }
+    case 'update':
+      return `修改了${subject}`
 
     case 'delete':
-      return `删除了${typeLabel}${name}`
+      return `删除了${subject}`
 
     case 'batch_delete': {
       const count = d.count ?? 0
@@ -49,13 +61,15 @@ function formatLogText(log: OperationLog): string {
 
     case 'batch_clear': {
       const count = d.count ?? 0
-      return `清空分组删除了 ${count} 个${typeLabel}`
+      const filters = d.filters as Record<string, unknown> | undefined
+      const gid = filters?.group_id
+      return `清空分组 ID: ${gid ?? '?'} — 删除了 ${count} 个${typeLabel}`
     }
 
     case 'batch_move': {
       const count = d.count ?? 0
       const gid = d.target_group_id
-      return `批量移动了 ${count} 个${typeLabel}到分组 #${gid ?? '?'}`
+      return `批量移动了 ${count} 个${typeLabel}到分组 ID: ${gid ?? '?'}`
     }
 
     case 'batch_upload': {
@@ -68,7 +82,7 @@ function formatLogText(log: OperationLog): string {
       const gc = d.groups_created
       const rc = d.resources_created
       if (status === 'success') {
-        return `全量导入完成 — 分组: ${gc ?? 0}, 资源: ${rc ?? 0}`
+        return `全量导入完成 — 分组 ${gc ?? 0} 个, 资源 ${rc ?? 0} 个`
       }
       if (status === 'cancelled') {
         return `全量导入已取消`
@@ -83,10 +97,10 @@ function formatLogText(log: OperationLog): string {
       return `取消了导入任务 (task: ${d.task_id ?? ''})`
 
     case 'move':
-      return `移动了${typeLabel}${name}`
+      return `移动了${subject}`
 
     case 'restore':
-      return `恢复了${typeLabel}${name}`
+      return `恢复了${subject}`
 
     case 'vector_sync': {
       const synced = d.synced ?? 0
@@ -95,10 +109,10 @@ function formatLogText(log: OperationLog): string {
     }
 
     case 'ai_understand':
-      return `生成了${typeLabel}${name}的语义描述`
+      return `生成了${subject}的语义描述`
 
     default:
-      return `${log.action} ${typeLabel}${name}`
+      return `${log.action} ${subject}`
   }
 }
 
@@ -110,9 +124,6 @@ interface Props {
 
 export default function OperationLogModal({ sourceId, open, onClose }: Props) {
   const [items, setItems] = useState<OperationLog[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState(20)
   const [loading, setLoading] = useState(false)
 
   const load = useCallback(async () => {
@@ -121,28 +132,19 @@ export default function OperationLogModal({ sourceId, open, onClose }: Props) {
     try {
       const data = await api.getOperationLogs({
         source_id: sourceId,
-        page,
-        limit,
+        limit: 10000,
       })
       setItems(data.items)
-      setTotal(data.total)
     } catch {
       message.error('加载操作日志失败')
     } finally {
       setLoading(false)
     }
-  }, [sourceId, page, limit])
-
-  useEffect(() => {
-    if (open && sourceId) {
-      setPage(1)
-      load()
-    }
-  }, [open, sourceId])
+  }, [sourceId])
 
   useEffect(() => {
     if (open && sourceId) load()
-  }, [page, limit, open, sourceId, load])
+  }, [open, sourceId, load])
 
   return (
     <Modal
@@ -154,47 +156,33 @@ export default function OperationLogModal({ sourceId, open, onClose }: Props) {
       destroyOnClose
     >
       <Spin spinning={loading}>
-        <List
-          dataSource={items}
-          locale={{ emptyText: '暂无操作记录' }}
-          renderItem={(log) => {
-            const meta = ACTION_META[log.action]
-            return (
-              <List.Item style={{ padding: '12px 0', alignItems: 'flex-start' }}>
-                <div style={{ width: '100%' }}>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
-                    {meta && <Tag color={meta.color} style={{ margin: 0 }}>{meta.label}</Tag>}
-                    <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
-                      {log.operator} {log.operator_account}
-                    </span>
-                    <span style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.6 }}>
-                      {formatLogText(log)}
-                    </span>
+        <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+          <List
+            dataSource={items}
+            locale={{ emptyText: '暂无操作记录' }}
+            renderItem={(log) => {
+              const meta = ACTION_META[log.action]
+              return (
+                <List.Item style={{ padding: '12px 0', alignItems: 'flex-start' }}>
+                  <div style={{ width: '100%' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                      {meta && <Tag color={meta.color} style={{ margin: 0 }}>{meta.label}</Tag>}
+                      <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
+                        {log.operator} {log.operator_account}
+                      </span>
+                      <span style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.6 }}>
+                        {formatLogText(log)}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>
+                      {log.created_at ? dayjs(log.created_at).format('YYYY-MM-DD HH:mm:ss') : '-'}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>
-                    {log.created_at ? dayjs(log.created_at).format('YYYY-MM-DD HH:mm:ss') : '-'}
-                  </div>
-                </div>
-              </List.Item>
-            )
-          }}
-        />
-
-        {total > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-            <Pagination
-              current={page}
-              pageSize={limit}
-              total={total}
-              onChange={setPage}
-              onShowSizeChange={(_, size) => { setPage(1); setLimit(size) }}
-              pageSizeOptions={['10', '20', '50']}
-              showTotal={t => `共 ${t} 条`}
-              showSizeChanger
-              size="small"
-            />
-          </div>
-        )}
+                </List.Item>
+              )
+            }}
+          />
+        </div>
       </Spin>
     </Modal>
   )

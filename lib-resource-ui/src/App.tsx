@@ -17,7 +17,7 @@ import ResourceManage from './pages/ResourceManage'
 import ResourceUpload from './pages/ResourceUpload'
 import SourceManage from './pages/SourceManage'
 import Error from './pages/Error'
-import { AuthGuard } from './components/AuthGuard'
+import { AuthGuard, useDenied } from './components/AuthGuard'
 import { getUserInfo, logout } from './utils/auth'
 
 type PageKey = 'home' | 'overview' | 'component' | 'icon' | 'illus' | 'image' | 'file'
@@ -85,6 +85,7 @@ function AppLayout() {
   const navigate = useNavigate()
   const uploadPage = isUploadPage(location.pathname)
   const user = getUserInfo()
+  const denied = useDenied()
 
   const pathParts = location.pathname.split('/').filter(Boolean)
   const currentNavKey = NAV.find(item => item.path === `/${pathParts[0] || ''}`)?.key || 'overview'
@@ -197,15 +198,16 @@ function AppLayout() {
         }}
       >
         <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/home" replace />} />
-            <Route path="/home" element={<Guide />} />
-            <Route path="/overview" element={<ResourceOverview />} />
-            <Route path="/error" element={<Error />} />
-            <Route path="/source-manage" element={<SourceManage />} />
-            <Route path="/:type" element={<ResourceManage />} />
-            <Route path="/:type/upload" element={<ResourceUpload />} />
-          </Routes>
+          {denied ? <Error /> : (
+            <Routes>
+              <Route path="/" element={<Navigate to="/home" replace />} />
+              <Route path="/home" element={<Guide />} />
+              <Route path="/overview" element={<ResourceOverview />} />
+              <Route path="/source-manage" element={<SourceManage />} />
+              <Route path="/:type" element={<ResourceManage />} />
+              <Route path="/:type/upload" element={<ResourceUpload />} />
+            </Routes>
+          )}
         </div>
       </main>
     </div>

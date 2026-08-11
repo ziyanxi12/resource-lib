@@ -9,7 +9,7 @@ export default function Error() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        minHeight: '100vh',
+        minHeight: '100%',
         background: '#f1f5f9',
         gap: 16,
       }}

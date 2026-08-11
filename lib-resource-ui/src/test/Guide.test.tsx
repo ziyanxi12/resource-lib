@@ -9,10 +9,12 @@ vi.mock('marked', () => ({
   },
 }))
 
-// mock ?raw 导入
-vi.mock('../../../docs/USER_GUIDE.md?raw', () => ({
-  default: '# 标题1\n\n## 1. 系统简介\n\n正文内容\n\n## 2. 登录\n\n<a href="#1-系统简介">系统简介</a>',
-}))
+// mock fetch 返回测试用 MD 内容
+const MOCK_MD = '# 标题1\n\n## 1. 系统简介\n\n正文内容\n\n## 2. 登录\n\n<a href="#1-系统简介">系统简介</a>'
+vi.stubGlobal('fetch', vi.fn(() => Promise.resolve({
+  ok: true,
+  text: () => Promise.resolve(MOCK_MD),
+})))
 
 import { slugify, addHeadingIds } from '../pages/Guide'
 
@@ -64,7 +66,8 @@ describe('Guide 组件 — 锚点点击', () => {
     const { default: Guide } = await import('../pages/Guide')
     render(<Guide />)
 
-    const link = screen.getByText('系统简介')
+    // 等待异步 fetch 完成后渲染
+    const link = await screen.findByText('系统简介')
     fireEvent.click(link)
 
     // hash 应保持不变（不会被改成 #1-系统简介 破坏路由）

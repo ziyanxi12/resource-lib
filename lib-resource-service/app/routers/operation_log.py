@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/operation-logs", tags=["操作日志"])
 def list_logs(
     source_id: int = Query(..., description="来源ID"),
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=10000),
     action: Optional[str] = Query(None, description="操作类型筛选"),
     target_type: Optional[str] = Query(None, description="对象类型筛选"),
     db: Session = Depends(get_db),

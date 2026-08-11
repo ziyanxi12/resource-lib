@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { checkAuth } from '../utils/whitelist'
 import { redirectToLogin, type UserInfo } from '../utils/auth'
 
 type AuthState = 'loading' | 'ok' | 'redirect' | 'denied' | 'error'
+
+const DeniedContext = createContext(false)
+export const useDenied = () => useContext(DeniedContext)
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>('loading')
@@ -26,7 +29,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   if (state === 'loading') return <FullScreenTip text="正在验证登录状态…" />
   if (state === 'redirect') return <FullScreenTip text="正在跳转登录页…" />
   if (state === 'error') return <FullScreenTip text={`登录状态校验失败：${error}`} />
-  if (state === 'denied') return <Navigate to="/error" replace />
+  if (state === 'denied') return <DeniedContext.Provider value={true}>{children}</DeniedContext.Provider>
   return <>{children}</>
 }
 
