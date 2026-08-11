@@ -112,7 +112,7 @@ export const api = {
   fullBatchImport: (
     sourceId: number,
     type: string,
-    formData: FormData,
+    file: File,
     opts?: {
       onProgress?: (percent: number) => void
       getXhr?: (xhr: XMLHttpRequest) => void
@@ -122,7 +122,7 @@ export const api = {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest()
       xhr.open('POST', `${BASE}/api/sources/${sourceId}/import?type=${encodeURIComponent(type)}`)
-      xhr.timeout = opts?.timeoutMs ?? 2 * 60 * 1000
+      xhr.timeout = opts?.timeoutMs ?? 0
 
       if (opts?.getXhr) opts.getXhr(xhr)
 
@@ -144,7 +144,7 @@ export const api = {
         }
       }
       xhr.onerror = () => reject(new Error('网络错误'))
-      xhr.ontimeout = () => reject(new Error('上传超时（2 分钟）'))
+      xhr.ontimeout = () => reject(new Error('上传超时'))
       xhr.onabort = () => reject(new Error('已取消'))
 
       getEncryptedUserData().then(encrypted => {
@@ -154,10 +154,12 @@ export const api = {
         } else {
           console.warn('[fullBatchImport] send WITHOUT X-User-Data (encrypted empty)')
         }
-        xhr.send(formData)
+        xhr.setRequestHeader('Content-Type', 'application/zip')
+        xhr.send(file)
       }).catch(err => {
         console.warn('[fullBatchImport] send WITHOUT X-User-Data (encrypt failed):', err)
-        xhr.send(formData)
+        xhr.setRequestHeader('Content-Type', 'application/zip')
+        xhr.send(file)
       })
     })
   },

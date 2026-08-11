@@ -3,6 +3,8 @@
 """
 
 import logging
+import os
+import tempfile
 import threading
 from typing import Optional
 
@@ -293,14 +295,32 @@ async def full_batch_import(
             detail=f"来源类型不匹配：来源为 {ResourceType(source.resource_type).name}，请求为 {type}",
         )
 
-    # 读取 ZIP 内容
-    zip_bytes = await request.body()
-    if not zip_bytes:
-        raise HTTPException(status_code=400, detail="未接收到文件内容")
+    # 流式接收 ZIP → 写临时文件（避免大文件全量读入内存）
+    tmp_dir = os.path.join(settings.FILE_ROOT_DIR, "_tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    tmp_fd, zip_path = tempfile.mkstemp(suffix=".zip", dir=tmp_dir)
+    try:
+        with os.fdopen(tmp_fd, "wb") as tmp_f:
+            async for chunk in request.stream():
+                if chunk:
+                    tmp_f.write(chunk)
+        file_size = os.path.getsize(zip_path)
+        if file_size == 0:
+            os.unlink(zip_path)
+            raise HTTPException(status_code=400, detail="未接收到文件内容")
+        logger.info("[import] ZIP 已保存: %s, size=%s bytes", zip_path, file_size)
+    except HTTPException:
+        raise
+    except Exception as e:
+        if os.path.exists(zip_path):
+            os.unlink(zip_path)
+        logger.warning("[import] 流式接收异常: %s", e)
+        raise HTTPException(status_code=400, detail=f"接收文件失败: {e}")
 
     # 提取操作人信息（在请求线程中，传入后台线程）
     account, op_name = get_operator(request)
-    logger.info("[import] source_id=%s type=%s operator: account=%s, name=%s", source_id, type, account, op_name)
+    logger.info("[import] source_id=%s type=%s file_size=%s operator: account=%s, name=%s",
+                source_id, type, file_size, account, op_name)
 
     # 创建任务
     task = import_task_registry.create_task(source_id, type)
@@ -313,7 +333,7 @@ async def full_batch_import(
                 import_db,
                 source_id=source_id,
                 resource_type=resource_type,
-                zip_bytes=zip_bytes,
+                zip_path=zip_path,
                 task_id=task.task_id,
                 created_by=account,
             )
@@ -365,6 +385,10 @@ async def full_batch_import(
             logger.exception("导入失败: task=%s, source_id=%s, type=%s", task.task_id, source_id, type)
         finally:
             import_db.close()
+            try:
+                os.unlink(zip_path)
+            except OSError:
+                pass
 
     threading.Thread(target=_run_import, daemon=True).start()
     return {"task_id": task.task_id, "message": "导入已开始"}

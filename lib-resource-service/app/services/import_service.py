@@ -24,7 +24,6 @@ import tempfile
 import uuid
 import zipfile
 from datetime import datetime
-from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import func
@@ -326,7 +325,7 @@ def full_batch_import(
     db: Session,
     source_id: int,
     resource_type: ResourceType,
-    zip_bytes: bytes,
+    zip_path: str,
     skip_vector: bool = False,
     task_id: Optional[str] = None,
     created_by: Optional[str] = None,
@@ -359,7 +358,7 @@ def full_batch_import(
     # 解压到临时目录
     with tempfile.TemporaryDirectory() as extract_dir:
         try:
-            with zipfile.ZipFile(BytesIO(zip_bytes)) as zf:
+            with zipfile.ZipFile(zip_path) as zf:
                 zf.extractall(extract_dir)
         except zipfile.BadZipFile as e:
             raise ValueError(f"无效的 ZIP 文件: {e}")

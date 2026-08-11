@@ -436,11 +436,9 @@ export default function ResourceManage() {
     setImportPhase('uploading')
     setImportTaskStatus(null)
     setImportTaskId(null)
-    const formData = new FormData()
-    formData.append('file', importFile)
     try {
       // 阶段 1：上传 ZIP
-      const res = await api.fullBatchImport(sourceId, type, formData, {
+      const res = await api.fullBatchImport(sourceId, type, importFile, {
         onProgress: setImportProgress,
         getXhr: (xhr) => { xhrRef.current = xhr },
       })

@@ -36,7 +36,7 @@ deploy.env.example
 deploy.sh
 
 # PNG files
-*.png
+
 
 # Temporary files
 reset.sh

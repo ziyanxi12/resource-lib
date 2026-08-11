@@ -160,6 +160,7 @@ const css = `
   margin: 32px 0;
 }
 .guide-body strong { font-weight: 600; color: #0f172a; }
+.guide-body img { max-width: 100%; height: auto; border-radius: 8px; }
 `
 
 export default function Guide() {
