@@ -638,6 +638,7 @@ config.json 的顶层是 \`group\` 数组，每个元素是一个分组节点，
                   items: [
                     { key: 'edit', label: '编辑名称', icon: <EditOutlined /> },
                     { key: 'delete', label: '删除来源', icon: <DeleteOutlined />, danger: true },
+                    { key: 'trash', label: '回收站', icon: <UndoOutlined /> },
                     { type: 'divider' as const },
                     { key: 'sync', label: '向量同步', icon: <SyncOutlined spin={syncing} /> },
                     { key: 'import', label: '全量批量导入', icon: <ImportOutlined /> },
@@ -653,6 +654,7 @@ config.json 的顶层是 \`group\` 数组，每个元素是一个分组节点，
                       }
                     }
                     if (key === 'delete') setDeleteSourceModalOpen(true)
+                    if (key === 'trash') { loadTrashSources(); setTrashModalOpen(true) }
                     if (key === 'sync') handleSyncVectors()
                     if (key === 'import') {
                       setImportFile(null)
@@ -667,12 +669,6 @@ config.json 的顶层是 \`group\` 数组，每个元素是一个分组节点，
               >
                 <Button size="small" icon={<SettingOutlined />} disabled={!sourceId} />
               </Dropdown>
-              <span
-                style={{ fontSize: 12, color: '#64748b', cursor: 'pointer', marginLeft: 4, whiteSpace: 'nowrap' }}
-                onClick={() => { loadTrashSources(); setTrashModalOpen(true) }}
-              >
-                回收站
-              </span>
             </div>
           </div>
 
