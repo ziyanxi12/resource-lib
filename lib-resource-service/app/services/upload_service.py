@@ -212,6 +212,7 @@ def _batch_insert_db(saved_items: List[dict], resource_type: int, source_id: int
                     "tags": normalize_tags(item.get("tags", [])),
                     "data_updated_at": datetime.now(),
                     "created_by": created_by,
+                    "updated_by": created_by,
                 }
                 resources_data.append(data)
             

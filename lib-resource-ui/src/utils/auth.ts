@@ -42,7 +42,7 @@ export function redirectToLogin(): void {
     encodeURIComponent(redirect)
 }
 
-export function logout(): void {
+export function redirectToLogout(): void {
   localStorage.removeItem(STORAGE_KEY)
   redirectToLogin()
 }

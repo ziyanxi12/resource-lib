@@ -1,4 +1,4 @@
-import { getUserInfo, logout } from '../utils/auth'
+import { getUserInfo, redirectToLogout } from '../utils/auth'
 
 export default function Error() {
   const user = getUserInfo()
@@ -40,7 +40,7 @@ export default function Error() {
         </div>
       )}
       <button
-        onClick={() => logout()}
+        onClick={() => redirectToLogout()}
         style={{
           marginTop: 8,
           padding: '8px 24px',

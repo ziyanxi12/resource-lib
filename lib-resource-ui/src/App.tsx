@@ -18,7 +18,7 @@ import ResourceUpload from './pages/ResourceUpload'
 import SourceManage from './pages/SourceManage'
 import Error from './pages/Error'
 import { AuthGuard, useDenied } from './components/AuthGuard'
-import { getUserInfo, logout } from './utils/auth'
+import { getUserInfo, redirectToLogout } from './utils/auth'
 
 type PageKey = 'home' | 'overview' | 'component' | 'icon' | 'illus' | 'image' | 'file'
 
@@ -175,7 +175,7 @@ function AppLayout() {
             <div style={{ fontSize: 11, color: '#334155', display: 'flex', gap: 8, alignItems: 'center' }}>
               <span>v{__APP_VERSION__}</span>
               {user && (
-                <span style={{ color: '#475569', cursor: 'pointer' }} onClick={() => logout()}>
+                <span style={{ color: '#475569', cursor: 'pointer' }} onClick={() => redirectToLogout()}>
                   退出登录
                 </span>
               )}

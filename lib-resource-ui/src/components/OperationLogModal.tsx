@@ -165,17 +165,17 @@ export default function OperationLogModal({ sourceId, open, onClose }: Props) {
               return (
                 <List.Item style={{ padding: '12px 0', alignItems: 'flex-start' }}>
                   <div style={{ width: '100%' }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       {meta && <Tag color={meta.color} style={{ margin: 0 }}>{meta.label}</Tag>}
                       <span style={{ fontSize: 13, fontWeight: 500, color: '#1e293b' }}>
                         {log.operator} {log.operator_account}
                       </span>
-                      <span style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.6 }}>
-                        {formatLogText(log)}
+                      <span style={{ fontSize: 11, color: '#cbd5e1' }}>
+                        {log.created_at ? dayjs(log.created_at).format('YYYY-MM-DD HH:mm:ss') : '-'}
                       </span>
                     </div>
-                    <div style={{ fontSize: 11, color: '#cbd5e1', marginTop: 2 }}>
-                      {log.created_at ? dayjs(log.created_at).format('YYYY-MM-DD HH:mm:ss') : '-'}
+                    <div style={{ fontSize: 13, color: '#1e293b', lineHeight: 1.6, marginTop: 4 }}>
+                      {formatLogText(log)}
                     </div>
                   </div>
                 </List.Item>

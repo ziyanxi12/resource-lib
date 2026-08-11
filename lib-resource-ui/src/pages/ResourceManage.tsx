@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Button, Select, TreeSelect, message, Modal, Input, Spin, Dropdown, Upload, Progress, Alert } from 'antd'
+import { Button, Select, TreeSelect, message, Modal, Input, Spin, Dropdown, Upload, Progress, Alert, Tooltip } from 'antd'
 import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined, SwapOutlined, ImportOutlined, CloseOutlined, DownloadOutlined, FileTextOutlined } from '@ant-design/icons'
 import JSZip from 'jszip'
 import ResourceTable, { type ResourceTableHandle } from '../components/ResourceTable'
@@ -676,34 +676,36 @@ config.json 的顶层是 \`group\` 数组，每个元素是一个分组节点，
             </div>
           </div>
 
-          <Select
-            value={sourceId}
-            onChange={setSourceId}
-            placeholder="选择来源"
-            style={{ width: '100%' }}
-            optionRender={(option: any) => (
-              <span style={{ 
-                overflow: 'hidden', 
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                display: 'block'
-              }}>
-                {option?.label}
-              </span>
-            )}
-            options={sources.map(s => ({ value: s.id, label: s.name }))}
-          />
-
-          {sourceId && (() => {
-            const src = sources.find(s => s.id === sourceId)
-            if (!src) return null
-            return (
-              <div style={{ marginTop: 4, fontSize: 11, color: '#94a3b8', display: 'flex', gap: 8 }}>
-                {src.created_by && <span>创建人: {src.created_by}</span>}
-                {src.updated_by && <span>编辑人: {src.updated_by}</span>}
-              </div>
-            )
-          })()}
+          <Tooltip
+            title={sourceId ? (() => {
+              const src = sources.find(s => s.id === sourceId)
+              if (!src) return ''
+              const parts: string[] = []
+              if (src.created_by) parts.push(`创建者: ${src.created_by}`)
+              if (src.updated_by) parts.push(`修改者: ${src.updated_by}`)
+              return parts.join('\n')
+            })() : ''}
+            placement="bottom"
+            overlayInnerStyle={{ whiteSpace: 'pre-wrap', fontSize: 12 }}
+          >
+            <Select
+              value={sourceId}
+              onChange={setSourceId}
+              placeholder="选择来源"
+              style={{ width: '100%' }}
+              optionRender={(option: any) => (
+                <span style={{ 
+                  overflow: 'hidden', 
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  display: 'block'
+                }}>
+                  {option?.label}
+                </span>
+              )}
+              options={sources.map(s => ({ value: s.id, label: s.name }))}
+            />
+          </Tooltip>
 
           {importTaskId && importPhase === 'processing' && (
             <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
