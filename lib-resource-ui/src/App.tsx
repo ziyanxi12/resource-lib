@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import {
@@ -13,6 +13,7 @@ import ResourceOverview from './pages/ResourceOverview'
 import ResourceManage from './pages/ResourceManage'
 import ResourceUpload from './pages/ResourceUpload'
 import SourceManage from './pages/SourceManage'
+import Error from './pages/Error'
 import { AuthGuard } from './components/AuthGuard'
 import { getUserInfo, logout } from './utils/auth'
 
@@ -75,7 +76,7 @@ function NavItem({
   )
 }
 
-function AppContent() {
+function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const uploadPage = isUploadPage(location.pathname)
@@ -193,6 +194,7 @@ function AppContent() {
       >
         <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <Routes>
+            <Route path="/error" element={<Error />} />
             <Route path="/" element={<ResourceOverview />} />
             <Route path="/source-manage" element={<SourceManage />} />
             <Route path="/:type" element={<ResourceManage />} />
@@ -201,14 +203,6 @@ function AppContent() {
         </div>
       </main>
     </div>
-  )
-}
-
-function AppLayout() {
-  return (
-    <AuthGuard>
-      <AppContent />
-    </AuthGuard>
   )
 }
 
@@ -233,7 +227,9 @@ export default function App() {
       }}
     >
       <HashRouter>
-        <AppLayout />
+        <AuthGuard>
+          <AppLayout />
+        </AuthGuard>
       </HashRouter>
     </ConfigProvider>
   )

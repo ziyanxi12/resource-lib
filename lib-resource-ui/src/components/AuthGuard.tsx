@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import { checkAuth } from '../utils/whitelist'
 import { redirectToLogin, type UserInfo } from '../utils/auth'
-import Error from '../pages/Error'
 
 type AuthState = 'loading' | 'ok' | 'redirect' | 'denied' | 'error'
 
@@ -26,7 +26,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   if (state === 'loading') return <FullScreenTip text="正在验证登录状态…" />
   if (state === 'redirect') return <FullScreenTip text="正在跳转登录页…" />
   if (state === 'error') return <FullScreenTip text={`登录状态校验失败：${error}`} />
-  if (state === 'denied') return <Error user={user} />
+  if (state === 'denied') return <Navigate to="/error" replace />
   return <>{children}</>
 }
 

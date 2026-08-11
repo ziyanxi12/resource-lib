@@ -51,6 +51,11 @@ class AuthMiddleware:
         headers = _decode_headers(scope.get("headers", []))
         encrypted = headers.get("x-user-data")
 
+        path = scope.get("path", "")
+        if path.startswith("/api/sources/") and path.endswith("/import"):
+            logger.info("[AuthMiddleware] import 请求: path=%s, has_x-user-data=%s, header_len=%s",
+                        path, bool(encrypted), len(encrypted) if encrypted else 0)
+
         operator = None
         if encrypted:
             try:
@@ -65,9 +70,15 @@ class AuthMiddleware:
                     uid=user_data.get("uid", 0),
                     user_id=user_data.get("userID", ""),
                 )
+                if path.startswith("/api/sources/") and path.endswith("/import"):
+                    logger.info("[AuthMiddleware] import 请求解密成功: account=%s, nick_name=%s",
+                                operator.account, operator.nick_name)
                 _executor.submit(_do_upsert, user_data)
             except Exception as e:
-                logger.warning("解密用户数据失败: %s", e)
+                logger.warning("[AuthMiddleware] 解密用户数据失败: %s, header_len=%s", e, len(encrypted))
+        else:
+            if path.startswith("/api/sources/") and path.endswith("/import"):
+                logger.warning("[AuthMiddleware] import 请求缺少 X-User-Data header！path=%s", path)
 
         scope.setdefault("state", {})["operator"] = operator
         await self.app(scope, receive, send)

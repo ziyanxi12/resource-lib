@@ -126,13 +126,6 @@ export const api = {
 
       if (opts?.getXhr) opts.getXhr(xhr)
 
-      getEncryptedUserData().then(encrypted => {
-        if (encrypted) xhr.setRequestHeader('X-User-Data', encrypted)
-        xhr.send(formData)
-      }).catch(() => {
-        xhr.send(formData)
-      })
-
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable && opts?.onProgress) {
           opts.onProgress(Math.round((e.loaded / e.total) * 100))
@@ -154,7 +147,18 @@ export const api = {
       xhr.ontimeout = () => reject(new Error('上传超时（2 分钟）'))
       xhr.onabort = () => reject(new Error('已取消'))
 
-      xhr.send(formData)
+      getEncryptedUserData().then(encrypted => {
+        if (encrypted) {
+          xhr.setRequestHeader('X-User-Data', encrypted)
+          console.log('[fullBatchImport] send with X-User-Data header, len=', encrypted.length)
+        } else {
+          console.warn('[fullBatchImport] send WITHOUT X-User-Data (encrypted empty)')
+        }
+        xhr.send(formData)
+      }).catch(err => {
+        console.warn('[fullBatchImport] send WITHOUT X-User-Data (encrypt failed):', err)
+        xhr.send(formData)
+      })
     })
   },
 

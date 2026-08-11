@@ -1,6 +1,7 @@
-import { type UserInfo, logout } from '../utils/auth'
+import { getUserInfo, logout } from '../utils/auth'
 
-export default function Error({ user }: { user: UserInfo | null }) {
+export default function Error() {
+  const user = getUserInfo()
   return (
     <div
       style={{

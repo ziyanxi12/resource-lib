@@ -1,7 +1,4 @@
-const STORAGE_KEYS = [
-  'account', 'dept', 'deptCode', 'nickName',
-  'roleID', 'roles', 'uid', 'userID',
-] as const
+const STORAGE_KEY = 'userInfo'
 
 export interface UserInfo {
   account: string
@@ -15,22 +12,12 @@ export interface UserInfo {
 }
 
 export function getUserInfo(): UserInfo | null {
-  const account = localStorage.getItem('account')
-  const nickName = localStorage.getItem('nickName')
-  if (!account || !nickName) return null
+  const raw = localStorage.getItem(STORAGE_KEY)
+  if (!raw) return null
   try {
-    const uid = Number(localStorage.getItem('uid'))
-    if (!Number.isFinite(uid)) return null
-    return {
-      account,
-      nickName,
-      dept: JSON.parse(localStorage.getItem('dept') ?? '[]'),
-      deptCode: JSON.parse(localStorage.getItem('deptCode') ?? '[]'),
-      roleID: localStorage.getItem('roleID') ?? '',
-      roles: JSON.parse(localStorage.getItem('roles') ?? '[]'),
-      uid,
-      userID: localStorage.getItem('userID') ?? '',
-    }
+    const data = JSON.parse(raw)
+    if (!data.account || !data.nickName) return null
+    return data as UserInfo
   } catch {
     return null
   }
@@ -56,6 +43,6 @@ export function redirectToLogin(): void {
 }
 
 export function logout(): void {
-  STORAGE_KEYS.forEach(key => localStorage.removeItem(key))
+  localStorage.removeItem(STORAGE_KEY)
   redirectToLogin()
 }

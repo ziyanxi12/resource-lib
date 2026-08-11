@@ -300,6 +300,7 @@ async def full_batch_import(
 
     # 提取操作人信息（在请求线程中，传入后台线程）
     account, op_name = get_operator(request)
+    logger.info("[import] source_id=%s type=%s operator: account=%s, name=%s", source_id, type, account, op_name)
 
     # 创建任务
     task = import_task_registry.create_task(source_id, type)
