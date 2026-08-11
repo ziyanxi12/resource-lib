@@ -1,7 +1,9 @@
 import { HashRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+
 import { ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import {
+  HomeOutlined,
   AppstoreOutlined,
   BlockOutlined,
   PictureOutlined,
@@ -9,6 +11,7 @@ import {
   FunctionOutlined,
   FileOutlined,
 } from '@ant-design/icons'
+import Guide from './pages/Guide'
 import ResourceOverview from './pages/ResourceOverview'
 import ResourceManage from './pages/ResourceManage'
 import ResourceUpload from './pages/ResourceUpload'
@@ -17,10 +20,11 @@ import Error from './pages/Error'
 import { AuthGuard } from './components/AuthGuard'
 import { getUserInfo, logout } from './utils/auth'
 
-type PageKey = 'overview' | 'component' | 'icon' | 'illus' | 'image' | 'file'
+type PageKey = 'home' | 'overview' | 'component' | 'icon' | 'illus' | 'image' | 'file'
 
 const NAV: { key: PageKey; path: string; icon: React.ReactNode; label: string }[] = [
-  { key: 'overview'  , path: '/'          , icon: <AppstoreOutlined />,  label: '数据总览' },
+  { key: 'home'      , path: '/home'      , icon: <HomeOutlined />,       label: '首页' },
+  { key: 'overview'  , path: '/overview' , icon: <AppstoreOutlined />,  label: '数据总览' },
   { key: 'component' , path: '/component' , icon: <BlockOutlined />,     label: '组件' },
   { key: 'icon'      , path: '/icon'      , icon: <FunctionOutlined />, label: '图标' },
   { key: 'illus'     , path: '/illus'     , icon: <StarOutlined />,     label: '插画' },
@@ -194,8 +198,10 @@ function AppLayout() {
       >
         <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <Routes>
+            <Route path="/" element={<Navigate to="/home" replace />} />
+            <Route path="/home" element={<Guide />} />
+            <Route path="/overview" element={<ResourceOverview />} />
             <Route path="/error" element={<Error />} />
-            <Route path="/" element={<ResourceOverview />} />
             <Route path="/source-manage" element={<SourceManage />} />
             <Route path="/:type" element={<ResourceManage />} />
             <Route path="/:type/upload" element={<ResourceUpload />} />
