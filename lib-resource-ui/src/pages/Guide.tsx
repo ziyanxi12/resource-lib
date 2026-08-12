@@ -26,6 +26,13 @@ export function addHeadingIds(html: string): string {
     const id = slugify(h.textContent || '')
     h.id = id
     slugMap.set(h.textContent?.trim() || '', id)
+    if (h.tagName === 'H2') {
+      const link = doc.createElement('a')
+      link.href = '#top'
+      link.className = 'back-to-top'
+      link.textContent = '回到顶部'
+      h.appendChild(link)
+    }
   })
 
   doc.querySelectorAll('a[href^="#"]').forEach(a => {
@@ -78,6 +85,14 @@ const css = `
   border-bottom: 1px solid #e2e8f0;
   color: #1e293b;
 }
+.guide-body h2 .back-to-top {
+  float: right;
+  font-size: 12px;
+  font-weight: 400;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+.guide-body h2 .back-to-top:hover { color: #6366f1; }
 .guide-body h3 {
   font-size: 16px;
   font-weight: 600;
@@ -194,6 +209,10 @@ export default function Guide() {
     e.preventDefault()
     const id = decodeURIComponent(href.slice(1))
     if (!id) return
+    if (id === 'top') {
+      containerRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
     const el = document.getElementById(id)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
