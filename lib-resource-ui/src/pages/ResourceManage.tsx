@@ -22,6 +22,7 @@ export default function ResourceManage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const sourceIdParam = searchParams.get('sourceId')
   const groupIdParam = searchParams.get('groupId')
+  const resourceIdParam = searchParams.get('resourceId')
   const tableRef = useRef<ResourceTableHandle | null>(null)
   const groupTreeRef = useRef<GroupTreeHandle | null>(null)
   const [groupId, setGroupId] = useState<number | null>(null)
@@ -67,8 +68,10 @@ export default function ResourceManage() {
 
   useEffect(() => {
     setPageLoading(true)
+    let cancelled = false
     api.getSources()
-      .then(data => {
+      .then(async data => {
+        if (cancelled) return
         const typeNum = RESOURCE_TYPE_MAP[type]
         const filtered = data.items.filter(s => s.resource_type === typeNum)
         setSources(filtered)
@@ -81,6 +84,23 @@ export default function ResourceManage() {
             } else {
               setSourceId(filtered[0].id)
             }
+          } else if (resourceIdParam) {
+            try {
+              const resource = await api.getResource(Number(resourceIdParam))
+              if (cancelled) return
+              const matched = filtered.find(s => s.id === resource.source_id)
+              const resolvedSourceId = matched ? resource.source_id : filtered[0].id
+              setSearchParams(prev => {
+                const next = new URLSearchParams(prev)
+                next.set('sourceId', String(resolvedSourceId))
+                if (resource.group_id) next.set('groupId', String(resource.group_id))
+                return next
+              }, { replace: true })
+              setSourceId(resolvedSourceId)
+            } catch {
+              if (cancelled) return
+              setSourceId(filtered[0].id)
+            }
           } else {
             setSourceId(filtered[0].id)
           }
@@ -89,7 +109,8 @@ export default function ResourceManage() {
         }
       })
       .catch(() => message.error('加载来源失败'))
-      .finally(() => setPageLoading(false))
+      .finally(() => { if (!cancelled) setPageLoading(false) })
+    return () => { cancelled = true }
   }, [type])
 
   useEffect(() => {
@@ -203,12 +224,21 @@ export default function ResourceManage() {
       const currentGroupId = searchParams.get('groupId')
       
       if (currentSourceId !== String(sourceId) || currentGroupId !== String(groupId)) {
-        setSearchParams({ sourceId: String(sourceId), groupId: String(groupId) }, { replace: true })
+        setSearchParams(prev => {
+          const next = new URLSearchParams(prev)
+          next.set('sourceId', String(sourceId))
+          next.set('groupId', String(groupId))
+          return next
+        }, { replace: true })
       }
     } else if (sourceId) {
       const currentSourceId = searchParams.get('sourceId')
       if (currentSourceId !== String(sourceId)) {
-        setSearchParams({ sourceId: String(sourceId) }, { replace: true })
+        setSearchParams(prev => {
+          const next = new URLSearchParams(prev)
+          next.set('sourceId', String(sourceId))
+          return next
+        }, { replace: true })
       }
     }
   }, [sourceId, groupId, setSearchParams, searchParams])
