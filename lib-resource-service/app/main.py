@@ -39,6 +39,7 @@ from app.routers import search_log
 from app.routers import search_app
 from app.routers import search_stats
 from app.routers import ai_enrich
+from app.routers import dimensions
 from app.routers import operation_log
 
 from app.middleware.search_log_middleware import SearchLogMiddleware
@@ -185,6 +186,7 @@ app.include_router(search_log.router)
 app.include_router(search_app.router)
 app.include_router(search_stats.router)
 app.include_router(ai_enrich.router)
+app.include_router(dimensions.router)
 app.include_router(operation_log.router)
 
 # 静态文件服务：前端可通过 /static/{file_path} 直接访问上传文件
