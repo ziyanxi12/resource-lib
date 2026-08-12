@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Table, Input, Button, Drawer, Tooltip, Image, message, Select, Modal, Upload, Tag } from 'antd'
 import { SearchOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import type { Resource } from '../types'
 import SemanticUnderstand from './SemanticUnderstand'
@@ -443,8 +444,11 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
   const [refreshKey, setRefreshKey] = useState(0)
   const [query, setQuery] = useState('')
   const [searchMode, setSearchMode] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const resourceIdParam = searchParams.get('resourceId')
+  const resourceId = resourceIdParam ? Number(resourceIdParam) : null
   const [detailItem, setDetailItem] = useState<Resource | null>(null)
-  const [detailOpen, setDetailOpen] = useState(false)
+  const detailOpen = resourceId !== null
   const [isPreviewing, setIsPreviewing] = useState(false)
   const [tagSearch, setTagSearch] = useState<string[]>([])
   const tableRef = useRef<HTMLDivElement>(null)
@@ -524,6 +528,26 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
     if (handleRef) handleRef.current = { refresh }
   })
 
+  useEffect(() => {
+    if (resourceId === null) {
+      setDetailItem(null)
+      return
+    }
+    let cancelled = false
+    api.getResource(resourceId)
+      .then(fresh => { if (!cancelled) setDetailItem(fresh) })
+      .catch(() => {
+        if (cancelled) return
+        message.error('加载资源详情失败')
+        setSearchParams(prev => {
+          const next = new URLSearchParams(prev)
+          next.delete('resourceId')
+          return next
+        }, { replace: true })
+      })
+    return () => { cancelled = true }
+  }, [resourceId, setSearchParams])
+
   const columns: ColumnsType<Resource> = [
     {
       title: '缩略图',
@@ -535,7 +559,7 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
             src={r.thumbnail_path}
             width={48}
             height={48}
-            style={{ borderRadius: 6, objectFit: 'cover', backgroundColor: '#fff', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Crect width='16' height='16' fill='%23ffffff'/%3E%3Crect width='8' height='8' fill='%23eef2f6'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23eef2f6'/%3E%3C/svg%3E\")" }}
+            style={{ borderRadius: 6, objectFit: 'contain', backgroundColor: '#fff', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Crect width='16' height='16' fill='%23ffffff'/%3E%3Crect width='8' height='8' fill='%23eef2f6'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23eef2f6'/%3E%3C/svg%3E\")" }}
             onClick={e => e.stopPropagation()}
             preview={{ onVisibleChange: (v: boolean) => setIsPreviewing(v) }}
           />
@@ -707,11 +731,11 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
             onClick: () => {
               if (isPreviewing) return
               setDetailItem(record)
-              setDetailOpen(true)
-              const id = record.id
-              api.getResource(id)
-                .then(fresh => setDetailItem(prev => (prev && prev.id === id ? fresh : prev)))
-                .catch(() => { })
+              setSearchParams(prev => {
+                const next = new URLSearchParams(prev)
+                next.set('resourceId', String(record.id))
+                return next
+              })
             },
             style: { cursor: 'pointer' },
           })}
@@ -727,7 +751,13 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
         />
       </div>
 
-      <DetailDrawer item={detailItem} open={detailOpen} onClose={() => setDetailOpen(false)} onSaved={refresh} type={type} />
+      <DetailDrawer item={detailItem} open={detailOpen} onClose={() => {
+        setSearchParams(prev => {
+          const next = new URLSearchParams(prev)
+          next.delete('resourceId')
+          return next
+        }, { replace: true })
+      }} onSaved={refresh} type={type} />
     </div>
   )
 }
