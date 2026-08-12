@@ -88,6 +88,25 @@ def create_group(body: GroupCreate, request: Request, db: Session = Depends(get_
     }
 
 
+@router.get("/{group_id}")
+def get_group(group_id: int, db: Session = Depends(get_db)):
+    """获取单个分组详情（用于按分组反查来源/类型，支持分组深链）"""
+    group = group_service.get_group_by_id(db, group_id)
+    if not group:
+        raise HTTPException(status_code=404, detail="分组不存在")
+    return {
+        "id": group.id,
+        "name": group.name,
+        "parent_id": group.parent_id,
+        "source_id": group.source_id,
+        "resource_type": group.resource_type,
+        "level": group.level,
+        "real_path": group.real_path,
+        "sort_order": group.sort_order,
+        "is_default": group.is_default,
+    }
+
+
 @router.put("/{group_id}")
 def update_group(group_id: int, body: GroupUpdate, request: Request, db: Session = Depends(get_db)):
     if not body.name:

@@ -3,7 +3,7 @@ import { Table, Input, Button, Drawer, Tooltip, Image, message, Select, Modal, U
 import { SearchOutlined, InfoCircleOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { useSearchParams } from 'react-router-dom'
-import { api } from '../api'
+import { api, RESOURCE_TYPE_MAP } from '../api'
 import type { Resource } from '../types'
 import SemanticUnderstand from './SemanticUnderstand'
 
@@ -474,6 +474,12 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
 
   useEffect(() => {
     if (searchMode) return
+    if (sourceId === null) {
+      setItems([])
+      setTotal(0)
+      setLoading(false)
+      return
+    }
     let cancelled = false
     setLoading(true)
     api.listResources({ type, page, limit: pageSize, source_id: sourceId, group_id: groupId })
@@ -535,7 +541,19 @@ export default function ResourceTable({ type, sourceId, groupId, handleRef, extr
     }
     let cancelled = false
     api.getResource(resourceId)
-      .then(fresh => { if (!cancelled) setDetailItem(fresh) })
+      .then(fresh => {
+        if (cancelled) return
+        if (fresh.resource_type !== RESOURCE_TYPE_MAP[type]) {
+          setSearchParams(prev => {
+            const next = new URLSearchParams(prev)
+            next.delete('resourceId')
+            return next
+          }, { replace: true })
+          message.warning('资源与当前类型不匹配')
+          return
+        }
+        setDetailItem(fresh)
+      })
       .catch(() => {
         if (cancelled) return
         message.error('加载资源详情失败')

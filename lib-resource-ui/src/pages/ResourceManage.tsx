@@ -6,15 +6,7 @@ import JSZip from 'jszip'
 import ResourceTable, { type ResourceTableHandle } from '../components/ResourceTable'
 import GroupTree, { type GroupTreeHandle } from '../components/GroupTree'
 import OperationLogModal from '../components/OperationLogModal'
-import { api, Source, GroupNode } from '../api'
-
-const RESOURCE_TYPE_MAP: Record<string, number> = {
-  component: 1,
-  icon: 3,
-  illus: 4,
-  image: 5,
-  file: 6,
-}
+import { api, Source, GroupNode, RESOURCE_TYPE_MAP } from '../api'
 
 export default function ResourceManage() {
   const { type = 'component' } = useParams<{ type: string }>()
@@ -25,6 +17,9 @@ export default function ResourceManage() {
   const resourceIdParam = searchParams.get('resourceId')
   const tableRef = useRef<ResourceTableHandle | null>(null)
   const groupTreeRef = useRef<GroupTreeHandle | null>(null)
+  const resolvedGroupIdRef = useRef<number | null>(null)
+  const groupIdParamRef = useRef<string | null>(null)
+  groupIdParamRef.current = groupIdParam
   const [groupId, setGroupId] = useState<number | null>(null)
   const [groups, setGroups] = useState<GroupNode[]>([])
   const [sources, setSources] = useState<Source[]>([])
@@ -66,6 +61,20 @@ export default function ResourceManage() {
   const importTaskIdRef = useRef<string | null>(null)
   const [logModalOpen, setLogModalOpen] = useState(false)
 
+  const sourceIdRef = useRef<number | null>(null)
+  sourceIdRef.current = sourceId
+  const groupIdRef = useRef<number | null>(null)
+  groupIdRef.current = groupId
+  const lastResolvedResourceIdRef = useRef<number | null>(null)
+
+  const clearResourceIdParam = () => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      next.delete('resourceId')
+      return next
+    }, { replace: true })
+  }
+
   useEffect(() => {
     setPageLoading(true)
     let cancelled = false
@@ -79,17 +88,46 @@ export default function ResourceManage() {
         if (filtered.length > 0) {
           if (sourceIdParam) {
             const s = filtered.find(x => x.id === Number(sourceIdParam))
-            if (s) {
-              setSourceId(s.id)
-            } else {
-              setSourceId(filtered[0].id)
+            const resolvedSourceId = s ? s.id : filtered[0].id
+            setSourceId(resolvedSourceId)
+            // 已有 groupId 时不需再查资源解析分组；否则用资源所属分组
+            if (resourceIdParam && s && !groupIdParam) {
+              try {
+                const resource = await api.getResource(Number(resourceIdParam))
+                if (cancelled) return
+                if (resource.resource_type !== typeNum) {
+                  clearResourceIdParam()
+                  message.warning('资源与当前类型不匹配')
+                  return
+                }
+                lastResolvedResourceIdRef.current = Number(resourceIdParam)
+                resolvedGroupIdRef.current = resource.group_id ?? null
+                if (resource.group_id) {
+                  setSearchParams(prev => {
+                    const next = new URLSearchParams(prev)
+                    next.set('groupId', String(resource.group_id))
+                    return next
+                  }, { replace: true })
+                }
+              } catch {
+                if (cancelled) return
+              }
             }
           } else if (resourceIdParam) {
             try {
               const resource = await api.getResource(Number(resourceIdParam))
               if (cancelled) return
+              if (resource.resource_type !== typeNum) {
+                clearResourceIdParam()
+                message.warning('资源与当前类型不匹配')
+                setSourceId(filtered[0].id)
+                return
+              }
               const matched = filtered.find(s => s.id === resource.source_id)
               const resolvedSourceId = matched ? resource.source_id : filtered[0].id
+              lastResolvedResourceIdRef.current = Number(resourceIdParam)
+              console.log('[ResourceManage] resourceId 解析', { resourceId: resourceIdParam, source_id: resource.source_id, group_id: resource.group_id, resolvedSourceId })
+              resolvedGroupIdRef.current = resource.group_id ?? null
               setSearchParams(prev => {
                 const next = new URLSearchParams(prev)
                 next.set('sourceId', String(resolvedSourceId))
@@ -101,11 +139,18 @@ export default function ResourceManage() {
               if (cancelled) return
               setSourceId(filtered[0].id)
             }
+          } else if (groupIdParam) {
+            // 只有分组参数：反查该分组所属来源，保证分组树能定位
+            const g = await api.getGroup(Number(groupIdParam)).catch(() => null)
+            if (cancelled) return
+            const ok = !!g && g.resource_type === typeNum && !!g.source_id && filtered.some(s => s.id === g.source_id)
+            setSourceId(ok && g?.source_id ? g.source_id : filtered[0].id)
           } else {
             setSourceId(filtered[0].id)
           }
         } else {
           setSourceId(null)
+          if (resourceIdParam) clearResourceIdParam()
         }
       })
       .catch(() => message.error('加载来源失败'))
@@ -185,63 +230,117 @@ export default function ResourceManage() {
 
   useEffect(() => {
     if (!sourceId) {
-      setGroupId(null)
       setGroups([])
+      setGroupId(null)
       return
     }
-    
+    let cancelled = false
     api.getGroups(type, sourceId, false)
       .then(data => {
+        if (cancelled) return
         setGroups(data.items)
-        
-        if (data.items.length > 0) {
-          if (groupIdParam) {
-            const id = Number(groupIdParam)
-            const group = findGroup(data.items, id)
-            if (group) {
-              setGroupId(id)
-            } else {
-              const defaultGroup = data.items.find(item => item.is_default === 1)
-              setGroupId(defaultGroup ? defaultGroup.id : data.items[0].id)
-            }
+        if (!data.items.length) {
+          setGroupId(null)
+          return
+        }
+        const refId = resolvedGroupIdRef.current
+        const paramId = groupIdParamRef.current ? Number(groupIdParamRef.current) : null
+        const targetId = refId ?? paramId
+        resolvedGroupIdRef.current = null
+        console.log('[ResourceManage] groups 加载+选中', { sourceId, refId, paramId, targetId, groupCount: data.items.length })
+        if (targetId) {
+          const group = findGroup(data.items, targetId)
+          if (group) {
+            setGroupId(targetId)
           } else {
             const defaultGroup = data.items.find(item => item.is_default === 1)
-            setGroupId(defaultGroup ? defaultGroup.id : data.items[0].id)
+            const fallback = defaultGroup ? defaultGroup.id : data.items[0].id
+            console.log('[ResourceManage] group_id 未找到，回退', { targetId, fallback })
+            setGroupId(fallback)
           }
         } else {
-          setGroupId(null)
+          const defaultGroup = data.items.find(item => item.is_default === 1)
+          setGroupId(defaultGroup ? defaultGroup.id : data.items[0].id)
         }
       })
       .catch(() => {
-        setGroupId(null)
+        if (cancelled) return
         setGroups([])
+        setGroupId(null)
       })
+    return () => { cancelled = true }
   }, [type, sourceId])
 
   useEffect(() => {
+    if (!groupIdParam) return
+    const id = Number(groupIdParam)
+    if (id === groupId) return
+    setGroupId(id)
+  }, [groupIdParam])
+
+  useEffect(() => {
+    if (!sourceIdParam || !sources.length) return
+    const id = Number(sourceIdParam)
+    if (id === sourceId) return
+    if (sources.some(s => s.id === id)) setSourceId(id)
+  }, [sourceIdParam, sources])
+
+  // resourceId 变化时按资源实际所属来源/分组纠正选中，保证 URL 与 UI 一致
+  useEffect(() => {
+    if (pageLoading) return
+    if (!resourceIdParam) {
+      lastResolvedResourceIdRef.current = null
+      return
+    }
+    const id = Number(resourceIdParam)
+    if (id === lastResolvedResourceIdRef.current) return
+    let cancelled = false
+    api.getResource(id)
+      .then(resource => {
+        if (cancelled) return
+        if (resource.resource_type !== RESOURCE_TYPE_MAP[type]) {
+          clearResourceIdParam()
+          message.warning('资源与当前类型不匹配')
+          return
+        }
+        lastResolvedResourceIdRef.current = id
+        if (resource.source_id !== sourceIdRef.current) {
+          resolvedGroupIdRef.current = resource.group_id ?? null
+          setSourceId(resource.source_id)
+        } else if (resource.group_id && resource.group_id !== groupIdRef.current) {
+          setGroupId(resource.group_id)
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [resourceIdParam, pageLoading])
+
+  const searchParamsRef = useRef(searchParams)
+  searchParamsRef.current = searchParams
+  if (typeof window !== 'undefined') (window as any).__urlFixApplied = true
+
+  useEffect(() => {
     if (sourceId && groupId) {
-      const currentSourceId = searchParams.get('sourceId')
-      const currentGroupId = searchParams.get('groupId')
+      const sp = searchParamsRef.current
+      const currentSourceId = sp.get('sourceId')
+      const currentGroupId = sp.get('groupId')
       
       if (currentSourceId !== String(sourceId) || currentGroupId !== String(groupId)) {
-        setSearchParams(prev => {
-          const next = new URLSearchParams(prev)
-          next.set('sourceId', String(sourceId))
-          next.set('groupId', String(groupId))
-          return next
-        }, { replace: true })
+        const next = new URLSearchParams(sp)
+        next.set('sourceId', String(sourceId))
+        next.set('groupId', String(groupId))
+        setSearchParams(next, { replace: true })
       }
     } else if (sourceId) {
-      const currentSourceId = searchParams.get('sourceId')
+      const sp = searchParamsRef.current
+      const currentSourceId = sp.get('sourceId')
       if (currentSourceId !== String(sourceId)) {
-        setSearchParams(prev => {
-          const next = new URLSearchParams(prev)
-          next.set('sourceId', String(sourceId))
-          return next
-        }, { replace: true })
+        const next = new URLSearchParams(sp)
+        next.set('sourceId', String(sourceId))
+        setSearchParams(next, { replace: true })
       }
     }
-  }, [sourceId, groupId, setSearchParams, searchParams])
+  }, [sourceId, groupId])
 
   const handleSyncVectors = async () => {
     setSyncing(true)

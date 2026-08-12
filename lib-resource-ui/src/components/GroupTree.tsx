@@ -11,14 +11,6 @@ interface GroupTreeProps {
   sourceId?: number | null
 }
 
-const RESOURCE_TYPE_MAP: Record<string, number> = {
-  component: 1,
-  icon: 3,
-  illus: 4,
-  image: 5,
-  file: 6,
-}
-
 function convertToTreeData(groups: GroupNode[]): TreeDataNode[] {
   return groups.map(g => ({
     key: g.id,

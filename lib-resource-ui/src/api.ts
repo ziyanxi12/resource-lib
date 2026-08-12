@@ -5,6 +5,14 @@ const BASE = import.meta.env.VITE_API_BASE ?? ''
 
 export const staticUrl = (path: string) => `${BASE}/static/${path}`
 
+export const RESOURCE_TYPE_MAP: Record<string, number> = {
+  component: 1,
+  icon: 3,
+  illus: 4,
+  image: 5,
+  file: 6,
+}
+
 async function request(url: string, options?: RequestInit) {
   const headers: Record<string, string> = { ...(options?.headers as Record<string, string>) }
   try {
@@ -310,6 +318,18 @@ export const api = {
 
   deleteGroup: (id: number): Promise<{ id: number; message: string }> =>
     request(`/api/groups/${id}`, { method: 'DELETE' }),
+
+  getGroup: (id: number): Promise<{
+    id: number
+    name: string
+    parent_id: number | null
+    source_id: number | null
+    resource_type: number
+    level: number
+    real_path: string
+    sort_order: number
+    is_default: number
+  }> => request(`/api/groups/${id}`),
 
   getGroupResourceCount: (groupId: number): Promise<{ count: number }> =>
     request(`/api/groups/${groupId}/resource-count`),
