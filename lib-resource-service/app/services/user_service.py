@@ -1,18 +1,40 @@
 from datetime import datetime
 import logging
-from typing import List
+from typing import List, Optional
 
+import httpx
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
 
+def _fetch_user_from_api(account: str) -> Optional[dict]:
+    """调外部接口获取用户信息。返回含 account/nickName/dept/deptCode 的 dict，失败返回 None。"""
+    if not settings.USER_INFO_API_URL:
+        return None
+    try:
+        resp = httpx.get(
+            f"{settings.USER_INFO_API_URL}?account={account}",
+            timeout=10,
+            trust_env=False,
+        )
+        resp.raise_for_status()
+        content = resp.json().get("content", {})
+        if not content.get("account"):
+            return None
+        return content
+    except Exception as e:
+        logger.warning("外部 API 获取用户信息失败: account=%s, error=%s", account, e)
+        return None
+
+
 def resolve_display_names(db: Session, accounts: List[str]) -> dict:
     """批量解析 account → 'nickName account' 显示字符串。
 
-    查不到的 account 原样返回（兜底）。
+    DB 查不到的 account 调外部 API 补查并入库，下次直接走 DB。
     """
     if not accounts:
         return {}
@@ -22,13 +44,23 @@ def resolve_display_names(db: Session, accounts: List[str]) -> dict:
             .filter(User.account.in_(accounts))
             .all()
         )
-        return {
+        result = {
             acc: (f"{nick} {acc}" if nick else acc)
             for acc, nick in rows
         }
     except Exception as e:
-        logger.warning("resolve_display_names 失败: %s", e)
-        return {}
+        logger.warning("resolve_display_names 查询失败: %s", e)
+        result = {}
+
+    missing = [acc for acc in accounts if acc not in result]
+    for acc in missing:
+        fetched = _fetch_user_from_api(acc)
+        if fetched:
+            upsert_user(db, fetched)
+            nick = fetched.get("nickName", "")
+            result[acc] = f"{nick} {acc}" if nick else acc
+
+    return result
 
 
 def upsert_user(db: Session, user_data: dict) -> None:
