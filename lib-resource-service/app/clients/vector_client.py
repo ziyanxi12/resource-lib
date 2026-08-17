@@ -7,6 +7,7 @@
 """
 
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -16,6 +17,23 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 _BATCH_SIZE = 200
+
+_async_client: Optional[httpx.AsyncClient] = None
+
+
+def _get_async_client() -> httpx.AsyncClient:
+    global _async_client
+    if _async_client is None or _async_client.is_closed:
+        _async_client = httpx.AsyncClient(
+            timeout=30,
+            trust_env=False,
+            limits=httpx.Limits(
+                max_connections=100,
+                max_keepalive_connections=20,
+                keepalive_expiry=30,
+            ),
+        )
+    return _async_client
 
 
 def ingest(vec_type: str, items: List[dict]) -> dict:
@@ -271,14 +289,16 @@ async def batch_search_async(
     )
     logger.debug("[batch_search_async] 发起批量搜索详情: payload=%s", payload)
 
+    t_call = time.monotonic()
     try:
-        async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
-            resp = await client.post(
-                f"{settings.VECTOR_SERVICE_URL}/api/v1/search/batch",
-                json=payload,
-            )
+        client = _get_async_client()
+        resp = await client.post(
+            f"{settings.VECTOR_SERVICE_URL}/api/v1/search/batch",
+            json=payload,
+        )
         resp.raise_for_status()
         results = resp.json().get("results", [])
+        call_ms = (time.monotonic() - t_call) * 1000
 
         if results:
             first_group = [
@@ -290,11 +310,13 @@ async def batch_search_async(
                 for item in results[0][:3]
             ]
             logger.info(
-                "[batch_search_async] 返回 %d 组结果: 第1组(%d条)前3条=%s",
-                len(results), len(results[0]), first_group,
+                "[batch_search_async] 8007 call: queries=%d total=%.0fms groups=%d hits=%d",
+                len(queries), call_ms, len(results), sum(len(g) for g in results),
             )
+            logger.debug("[batch_search_async] 第1组前3条=%s", first_group)
         else:
-            logger.info("[batch_search_async] 返回 0 组结果")
+            logger.info("[batch_search_async] 8007 call: queries=%d total=%.0fms groups=0",
+                        len(queries), call_ms)
 
         result_detail = []
         for i, group in enumerate(results):

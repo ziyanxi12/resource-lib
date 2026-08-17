@@ -15,7 +15,6 @@ def setup_logging(log_dir: str, log_level: str = "INFO") -> None:
 
     fmt = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
     )
 
     # INFO / WARNING / ERROR / CRITICAL → app.txt，保留 30 天

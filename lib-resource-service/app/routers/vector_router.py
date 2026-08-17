@@ -12,6 +12,8 @@ POST /api/vector/full-rebuild  全量重建向量库 + 清理孤儿数据
 
 from typing import Any, Dict, List, Optional
 import json
+import logging
+import time
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -24,6 +26,8 @@ from app.middleware.search_log_middleware import set_search_log_ctx
 from app.models.resource import Resource, ResourceGroup
 from app.routers.resources import _fmt
 from app.services.vector_sync_service import detect_missing_resources, sync_vectors_by_type, rebuild_all_vectors_by_type
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/vector", tags=["向量管理"])
 
@@ -259,6 +263,7 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
         business_data=business_data,
     )
 
+    t_vec = time.monotonic()
     try:
         batch_raw = await vector_client.batch_search_async(
             vec_type=vec_type,
@@ -270,6 +275,7 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
         )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"向量服务调用失败：{e}")
+    vec_ms = (time.monotonic() - t_vec) * 1000
 
     response_builder = {
         "basic": _build_basic_response,
@@ -277,23 +283,28 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
         "complete": _build_complete_response,
     }[req.response_mode]
 
+    all_data_ids = []
+    for group in batch_raw:
+        for r in group:
+            if r.get("data_id"):
+                all_data_ids.append(r["data_id"])
+
+    t_db = time.monotonic()
+    resources_by_data_id = _lookup_resources(db, vec_type, all_data_ids) if all_data_ids else {}
+    db_ms = (time.monotonic() - t_db) * 1000
+
+    t_ser = time.monotonic()
     results = []
     for group in batch_raw:
-        data_ids = [r["data_id"] for r in group if r.get("data_id")]
-        if not data_ids:
-            results.append([])
-            continue
-        
-        resources_by_data_id = _lookup_resources(db, vec_type, data_ids)
-        
         group_results = []
         for r in group:
             data_id = r.get("data_id")
             res_row = resources_by_data_id.get(str(data_id)) if data_id else None
             if res_row:
                 group_results.append(response_builder(res_row, r))
-        
+
         results.append(group_results)
+    ser_ms = (time.monotonic() - t_ser) * 1000
 
     score_map = {}
     for group in results:
@@ -306,6 +317,12 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
     set_search_log_ctx(
         result_count=len(score_map),
         result_scores=score_map,
+    )
+
+    total_ms = vec_ms + db_ms + ser_ms
+    logger.info(
+        "vector_search timing: type=%s queries=%d vec_call=%.0fms db_lookup=%.0fms serialize=%.0fms total=%.0fms hits=%d",
+        req.type, len(req.queries), vec_ms, db_ms, ser_ms, total_ms, len(score_map),
     )
 
     return {"results": results}
