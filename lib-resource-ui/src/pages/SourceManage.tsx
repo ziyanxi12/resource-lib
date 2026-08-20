@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Button, Modal, Input, Select, message, List, Tabs, Tag, Table, Space, Tooltip } from 'antd'
+import { Button, Modal, Input, Select, message, List, Tabs, Tag, Table, Space, Tooltip, Divider } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
-import { api, Source, GroupNode, SearchApp } from '../api'
+import { api, Source, GroupNode, SearchApp, WhitelistAccount, UserRecord } from '../api'
 
 const RESOURCE_TYPE_OPTIONS = [
   { value: 'component', label: '组件' },
@@ -45,6 +45,11 @@ export default function SourceManage() {
             key: 'app',
             label: '应用管理',
             children: <SearchAppPanel />,
+          },
+          {
+            key: 'whitelist',
+            label: '访问白名单',
+            children: <WhitelistPanel />,
           },
         ]}
       />
@@ -711,6 +716,357 @@ function SearchAppPanel() {
       >
         <p>确定删除应用「{deletingApp?.name}」吗？</p>
         <p style={{ color: '#94a3b8', fontSize: 12 }}>删除后该 app_id 的历史搜索日志保留，但无法再对应到应用名称。</p>
+      </Modal>
+    </div>
+  )
+}
+
+function WhitelistPanel() {
+  const [list, setList] = useState<WhitelistAccount[]>([])
+  const [loading, setLoading] = useState(false)
+  const [isActive, setIsActive] = useState<number | undefined>(undefined)
+  const [search, setSearch] = useState('')
+
+  const [createOpen, setCreateOpen] = useState(false)
+  const [newAccount, setNewAccount] = useState('')
+  const [newNick, setNewNick] = useState('')
+  const [newRemark, setNewRemark] = useState('')
+
+  const [batchOpen, setBatchOpen] = useState(false)
+  const [batchText, setBatchText] = useState('')
+  const [batchLoading, setBatchLoading] = useState(false)
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [editing, setEditing] = useState<WhitelistAccount | null>(null)
+  const [editNick, setEditNick] = useState('')
+  const [editRemark, setEditRemark] = useState('')
+
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState<WhitelistAccount | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+
+  const loadList = async () => {
+    setLoading(true)
+    try {
+      const data = await api.getWhitelist({ is_active: isActive, search: search.trim() || undefined })
+      setList(data.items)
+    } catch {
+      message.error('加载白名单失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadList()
+  }, [isActive, search])
+
+  const handleCreate = async () => {
+    if (!newAccount.trim()) {
+      message.error('请输入账号')
+      return
+    }
+    try {
+      await api.createWhitelistAccount({
+        account: newAccount.trim(),
+        nick_name: newNick.trim() || undefined,
+        remark: newRemark.trim() || undefined,
+      })
+      message.success('添加成功')
+      setCreateOpen(false)
+      setNewAccount('')
+      setNewNick('')
+      setNewRemark('')
+      loadList()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '添加失败')
+    }
+  }
+
+  const handleBatchCreate = async () => {
+    const lines = batchText.split('\n').map(s => s.trim()).filter(Boolean)
+    if (lines.length === 0) {
+      message.error('请输入至少一个账号')
+      return
+    }
+    setBatchLoading(true)
+    try {
+      const accounts = lines.map(line => {
+        const [account, ...rest] = line.split(/[\s,，]/)
+        return { account: (account || '').trim(), nick_name: rest.join(' ').trim() || undefined }
+      })
+      const r = await api.batchCreateWhitelist(accounts)
+      message.success(`批量添加完成：新增 ${r.created} 个，跳过 ${r.skipped} 个`)
+      setBatchOpen(false)
+      setBatchText('')
+      loadList()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '批量添加失败')
+    } finally {
+      setBatchLoading(false)
+    }
+  }
+
+  const handleEdit = async () => {
+    if (!editing) return
+    try {
+      await api.updateWhitelistAccount(editing.id, {
+        nick_name: editNick.trim() || undefined,
+        remark: editRemark.trim() || undefined,
+      })
+      message.success('修改成功')
+      setEditOpen(false)
+      setEditing(null)
+      loadList()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '修改失败')
+    }
+  }
+
+  const handleToggle = async (record: WhitelistAccount) => {
+    try {
+      await api.updateWhitelistAccount(record.id, { is_active: record.is_active === 1 ? 0 : 1 })
+      message.success(record.is_active === 1 ? '已禁用' : '已启用')
+      loadList()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '操作失败')
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleting) return
+    setDeleteLoading(true)
+    try {
+      await api.deleteWhitelistAccount(deleting.id)
+      message.success('删除成功')
+      setDeleteOpen(false)
+      setDeleting(null)
+      loadList()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '删除失败')
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
+
+  const [users, setUsers] = useState<UserRecord[]>([])
+  const [userLoading, setUserLoading] = useState(false)
+  const [userSearch, setUserSearch] = useState('')
+  const [userFilter, setUserFilter] = useState<number | undefined>(undefined)
+
+  const loadUsers = async () => {
+    setUserLoading(true)
+    try {
+      const data = await api.getUsers({ search: userSearch.trim() || undefined, whitelisted: userFilter })
+      setUsers(data.items)
+    } catch {
+      message.error('加载用户失败')
+    } finally {
+      setUserLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadUsers()
+  }, [userSearch, userFilter])
+
+  const userColumns: ColumnsType<UserRecord> = [
+    { title: '账号', dataIndex: 'account', width: 180, render: (v: string) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</span> },
+    { title: '昵称', dataIndex: 'nick_name', width: 120, render: (v: string | null) => v ?? '—' },
+    { title: '部门', dataIndex: 'dept', width: 180, render: (v: string[] | null) => (v && v.length ? v.join(' / ') : '—') },
+    { title: '角色', dataIndex: 'roles', width: 140, render: (v: string[] | null) => (v && v.length ? v.join(', ') : '—') },
+    { title: '最后登录', dataIndex: 'last_login_at', width: 170, render: (v: number | null) => v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '—' },
+    {
+      title: '是否白名单', dataIndex: 'is_whitelisted', width: 100,
+      render: (v: boolean) => v ? <Tag color="green">已加入</Tag> : <Tag color="orange">未加入</Tag>,
+    },
+  ]
+
+  const columns: ColumnsType<WhitelistAccount> = [
+    { title: '账号', dataIndex: 'account', width: 200, render: (v: string) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</span> },
+    { title: '昵称', dataIndex: 'nick_name', width: 160, render: (v: string | null) => v ?? '—' },
+    { title: '备注', dataIndex: 'remark', width: 220, render: (v: string | null) => v ?? '—' },
+    {
+      title: '状态', dataIndex: 'is_active', width: 90,
+      render: (v: number) => v === 1 ? <Tag color="green">启用</Tag> : <Tag color="default">禁用</Tag>,
+    },
+    { title: '创建时间', dataIndex: 'created_at', width: 180, render: (v: number) => v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '—' },
+    {
+      title: '操作', width: 150, fixed: 'right',
+      render: (_: unknown, record: WhitelistAccount) => (
+        <Space>
+          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
+            setEditing(record)
+            setEditNick(record.nick_name ?? '')
+            setEditRemark(record.remark ?? '')
+            setEditOpen(true)
+          }} />
+          <Button type="text" size="small" onClick={() => handleToggle(record)}>
+            {record.is_active === 1 ? '禁用' : '启用'}
+          </Button>
+          <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => {
+            setDeleting(record)
+            setDeleteOpen(true)
+          }} />
+        </Space>
+      ),
+    },
+  ]
+
+  return (
+    <div style={{ height: '100%', overflowY: 'auto', paddingRight: 4 }}>
+      <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>访问白名单</h2>
+        <Space>
+          <Input.Search
+            allowClear
+            placeholder="搜索账号/昵称"
+            style={{ width: 220 }}
+            onSearch={v => setSearch(v)}
+          />
+          <Select
+            placeholder="状态"
+            allowClear
+            style={{ width: 110 }}
+            value={isActive}
+            onChange={v => setIsActive(v)}
+            options={[
+              { value: 1, label: '启用' },
+              { value: 0, label: '禁用' },
+            ]}
+          />
+          <Button icon={<PlusOutlined />} onClick={() => setBatchOpen(true)}>批量添加</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>添加账号</Button>
+        </Space>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <Table<WhitelistAccount>
+          rowKey="id"
+          size="small"
+          loading={loading}
+          columns={columns}
+          dataSource={list}
+          scroll={{ x: 'max-content' }}
+          pagination={false}
+        />
+      </div>
+
+      <Divider style={{ margin: '12px 0' }} />
+
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <h3 style={{ margin: 0, fontSize: 15, fontWeight: 600 }}>已登录用户（展示）</h3>
+          <Space>
+            <Input.Search
+              allowClear
+              placeholder="搜索账号/昵称"
+              style={{ width: 200 }}
+              onSearch={v => setUserSearch(v)}
+            />
+            <Select
+              placeholder="白名单状态"
+              allowClear
+              style={{ width: 140 }}
+              value={userFilter}
+              onChange={v => setUserFilter(v)}
+              options={[
+                { value: 0, label: '未加入白名单' },
+                { value: 1, label: '已加入白名单' },
+              ]}
+            />
+          </Space>
+        </div>
+        <Table<UserRecord>
+          rowKey="id"
+          size="small"
+          loading={userLoading}
+          columns={userColumns}
+          dataSource={users}
+          scroll={{ x: 'max-content' }}
+          pagination={false}
+        />
+      </div>
+
+      {/* 添加账号弹窗 */}
+      <Modal
+        title="添加账号"
+        open={createOpen}
+        onCancel={() => { setCreateOpen(false); setNewAccount(''); setNewNick(''); setNewRemark('') }}
+        onOk={handleCreate}
+        okText="确定"
+        cancelText="取消"
+      >
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>账号 <span style={{ color: '#ef4444' }}>*</span></div>
+          <Input value={newAccount} onChange={e => setNewAccount(e.target.value)} placeholder="请输入登录账号" />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>昵称</div>
+          <Input value={newNick} onChange={e => setNewNick(e.target.value)} placeholder="请输入昵称（选填）" />
+        </div>
+        <div>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>备注</div>
+          <Input.TextArea value={newRemark} onChange={e => setNewRemark(e.target.value)} placeholder="请输入备注（选填）" autoSize={{ minRows: 2 }} />
+        </div>
+      </Modal>
+
+      {/* 批量添加弹窗 */}
+      <Modal
+        title="批量添加账号"
+        open={batchOpen}
+        onCancel={() => { setBatchOpen(false); setBatchText('') }}
+        onOk={handleBatchCreate}
+        okText="添加"
+        okButtonProps={{ loading: batchLoading }}
+        cancelText="取消"
+      >
+        <div style={{ marginBottom: 8, fontWeight: 500 }}>账号列表（每行一个，可带昵称，空格/逗号分隔）</div>
+        <Input.TextArea
+          value={batchText}
+          onChange={e => setBatchText(e.target.value)}
+          placeholder={'admin 管理员\nzhangsan 张三\nlisi'}
+          autoSize={{ minRows: 6 }}
+        />
+      </Modal>
+
+      {/* 编辑账号弹窗 */}
+      <Modal
+        title="编辑账号"
+        open={editOpen}
+        onCancel={() => { setEditOpen(false); setEditing(null) }}
+        onOk={handleEdit}
+        okText="确定"
+        cancelText="取消"
+      >
+        {editing && (
+          <div style={{ marginBottom: 16, padding: '8px 12px', background: '#f8fafc', borderRadius: 6 }}>
+            <span style={{ color: '#64748b', fontSize: 13 }}>账号: </span>
+            <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{editing.account}</span>
+          </div>
+        )}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>昵称</div>
+          <Input value={editNick} onChange={e => setEditNick(e.target.value)} placeholder="请输入昵称（选填）" />
+        </div>
+        <div>
+          <div style={{ marginBottom: 8, fontWeight: 500 }}>备注</div>
+          <Input.TextArea value={editRemark} onChange={e => setEditRemark(e.target.value)} placeholder="请输入备注（选填）" autoSize={{ minRows: 2 }} />
+        </div>
+      </Modal>
+
+      {/* 删除账号弹窗 */}
+      <Modal
+        title="确认删除"
+        open={deleteOpen}
+        onCancel={() => { setDeleteOpen(false); setDeleting(null) }}
+        onOk={handleDelete}
+        okText="删除"
+        okButtonProps={{ danger: true, loading: deleteLoading }}
+        cancelText="取消"
+      >
+        <p>确定从白名单中删除「{deleting?.account}」吗？</p>
+        <p style={{ color: '#94a3b8', fontSize: 12 }}>删除后该账号将无法访问系统（在 WHITELIST_ENABLED=true 时生效）。</p>
       </Modal>
     </div>
   )

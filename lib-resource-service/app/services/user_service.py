@@ -31,6 +31,48 @@ def _fetch_user_from_api(account: str) -> Optional[dict]:
         return None
 
 
+def list_users(
+    db: Session,
+    search: Optional[str] = None,
+    whitelisted: Optional[int] = None,
+) -> List[User]:
+    """列出用户（含是否在白名单标记）。按最后登录时间倒序。
+
+    whitelisted: None=全部, 1=仅在启用白名单中, 0=未加入
+    """
+    query = db.query(User)
+    if search:
+        like = f"%{search}%"
+        query = query.filter(User.account.ilike(like) | User.nick_name.ilike(like))
+
+    if whitelisted is not None:
+        from app.models.whitelist_account import WhitelistAccount
+
+        enabled = (
+            db.query(WhitelistAccount.account)
+            .filter(WhitelistAccount.is_active == 1)
+            .subquery()
+        )
+        if whitelisted == 1:
+            query = query.filter(User.account.in_(enabled))
+        elif whitelisted == 0:
+            query = query.filter(~User.account.in_(enabled))
+
+    return query.order_by(User.last_login_at.desc(), User.id.desc()).all()
+
+
+def get_whitelisted_account_set(db: Session) -> set:
+    """返回所有启用白名单账号集合（供序列化标记用）"""
+    from app.models.whitelist_account import WhitelistAccount
+
+    rows = (
+        db.query(WhitelistAccount.account)
+        .filter(WhitelistAccount.is_active == 1)
+        .all()
+    )
+    return {r.account for r in rows}
+
+
 def resolve_display_names(db: Session, accounts: List[str]) -> dict:
     """批量解析 account → 'nickName account' 显示字符串。
 

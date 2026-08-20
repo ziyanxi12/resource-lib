@@ -75,6 +75,32 @@ export interface OperationLog {
   created_at: number | null
 }
 
+export interface WhitelistAccount {
+  id: number
+  account: string
+  nick_name: string | null
+  remark: string | null
+  is_active: number
+  created_at: number
+  updated_at: number
+}
+
+export interface UserRecord {
+  id: number
+  account: string
+  nick_name: string | null
+  dept: string[] | null
+  dept_code: string[] | null
+  role_id: string | null
+  roles: string[] | null
+  uid: number | null
+  user_id: string | null
+  last_login_at: number | null
+  created_at: number | null
+  updated_at: number | null
+  is_whitelisted: boolean
+}
+
 export const api = {
   getResourceTypes: (): Promise<{ items: ResourceTypeItem[] }> =>
     request('/api/resource-types'),
@@ -455,6 +481,47 @@ export const api = {
     if (params.action) q.set('action', params.action)
     if (params.target_type) q.set('target_type', params.target_type)
     return request(`/api/operation-logs?${q}`)
+  },
+
+  getWhitelist: (params?: { is_active?: number; search?: string }): Promise<{ items: WhitelistAccount[] }> => {
+    const q = new URLSearchParams()
+    if (params?.is_active !== undefined) q.set('is_active', String(params.is_active))
+    if (params?.search) q.set('search', params.search)
+    return request(`/api/whitelist?${q}`)
+  },
+
+  checkWhitelist: (account: string): Promise<{ allowed: boolean; account: string | null; nick_name: string | null }> =>
+    request(`/api/whitelist/check?account=${encodeURIComponent(account)}`),
+
+  createWhitelistAccount: (data: { account: string; nick_name?: string; remark?: string }): Promise<WhitelistAccount> =>
+    request('/api/whitelist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  batchCreateWhitelist: (accounts: Array<{ account: string; nick_name?: string; remark?: string }>): Promise<{ created: number; skipped: number }> =>
+    request('/api/whitelist/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accounts }),
+    }),
+
+  updateWhitelistAccount: (id: number, data: { nick_name?: string; remark?: string; is_active?: number }): Promise<WhitelistAccount> =>
+    request(`/api/whitelist/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
+  deleteWhitelistAccount: (id: number): Promise<{ message: string }> =>
+    request(`/api/whitelist/${id}`, { method: 'DELETE' }),
+
+  getUsers: (params?: { search?: string; whitelisted?: number }): Promise<{ items: UserRecord[] }> => {
+    const q = new URLSearchParams()
+    if (params?.search) q.set('search', params.search)
+    if (params?.whitelisted !== undefined) q.set('whitelisted', String(params.whitelisted))
+    return request(`/api/users?${q}`)
   },
 }
 

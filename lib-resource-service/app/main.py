@@ -29,6 +29,7 @@ from app.models import search_log_result  # noqa: F401
 from app.models import search_daily_stats  # noqa: F401
 from app.models import operation_log  # noqa: F401
 from app.models import user  # noqa: F401
+from app.models import whitelist_account  # noqa: F401
 
 from app.routers import resources, upload
 from app.routers import vector_router, group
@@ -41,6 +42,8 @@ from app.routers import search_stats
 from app.routers import ai_enrich
 from app.routers import dimensions
 from app.routers import operation_log
+from app.routers import whitelist
+from app.routers import users
 
 from app.middleware.search_log_middleware import SearchLogMiddleware
 from app.middleware.auth_middleware import AuthMiddleware
@@ -188,6 +191,8 @@ app.include_router(search_stats.router)
 app.include_router(ai_enrich.router)
 app.include_router(dimensions.router)
 app.include_router(operation_log.router)
+app.include_router(whitelist.router)
+app.include_router(users.router)
 
 # 静态文件服务：前端可通过 /static/{file_path} 直接访问上传文件
 if os.path.exists(settings.FILE_ROOT_DIR):

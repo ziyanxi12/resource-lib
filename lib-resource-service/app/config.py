@@ -67,6 +67,10 @@ class Settings:
     SEARCH_APPS_AUTO_IMPORT: bool = os.getenv("SEARCH_APPS_AUTO_IMPORT", "false").lower() == "true"
     SEARCH_APPS_IMPORT_FILE: str = os.getenv("SEARCH_APPS_IMPORT_FILE", "./storage/search_apps.json")
 
+    # ── 访问白名单 ────────────────────────────────────────────
+    # true = 启用白名单校验（/api/whitelist/check 生效），false = 开发环境放行所有账号
+    WHITELIST_ENABLED: bool = os.getenv("WHITELIST_ENABLED", "false").lower() == "true"
+
     # ── 用户认证加密 ──────────────────────────────────────────
     # AES-256-CBC 密钥（32字节 base64），前后端必须一致
     AUTH_AES_KEY: str = os.getenv("AUTH_AES_KEY", "")
