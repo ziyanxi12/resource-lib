@@ -31,6 +31,13 @@ def _fetch_user_from_api(account: str) -> Optional[dict]:
         return None
 
 
+def get_user_by_account(db: Session, account: str) -> Optional[User]:
+    """按 account 精确查 users 表（登录自动 upsert 的记录）。未命中返回 None，不报错。"""
+    if not account:
+        return None
+    return db.query(User).filter(User.account == account).first()
+
+
 def list_users(
     db: Session,
     search: Optional[str] = None,

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Button, Modal, Input, Select, message, List, Tabs, Tag, Table, Space, Tooltip, Divider } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined, ReloadOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { api, Source, GroupNode, SearchApp, WhitelistAccount, UserRecord } from '../api'
 
@@ -729,7 +729,6 @@ function WhitelistPanel() {
 
   const [createOpen, setCreateOpen] = useState(false)
   const [newAccount, setNewAccount] = useState('')
-  const [newNick, setNewNick] = useState('')
   const [newRemark, setNewRemark] = useState('')
 
   const [batchOpen, setBatchOpen] = useState(false)
@@ -744,6 +743,37 @@ function WhitelistPanel() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState<WhitelistAccount | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
+
+  const [accountHint, setAccountHint] = useState('')
+  const [accountChecking, setAccountChecking] = useState(false)
+  const [refreshingId, setRefreshingId] = useState<number | null>(null)
+
+  const lookupAccount = async (account: string) => {
+    const acc = account.trim()
+    if (!acc) { setAccountHint(''); return }
+    setAccountChecking(true)
+    try {
+      const r = await api.lookupUserByAccount(acc)
+      setAccountHint(r.found && r.nick_name ? `已带出昵称：${r.nick_name}` : '用户表未找到该账号（不影响添加）')
+    } catch {
+      setAccountHint('用户表查询失败（不影响添加）')
+    } finally {
+      setAccountChecking(false)
+    }
+  }
+
+  const handleRefreshNickname = async (record: WhitelistAccount) => {
+    setRefreshingId(record.id)
+    try {
+      const r = await api.refreshWhitelistNickname(record.id)
+      message.info(r.message)
+      loadList()
+    } catch (e) {
+      message.error(e instanceof Error ? e.message : '刷新失败')
+    } finally {
+      setRefreshingId(null)
+    }
+  }
 
   const loadList = async () => {
     setLoading(true)
@@ -769,14 +799,13 @@ function WhitelistPanel() {
     try {
       await api.createWhitelistAccount({
         account: newAccount.trim(),
-        nick_name: newNick.trim() || undefined,
         remark: newRemark.trim() || undefined,
       })
       message.success('添加成功')
       setCreateOpen(false)
       setNewAccount('')
-      setNewNick('')
       setNewRemark('')
+      setAccountHint('')
       loadList()
     } catch (e) {
       message.error(e instanceof Error ? e.message : '添加失败')
@@ -791,10 +820,7 @@ function WhitelistPanel() {
     }
     setBatchLoading(true)
     try {
-      const accounts = lines.map(line => {
-        const [account, ...rest] = line.split(/[\s,，]/)
-        return { account: (account || '').trim(), nick_name: rest.join(' ').trim() || undefined }
-      })
+      const accounts = lines.map(account => ({ account }))
       const r = await api.batchCreateWhitelist(accounts)
       message.success(`批量添加完成：新增 ${r.created} 个，跳过 ${r.skipped} 个`)
       setBatchOpen(false)
@@ -892,7 +918,7 @@ function WhitelistPanel() {
     },
     { title: '创建时间', dataIndex: 'created_at', width: 180, render: (v: number) => v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '—' },
     {
-      title: '操作', width: 150, fixed: 'right',
+      title: '操作', width: 190, fixed: 'right',
       render: (_: unknown, record: WhitelistAccount) => (
         <Space>
           <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
@@ -901,6 +927,15 @@ function WhitelistPanel() {
             setEditRemark(record.remark ?? '')
             setEditOpen(true)
           }} />
+          <Tooltip title={record.nick_name ? '已有昵称' : '从用户表带出昵称'}>
+            <Button
+              type="text"
+              size="small"
+              icon={<ReloadOutlined spin={refreshingId === record.id} />}
+              disabled={!!record.nick_name || refreshingId === record.id}
+              onClick={() => handleRefreshNickname(record)}
+            />
+          </Tooltip>
           <Button type="text" size="small" onClick={() => handleToggle(record)}>
             {record.is_active === 1 ? '禁用' : '启用'}
           </Button>
@@ -992,18 +1027,24 @@ function WhitelistPanel() {
       <Modal
         title="添加账号"
         open={createOpen}
-        onCancel={() => { setCreateOpen(false); setNewAccount(''); setNewNick(''); setNewRemark('') }}
+        onCancel={() => { setCreateOpen(false); setNewAccount(''); setNewRemark(''); setAccountHint('') }}
         onOk={handleCreate}
         okText="确定"
         cancelText="取消"
       >
         <div style={{ marginBottom: 16 }}>
           <div style={{ marginBottom: 8, fontWeight: 500 }}>账号 <span style={{ color: '#ef4444' }}>*</span></div>
-          <Input value={newAccount} onChange={e => setNewAccount(e.target.value)} placeholder="请输入登录账号" />
-        </div>
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, fontWeight: 500 }}>昵称</div>
-          <Input value={newNick} onChange={e => setNewNick(e.target.value)} placeholder="请输入昵称（选填）" />
+          <Input
+            value={newAccount}
+            onChange={e => { setNewAccount(e.target.value); setAccountHint('') }}
+            onBlur={e => lookupAccount(e.target.value)}
+            placeholder="请输入登录账号"
+          />
+          {accountHint && (
+            <div style={{ marginTop: 6, fontSize: 12, color: accountChecking ? '#94a3b8' : '#64748b' }}>
+              {accountChecking ? '正在查询用户表…' : accountHint}
+            </div>
+          )}
         </div>
         <div>
           <div style={{ marginBottom: 8, fontWeight: 500 }}>备注</div>
@@ -1021,13 +1062,14 @@ function WhitelistPanel() {
         okButtonProps={{ loading: batchLoading }}
         cancelText="取消"
       >
-        <div style={{ marginBottom: 8, fontWeight: 500 }}>账号列表（每行一个，可带昵称，空格/逗号分隔）</div>
+        <div style={{ marginBottom: 8, fontWeight: 500 }}>账号列表（每行一个账号）</div>
         <Input.TextArea
           value={batchText}
           onChange={e => setBatchText(e.target.value)}
-          placeholder={'admin 管理员\nzhangsan 张三\nlisi'}
+          placeholder={'admin\nzhangsan\nlisi'}
           autoSize={{ minRows: 6 }}
         />
+        <div style={{ marginTop: 8, color: '#94a3b8', fontSize: 12 }}>昵称将自动从用户表带出（仅空时补充）。</div>
       </Modal>
 
       {/* 编辑账号弹窗 */}

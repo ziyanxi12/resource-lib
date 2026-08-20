@@ -517,12 +517,18 @@ export const api = {
   deleteWhitelistAccount: (id: number): Promise<{ message: string }> =>
     request(`/api/whitelist/${id}`, { method: 'DELETE' }),
 
+  refreshWhitelistNickname: (id: number): Promise<{ updated: boolean; message: string } & WhitelistAccount> =>
+    request(`/api/whitelist/${id}/refresh-nickname`, { method: 'POST' }),
+
   getUsers: (params?: { search?: string; whitelisted?: number }): Promise<{ items: UserRecord[] }> => {
     const q = new URLSearchParams()
     if (params?.search) q.set('search', params.search)
     if (params?.whitelisted !== undefined) q.set('whitelisted', String(params.whitelisted))
     return request(`/api/users?${q}`)
   },
+
+  lookupUserByAccount: (account: string): Promise<{ found: boolean; account?: string; nick_name?: string | null }> =>
+    request(`/api/users/by-account/${encodeURIComponent(account)}`),
 }
 
 export interface GroupNode {

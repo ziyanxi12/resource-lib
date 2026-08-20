@@ -1,6 +1,7 @@
 """
 用户查询路由（只读）
-GET /api/users            用户列表（?search=&whitelisted=）
+GET /api/users                    用户列表（?search=&whitelisted=）
+GET /api/users/by-account/{acct}  按账号精确查（未命中也返回 200，不阻塞白名单添加）
 """
 
 from typing import Optional
@@ -41,3 +42,13 @@ def list_users(
     users = user_service.list_users(db, search=search, whitelisted=whitelisted)
     whitelist_set = user_service.get_whitelisted_account_set(db)
     return {"items": [_fmt_user(u, whitelist_set) for u in users]}
+
+
+@router.get("/by-account/{account}")
+def get_by_account(account: str, db: Session = Depends(get_db)):
+    """按账号精确查。命中返回 {found:true, nick_name, ...}；未命中返回 {found:false}（不报错）。"""
+    user = user_service.get_user_by_account(db, account)
+    if not user:
+        return {"found": False, "account": account, "nick_name": None}
+    whitelist_set = user_service.get_whitelisted_account_set(db)
+    return {**_fmt_user(user, whitelist_set), "found": True}
