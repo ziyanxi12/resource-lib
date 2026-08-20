@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { checkAuth } from '../utils/whitelist'
+import { checkAuth, type Role } from '../utils/whitelist'
 import { redirectToLogin, type UserInfo } from '../utils/auth'
 
 type AuthState = 'loading' | 'ok' | 'redirect' | 'denied' | 'error'
@@ -8,9 +8,13 @@ type AuthState = 'loading' | 'ok' | 'redirect' | 'denied' | 'error'
 const DeniedContext = createContext(false)
 export const useDenied = () => useContext(DeniedContext)
 
+const RoleContext = createContext<Role>(null)
+export const useRole = () => useContext(RoleContext)
+
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AuthState>('loading')
   const [user, setUser] = useState<UserInfo | null>(null)
+  const [role, setRole] = useState<Role>(null)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -18,6 +22,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
       .then(r => {
         setState(r.status)
         setUser(r.user ?? null)
+        setRole(r.role ?? null)
         if (r.status === 'redirect') redirectToLogin()
       })
       .catch((e: any) => {
@@ -30,7 +35,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   if (state === 'redirect') return <FullScreenTip text="正在跳转登录页…" />
   if (state === 'error') return <FullScreenTip text={`登录状态校验失败：${error}`} />
   if (state === 'denied') return <DeniedContext.Provider value={true}>{children}</DeniedContext.Provider>
-  return <>{children}</>
+  return <RoleContext.Provider value={role}>{children}</RoleContext.Provider>
 }
 
 function FullScreenTip({ text }: { text: string }) {

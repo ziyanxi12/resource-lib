@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
+from app.schemas.whitelist import WhitelistCreate, WhitelistBatchCreate, WhitelistUpdate
 from app.services import operation_log_service, whitelist_service
 from app.services.operator import get_operator
 
@@ -27,6 +28,7 @@ def _fmt(item) -> dict:
         "account": item.account,
         "nick_name": item.nick_name,
         "remark": item.remark,
+        "role": item.role,
         "is_active": item.is_active,
         "created_at": int(item.created_at.timestamp() * 1000) if item.created_at else None,
         "updated_at": int(item.updated_at.timestamp() * 1000) if item.updated_at else None,
@@ -49,29 +51,32 @@ def check_whitelist(
     account: Optional[str] = Query(None, description="账号（未带 X-User-Data 时回退）"),
     db: Session = Depends(get_db),
 ):
-    """前端入口校验：优先用解密后的登录账号，否则用 query 参数。"""
-    if not getattr(settings, "WHITELIST_ENABLED", False):
-        return {"allowed": True, "account": account, "nick_name": None}
-
+    """前端入口校验：优先用解密后的登录账号，否则用 query 参数。返回 allowed/role/nick_name。"""
     op = get_operator(request)
     real_account = op.account if op and op.account != "unknown" else None
     checked_account = real_account or account
-    allowed = whitelist_service.is_whitelisted(db, checked_account)
-    nick_name = None
-    if allowed:
-        item = whitelist_service.get_account(db, checked_account)
-        nick_name = item.nick_name if item else None
-    return {"allowed": allowed, "account": checked_account, "nick_name": nick_name}
+
+    item = whitelist_service.get_account(db, checked_account) if checked_account else None
+    in_whitelist = bool(item) and item.is_active == 1
+
+    if getattr(settings, "WHITELIST_ENABLED", False):
+        allowed = in_whitelist
+    else:
+        allowed = True
+
+    role = item.role if item else None
+    nick_name = item.nick_name if item else None
+    return {"allowed": allowed, "account": checked_account, "nick_name": nick_name, "role": role}
 
 
 @router.post("")
-def create_account(data: dict, request: Request, db: Session = Depends(get_db)):
+def create_account(body: WhitelistCreate, request: Request, db: Session = Depends(get_db)):
     try:
         item = whitelist_service.create_account(
             db,
-            account=data.get("account"),
-            nick_name=data.get("nick_name"),
-            remark=data.get("remark"),
+            account=body.account,
+            nick_name=body.nick_name,
+            remark=body.remark,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -90,9 +95,9 @@ def create_account(data: dict, request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/batch")
-def batch_create(data: dict, request: Request, db: Session = Depends(get_db)):
-    accounts = data.get("accounts")
-    if not isinstance(accounts, list) or not accounts:
+def batch_create(body: WhitelistBatchCreate, request: Request, db: Session = Depends(get_db)):
+    accounts = [item.model_dump(exclude_unset=True) for item in body.accounts]
+    if not accounts:
         raise HTTPException(status_code=400, detail="accounts is required")
 
     result = whitelist_service.batch_create(db, accounts)
@@ -111,7 +116,8 @@ def batch_create(data: dict, request: Request, db: Session = Depends(get_db)):
 
 
 @router.put("/{pk}")
-def update_account(pk: int, data: dict, request: Request, db: Session = Depends(get_db)):
+def update_account(pk: int, body: WhitelistUpdate, request: Request, db: Session = Depends(get_db)):
+    data = body.model_dump(exclude_unset=True)
     item = whitelist_service.update_account(db, pk, data)
     if not item:
         raise HTTPException(status_code=404, detail="白名单账号不存在")

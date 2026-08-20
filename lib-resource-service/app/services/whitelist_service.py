@@ -52,6 +52,7 @@ def create_account(
         account=account,
         nick_name=nick,
         remark=remark,
+        role="admin",
         is_active=1,
     )
     db.add(item)
@@ -95,7 +96,7 @@ def update_account(db: Session, pk: int, data: dict) -> Optional[WhitelistAccoun
     item = get_account_by_id(db, pk)
     if not item:
         return None
-    for key in ("nick_name", "remark", "is_active"):
+    for key in ("nick_name", "remark", "is_active", "role"):
         if key in data:
             setattr(item, key, data[key])
     db.commit()
@@ -107,7 +108,7 @@ def delete_account(db: Session, pk: int) -> bool:
     item = get_account_by_id(db, pk)
     if not item:
         return False
-    item.is_active = 0
+    db.delete(item)
     db.commit()
     return True
 

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal, get_db
+from app.schemas.source import SourceCreate, SourceUpdate
 from app.services import source_service, import_service, import_task_registry, vector_sync_service
 from app.services import operation_log_service
 from app.services.operator import get_operator
@@ -102,23 +103,20 @@ def get_source(source_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("")
-def create_source(data: dict, request: Request, db: Session = Depends(get_db)):
+def create_source(body: SourceCreate, request: Request, db: Session = Depends(get_db)):
     """创建来源"""
-    if "type" not in data:
-        raise HTTPException(status_code=400, detail="type is required")
-    
     try:
-        resource_type = ResourceType.from_name(data["type"])
+        resource_type = ResourceType.from_name(body.type)
     except KeyError:
-        raise HTTPException(status_code=400, detail=f"未知资源类型: {data['type']}")
+        raise HTTPException(status_code=400, detail=f"未知资源类型: {body.type}")
     
     account, name = get_operator(request)
     create_data = {
-        "name": data.get("name"),
+        "name": body.name,
         "resource_type": int(resource_type),
-        "is_sync_source": data.get("is_sync_source", 0),
-        "config": data.get("config"),
-        "is_active": data.get("is_active", 1),
+        "is_sync_source": body.is_sync_source,
+        "config": body.config,
+        "is_active": body.is_active,
         "created_by": account,
         "updated_by": account,
     }
@@ -143,10 +141,11 @@ def create_source(data: dict, request: Request, db: Session = Depends(get_db)):
 
 
 @router.put("/{source_id}")
-def update_source(source_id: int, data: dict, request: Request, db: Session = Depends(get_db)):
+def update_source(source_id: int, body: SourceUpdate, request: Request, db: Session = Depends(get_db)):
     """更新来源"""
     account, name = get_operator(request)
-    if "name" in data:
+    data = body.model_dump(exclude_unset=True)
+    if body.name is not None:
         data["updated_by"] = account
     try:
         source = source_service.update_source(db, source_id, data)

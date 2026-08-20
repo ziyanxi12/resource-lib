@@ -10,26 +10,29 @@ import {
   StarOutlined,
   FunctionOutlined,
   FileOutlined,
+  SettingOutlined,
 } from '@ant-design/icons'
 import Guide from './pages/Guide'
 import ResourceOverview from './pages/ResourceOverview'
 import ResourceManage from './pages/ResourceManage'
 import ResourceUpload from './pages/ResourceUpload'
 import SourceManage from './pages/SourceManage'
+import InnerShow from './pages/InnerShow'
 import Error from './pages/Error'
-import { AuthGuard, useDenied } from './components/AuthGuard'
+import { AuthGuard, useDenied, useRole } from './components/AuthGuard'
 import { getUserInfo, redirectToLogout } from './utils/auth'
 
-type PageKey = 'home' | 'overview' | 'component' | 'icon' | 'illus' | 'image' | 'file'
+type PageKey = 'home' | 'overview' | 'component' | 'icon' | 'illus' | 'image' | 'file' | 'source-manage'
 
-const NAV: { key: PageKey; path: string; icon: React.ReactNode; label: string }[] = [
+const NAV: { key: PageKey; path: string; icon: React.ReactNode; label: string; superOnly?: boolean }[] = [
   { key: 'home'      , path: '/home'      , icon: <HomeOutlined />,       label: '首页' },
-  { key: 'overview'  , path: '/overview' , icon: <AppstoreOutlined />,  label: '数据总览' },
   { key: 'component' , path: '/component' , icon: <BlockOutlined />,     label: '组件' },
   { key: 'icon'      , path: '/icon'      , icon: <FunctionOutlined />, label: '图标' },
   { key: 'illus'     , path: '/illus'     , icon: <StarOutlined />,     label: '插画' },
   { key: 'image'     , path: '/image'     , icon: <PictureOutlined />,  label: '图片' },
   { key: 'file'      , path: '/file'      , icon: <FileOutlined />,     label: '文件' },
+  { key: 'overview'  , path: '/overview' , icon: <AppstoreOutlined />,  label: '数据统计', superOnly: true },
+  { key: 'source-manage', path: '/source-manage', icon: <SettingOutlined />, label: '管理页面', superOnly: true },
 ]
 
 const SIDEBAR_W = 220
@@ -86,6 +89,8 @@ function AppLayout() {
   const uploadPage = isUploadPage(location.pathname)
   const user = getUserInfo()
   const denied = useDenied()
+  const role = useRole()
+  const visibleNav = NAV.filter(item => !item.superOnly || role === 'super')
 
   const pathParts = location.pathname.split('/').filter(Boolean)
   const currentNavKey = NAV.find(item => item.path === `/${pathParts[0] || ''}`)?.key || 'overview'
@@ -150,7 +155,7 @@ function AppLayout() {
             >
               导航
             </div>
-            {NAV.map(item => (
+            {visibleNav.map(item => (
               <NavItem
                 key={item.key}
                 icon={item.icon}
@@ -202,8 +207,9 @@ function AppLayout() {
             <Routes>
               <Route path="/" element={<Navigate to="/home" replace />} />
               <Route path="/home" element={<Guide />} />
-              <Route path="/overview" element={<ResourceOverview />} />
-              <Route path="/source-manage" element={<SourceManage />} />
+              <Route path="/overview" element={role === 'super' ? <ResourceOverview /> : <Navigate to="/home" replace />} />
+              <Route path="/source-manage" element={role === 'super' ? <SourceManage /> : <Navigate to="/home" replace />} />
+              <Route path="/inner-show" element={role === 'super' ? <InnerShow /> : <Navigate to="/home" replace />} />
               <Route path="/:type" element={<ResourceManage />} />
               <Route path="/:type/upload" element={<ResourceUpload />} />
             </Routes>

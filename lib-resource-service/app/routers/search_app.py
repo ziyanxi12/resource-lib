@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.schemas.search_app import SearchAppCreate, SearchAppUpdate
 from app.services import search_app_service
 
 router = APIRouter(prefix="/api/search-apps", tags=["搜索应用"])
@@ -46,20 +47,20 @@ def export_apps(db: Session = Depends(get_db)):
 
 
 @router.post("")
-def create_app(data: dict, db: Session = Depends(get_db)):
-    name = data.get("name")
+def create_app(body: SearchAppCreate, db: Session = Depends(get_db)):
+    name = body.name
     if not name or not name.strip():
         raise HTTPException(status_code=400, detail="name is required")
     try:
-        app = search_app_service.create_app(db, name=name.strip(), remark=data.get("remark"))
+        app = search_app_service.create_app(db, name=name.strip(), remark=body.remark)
         return _format_app(app)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.put("/{app_id_pk}")
-def update_app(app_id_pk: int, data: dict, db: Session = Depends(get_db)):
-    app = search_app_service.update_app(db, app_id_pk, data)
+def update_app(app_id_pk: int, body: SearchAppUpdate, db: Session = Depends(get_db)):
+    app = search_app_service.update_app(db, app_id_pk, body.model_dump(exclude_unset=True))
     if not app:
         raise HTTPException(status_code=404, detail="应用不存在")
     return _format_app(app)

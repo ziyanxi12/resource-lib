@@ -12,6 +12,7 @@ class WhitelistAccount(Base):
     account     = Column(String(100), unique=True, index=True, comment="登录账号")
     nick_name   = Column(String(100), nullable=True, comment="昵称（展示用）")
     remark      = Column(Text, nullable=True, comment="备注")
+    role        = Column(String(20), default="admin", comment="super=超管 admin=管理员")
     is_active   = Column(Integer, default=1, comment="1=启用 0=禁用(软删除)")
     created_at  = Column(DateTime, default=datetime.now)
     updated_at  = Column(DateTime, default=datetime.now, onupdate=datetime.now)

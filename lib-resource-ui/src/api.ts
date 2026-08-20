@@ -80,6 +80,7 @@ export interface WhitelistAccount {
   account: string
   nick_name: string | null
   remark: string | null
+  role: string
   is_active: number
   created_at: number
   updated_at: number
@@ -490,7 +491,7 @@ export const api = {
     return request(`/api/whitelist?${q}`)
   },
 
-  checkWhitelist: (account: string): Promise<{ allowed: boolean; account: string | null; nick_name: string | null }> =>
+  checkWhitelist: (account: string): Promise<{ allowed: boolean; account: string | null; nick_name: string | null; role: string | null }> =>
     request(`/api/whitelist/check?account=${encodeURIComponent(account)}`),
 
   createWhitelistAccount: (data: { account: string; nick_name?: string; remark?: string }): Promise<WhitelistAccount> =>
@@ -507,7 +508,7 @@ export const api = {
       body: JSON.stringify({ accounts }),
     }),
 
-  updateWhitelistAccount: (id: number, data: { nick_name?: string; remark?: string; is_active?: number }): Promise<WhitelistAccount> =>
+  updateWhitelistAccount: (id: number, data: { nick_name?: string; remark?: string; is_active?: number; role?: string }): Promise<WhitelistAccount> =>
     request(`/api/whitelist/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
