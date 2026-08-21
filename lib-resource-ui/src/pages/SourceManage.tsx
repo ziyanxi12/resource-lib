@@ -488,7 +488,7 @@ function WhitelistPanel() {
           loading={loading}
           columns={columns}
           dataSource={list}
-          scroll={{ x: 'max-content' }}
+          scroll={{ x: 'max-content', y: 'calc(100vh - 280px)' }}
           pagination={false}
         />
       </div>
