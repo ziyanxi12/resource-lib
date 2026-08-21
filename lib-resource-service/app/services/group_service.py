@@ -94,19 +94,18 @@ def get_group_tree(
     return tree, type_name
 
 
-def _get_random_resources_per_group(
+def _get_earliest_resources_per_group(
     db: Session, group_ids: List[int], limit: int
 ) -> dict:
-    """每个分组随机取 limit 条直属资源（ORM 对象列表）"""
+    """每个分组取创建时间最早的 limit 条直属资源（ORM 对象列表）"""
     if not group_ids:
         return {}
-    random_func = func.random() if db.bind.dialect.name == "sqlite" else func.rand()
     result = {}
     for gid in group_ids:
         result[gid] = db.query(Resource).filter(
             Resource.group_id == gid,
             Resource.is_deleted == 0,
-        ).order_by(random_func).limit(limit).all()
+        ).order_by(Resource.created_at.asc()).limit(limit).all()
     return result
 
 
@@ -121,7 +120,7 @@ def get_group_tree_with_resources(
     groups, group_ids, resource_counts = _get_groups_with_counts(
         db, resource_type, source_id, exclude_default
     )
-    resources_map = _get_random_resources_per_group(db, group_ids, resource_limit)
+    resources_map = _get_earliest_resources_per_group(db, group_ids, resource_limit)
     tree = build_tree(groups, resource_counts)
     type_name = ResourceType(resource_type).name
     return tree, resources_map, type_name
