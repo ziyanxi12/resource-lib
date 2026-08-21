@@ -14,9 +14,11 @@ from typing import Optional
 
 from app.database import get_db
 from app.enums import ResourceType
+from app.routers.resources import _fmt
 from app.services import group_service
 from app.services import operation_log_service
 from app.services.operator import get_operator
+from app.services.user_service import resolve_display_names
 from app.schemas.group import (
     GroupCreate, GroupUpdate, GroupMove,
     GroupReorderRequest, GroupTreeResponse
@@ -85,6 +87,49 @@ def create_group(body: GroupCreate, request: Request, db: Session = Depends(get_
         "level": group.level,
         "real_path": group.real_path,
         "sort_order": group.sort_order,
+    }
+
+
+@router.get("/with-resources")
+def get_groups_with_resources(
+    type: str = Query(..., description="资源类型名，如 component、icon、illus、image、file"),
+    source_id: Optional[int] = Query(None, description="来源ID筛选"),
+    exclude_default: bool = Query(True, description="是否排除默认分组"),
+    limit: int = Query(10, ge=1, le=50, description="每个分组返回的资源数"),
+    db: Session = Depends(get_db),
+):
+    """获取分组树，每个分组附带随机采样的直属资源"""
+    try:
+        resource_type = ResourceType.from_name(type)
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
+
+    tree, resources_map, type_name = group_service.get_group_tree_with_resources(
+        db, int(resource_type), source_id, exclude_default, limit
+    )
+
+    accounts = set()
+    for resources in resources_map.values():
+        for r in resources:
+            if r.created_by:
+                accounts.add(r.created_by)
+            if r.updated_by:
+                accounts.add(r.updated_by)
+    display_map = resolve_display_names(db, list(accounts))
+
+    def _node_to_dict(node):
+        d = node.model_dump()
+        d["resources"] = [_fmt(r, display_map) for r in resources_map.get(node.id, [])]
+        d["children"] = [_node_to_dict(c) for c in node.children]
+        return d
+
+    items = [_node_to_dict(n) for n in tree]
+
+    return {
+        "resource_type": int(resource_type),
+        "resource_type_name": type_name,
+        "source_id": source_id,
+        "items": items,
     }
 
 

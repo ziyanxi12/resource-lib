@@ -55,29 +55,76 @@ def build_tree(groups: List[ResourceGroup], resource_counts: dict = None) -> Lis
     return root_nodes
 
 
+def _get_resource_counts(db: Session, group_ids: List[int]) -> dict:
+    """批量查询每个分组的直属资源数量"""
+    if not group_ids:
+        return {}
+    rows = db.query(
+        Resource.group_id,
+        func.count(Resource.id)
+    ).filter(
+        Resource.group_id.in_(group_ids),
+        Resource.is_deleted == 0
+    ).group_by(Resource.group_id).all()
+    return {row[0]: row[1] for row in rows}
+
+
+def _get_groups_with_counts(
+    db: Session,
+    resource_type: int,
+    source_id: Optional[int] = None,
+    exclude_default: bool = False,
+) -> Tuple[List[ResourceGroup], List[int], dict]:
+    """共享：查询分组列表 + 批量查资源数量"""
+    groups = get_groups_by_type(db, resource_type, source_id, exclude_default)
+    group_ids = [g.id for g in groups]
+    resource_counts = _get_resource_counts(db, group_ids)
+    return groups, group_ids, resource_counts
+
+
 def get_group_tree(
     db: Session, 
     resource_type: int, 
     source_id: Optional[int] = None,
     exclude_default: bool = False
 ) -> Tuple[List[GroupNode], str]:
-    groups = get_groups_by_type(db, resource_type, source_id, exclude_default)
-    
-    group_ids = [g.id for g in groups]
-    resource_counts = {}
-    if group_ids:
-        rows = db.query(
-            Resource.group_id,
-            func.count(Resource.id)
-        ).filter(
-            Resource.group_id.in_(group_ids),
-            Resource.is_deleted == 0
-        ).group_by(Resource.group_id).all()
-        resource_counts = {row[0]: row[1] for row in rows}
-    
+    groups, _, resource_counts = _get_groups_with_counts(db, resource_type, source_id, exclude_default)
     tree = build_tree(groups, resource_counts)
     type_name = ResourceType(resource_type).name
     return tree, type_name
+
+
+def _get_random_resources_per_group(
+    db: Session, group_ids: List[int], limit: int
+) -> dict:
+    """每个分组随机取 limit 条直属资源（ORM 对象列表）"""
+    if not group_ids:
+        return {}
+    random_func = func.random() if db.bind.dialect.name == "sqlite" else func.rand()
+    result = {}
+    for gid in group_ids:
+        result[gid] = db.query(Resource).filter(
+            Resource.group_id == gid,
+            Resource.is_deleted == 0,
+        ).order_by(random_func).limit(limit).all()
+    return result
+
+
+def get_group_tree_with_resources(
+    db: Session,
+    resource_type: int,
+    source_id: Optional[int] = None,
+    exclude_default: bool = True,
+    resource_limit: int = 10,
+) -> Tuple[List[GroupNode], dict, str]:
+    """分组树 + 每个分组的随机采样直属资源"""
+    groups, group_ids, resource_counts = _get_groups_with_counts(
+        db, resource_type, source_id, exclude_default
+    )
+    resources_map = _get_random_resources_per_group(db, group_ids, resource_limit)
+    tree = build_tree(groups, resource_counts)
+    type_name = ResourceType(resource_type).name
+    return tree, resources_map, type_name
 
 
 def get_group_by_id(db: Session, group_id: int) -> Optional[ResourceGroup]:
