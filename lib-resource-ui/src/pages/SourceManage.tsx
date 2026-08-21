@@ -266,14 +266,18 @@ function WhitelistPanel() {
       data.items.filter(r => !r.nick_name).forEach(async (r) => {
         try {
           const result = await api.searchUsers(r.account)
-          const match = result.items.find(u => u.account === r.account)
+          const match = result.items.find(
+            u => u.account.toLowerCase() === r.account.toLowerCase()
+          )
           if (match?.nickName) {
             await api.updateWhitelistAccount(r.id, { nick_name: match.nickName })
             setList(prev => prev.map(item =>
               item.id === r.id ? { ...item, nick_name: match.nickName } : item
             ))
           }
-        } catch { /* 静默忽略单条失败 */ }
+        } catch (e) {
+          console.error('补全 nick_name 失败:', r.account, e)
+        }
       })
     } catch {
       message.error('加载白名单失败')
