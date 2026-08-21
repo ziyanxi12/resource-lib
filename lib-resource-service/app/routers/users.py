@@ -1,12 +1,13 @@
 """
 用户查询路由（只读）
 GET /api/users                    用户列表（?search=&whitelisted=）
+GET /api/users/search             按关键词联想搜索用户（?keyword=）
 GET /api/users/by-account/{acct}  按账号精确查（未命中也返回 200，不阻塞白名单添加）
 """
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -42,6 +43,16 @@ def list_users(
     users = user_service.list_users(db, search=search, whitelisted=whitelisted)
     whitelist_set = user_service.get_whitelisted_account_set(db)
     return {"items": [_fmt_user(u, whitelist_set) for u in users]}
+
+
+@router.get("/search")
+def search_users(
+    keyword: str = Query(..., description="搜索关键词"),
+    request: Request = None,
+):
+    """按关键词联想搜索用户（供人员管理搜索框使用，转发 cookie + uiplustoken 到外部 API）"""
+    users = user_service.search_users(keyword, request)
+    return {"items": users}
 
 
 @router.get("/by-account/{account}")

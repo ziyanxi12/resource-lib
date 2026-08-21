@@ -518,8 +518,12 @@ export const api = {
   deleteWhitelistAccount: (id: number): Promise<{ message: string }> =>
     request(`/api/whitelist/${id}`, { method: 'DELETE' }),
 
-  refreshWhitelistNickname: (id: number): Promise<{ updated: boolean; message: string } & WhitelistAccount> =>
-    request(`/api/whitelist/${id}/refresh-nickname`, { method: 'POST' }),
+  searchUsers: (keyword: string): Promise<{ items: Array<{ userID: string; account: string; nickName: string; dept: string[] }> }> => {
+    const headers: Record<string, string> = {}
+    const token = localStorage.getItem('uiplustoken')
+    if (token) headers['uiplustoken'] = token
+    return request(`/api/users/search?keyword=${encodeURIComponent(keyword)}`, { headers })
+  },
 
   getUsers: (params?: { search?: string; whitelisted?: number }): Promise<{ items: UserRecord[] }> => {
     const q = new URLSearchParams()

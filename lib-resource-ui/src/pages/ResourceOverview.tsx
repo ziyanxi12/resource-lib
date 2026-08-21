@@ -298,6 +298,8 @@ function SearchStatsSection() {
     return result
   }, [apps])
 
+  const grayCellStyle = { style: { background: '#f0f0f0' } }
+
   const appColumns: ColumnsType<WideAppRow> = [
     {
       title: '应用名称',
@@ -311,6 +313,7 @@ function SearchStatsSection() {
       dataIndex: 'total_api',
       width: 90,
       render: (v: number) => v.toLocaleString(),
+      onCell: () => grayCellStyle,
     },
     {
       title: '总资源数',
@@ -318,22 +321,20 @@ function SearchStatsSection() {
       width: 90,
       render: (v: number) => v.toLocaleString(),
     },
-    ...STATS.reduce<ColumnsType<WideAppRow>>((acc, s, idx) => {
-      const cellStyle = idx % 2 === 0 ? { style: { background: '#fafafa' } } : {}
+    ...STATS.reduce<ColumnsType<WideAppRow>>((acc, s) => {
       acc.push(
         {
           title: `${s.label}接口数`,
           dataIndex: `${s.key}_api`,
           width: 80,
           render: (v: number) => v.toLocaleString(),
-          onCell: () => cellStyle,
+          onCell: () => grayCellStyle,
         },
         {
           title: `${s.label}资源数`,
           dataIndex: `${s.key}_resource`,
           width: 80,
           render: (v: number) => v.toLocaleString(),
-          onCell: () => cellStyle,
         },
       )
       return acc

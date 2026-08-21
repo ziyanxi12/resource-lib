@@ -3,12 +3,56 @@ import logging
 from typing import List, Optional
 
 import httpx
+from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models.user import User
 
 logger = logging.getLogger(__name__)
+
+
+def _mock_search_users(keyword: str) -> List[dict]:
+    """模拟用户搜索数据"""
+    pool = [
+        {"userID": "u001", "account": "guest", "nickName": "访客用户", "dept": ["技术部"]},
+        {"userID": "u002", "account": "admin", "nickName": "管理员", "dept": ["平台部"]},
+        {"userID": "u003", "account": "zhangsan", "nickName": "张三", "dept": ["设计部", "创意中心"]},
+        {"userID": "u004", "account": "lisi", "nickName": "李四", "dept": ["前端开发部"]},
+        {"userID": "u005", "account": "wangwu", "nickName": "王五", "dept": ["后端开发部"]},
+    ]
+    kw = keyword.lower()
+    return [u for u in pool if kw in u["account"].lower() or kw in u["nickName"].lower()]
+
+
+def search_users(keyword: str, request: Request) -> List[dict]:
+    """按关键词搜索用户。USE_MOCK=true 返回模拟数据，否则调外部 API（转发 cookie + uiplustoken）。"""
+    if not keyword or not keyword.strip():
+        return []
+    keyword = keyword.strip()
+
+    if settings.USE_MOCK:
+        return _mock_search_users(keyword)
+
+    if not settings.USER_SEARCH_API_URL:
+        return []
+    try:
+        uiplustoken = request.headers.get("uiplustoken", "")
+        resp = httpx.get(
+            f"{settings.USER_SEARCH_API_URL}?keyword={keyword}",
+            timeout=10,
+            trust_env=False,
+            cookies=request.cookies,
+            headers={"uiplustoken": uiplustoken},
+        )
+        resp.raise_for_status()
+        content = resp.json().get("content", {})
+        for _, users in content.items():
+            return users if isinstance(users, list) else []
+        return []
+    except Exception as e:
+        logger.warning("外部 API 搜索用户失败: keyword=%s, error=%s", keyword, e)
+        return []
 
 
 def _fetch_user_from_api(account: str) -> Optional[dict]:

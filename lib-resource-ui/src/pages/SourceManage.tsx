@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
-import { Button, Modal, Input, Select, message, Tabs, Tag, Table, Space, Tooltip } from 'antd'
+import { useState, useEffect, useRef } from 'react'
+import { Button, Modal, Input, Select, message, Tabs, Tag, Table, Space, Tooltip, AutoComplete } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
-import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined, ReloadOutlined, CheckCircleOutlined, StopOutlined } from '@ant-design/icons'
+import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
 import { api, SearchApp, WhitelistAccount } from '../api'
 
@@ -247,13 +247,13 @@ function WhitelistPanel() {
   const [isActive, setIsActive] = useState<number | undefined>(undefined)
   const [search, setSearch] = useState('')
 
+  const [userOptions, setUserOptions] = useState<{ value: string; label: React.ReactNode }[]>([])
+  const [searchValue, setSearchValue] = useState('')
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const [createOpen, setCreateOpen] = useState(false)
   const [newAccount, setNewAccount] = useState('')
   const [newRemark, setNewRemark] = useState('')
-
-  const [batchOpen, setBatchOpen] = useState(false)
-  const [batchText, setBatchText] = useState('')
-  const [batchLoading, setBatchLoading] = useState(false)
 
   const [editOpen, setEditOpen] = useState(false)
   const [editing, setEditing] = useState<WhitelistAccount | null>(null)
@@ -264,21 +264,6 @@ function WhitelistPanel() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState<WhitelistAccount | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
-
-  const [refreshingId, setRefreshingId] = useState<number | null>(null)
-
-  const handleRefreshNickname = async (record: WhitelistAccount) => {
-    setRefreshingId(record.id)
-    try {
-      const r = await api.refreshWhitelistNickname(record.id)
-      message.info(r.message)
-      loadList()
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : '刷新失败')
-    } finally {
-      setRefreshingId(null)
-    }
-  }
 
   const loadList = async () => {
     setLoading(true)
@@ -295,6 +280,44 @@ function WhitelistPanel() {
   useEffect(() => {
     loadList()
   }, [isActive, search])
+
+  const handleSearchUser = (value: string) => {
+    setSearchValue(value)
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    if (!value.trim()) {
+      setUserOptions([])
+      return
+    }
+    debounceTimer.current = setTimeout(async () => {
+      try {
+        const data = await api.searchUsers(value.trim())
+        setUserOptions(data.items.map(u => ({
+          value: u.account,
+          label: (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>
+                <span style={{ fontWeight: 500 }}>{u.nickName}</span>
+                <span style={{ color: '#94a3b8', marginLeft: 8, fontSize: 12 }}>{u.account}</span>
+              </span>
+              {u.dept?.length > 0 && (
+                <span style={{ color: '#94a3b8', fontSize: 12 }}>
+                  {u.dept.length >= 4 ? `${u.dept[3]}[${u.dept[0]}]` : u.dept[0]}
+                </span>
+              )}
+            </div>
+          ),
+        })))
+      } catch {
+        setUserOptions([])
+      }
+    }, 300)
+  }
+
+  const handleSelectUser = (account: string) => {
+    setSearchValue(account)
+    setSearch(account)
+    setUserOptions([])
+  }
 
   const handleCreate = async () => {
     if (!newAccount.trim()) {
@@ -316,27 +339,6 @@ function WhitelistPanel() {
     }
   }
 
-  const handleBatchCreate = async () => {
-    const lines = batchText.split('\n').map(s => s.trim()).filter(Boolean)
-    if (lines.length === 0) {
-      message.error('请输入至少一个账号')
-      return
-    }
-    setBatchLoading(true)
-    try {
-      const accounts = lines.map(account => ({ account }))
-      const r = await api.batchCreateWhitelist(accounts)
-      message.success(`批量添加完成：新增 ${r.created} 个，跳过 ${r.skipped} 个`)
-      setBatchOpen(false)
-      setBatchText('')
-      loadList()
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : '批量添加失败')
-    } finally {
-      setBatchLoading(false)
-    }
-  }
-
   const handleEdit = async () => {
     if (!editing) return
     try {
@@ -351,16 +353,6 @@ function WhitelistPanel() {
       loadList()
     } catch (e) {
       message.error(e instanceof Error ? e.message : '修改失败')
-    }
-  }
-
-  const handleToggle = async (record: WhitelistAccount) => {
-    try {
-      await api.updateWhitelistAccount(record.id, { is_active: record.is_active === 1 ? 0 : 1 })
-      message.success(record.is_active === 1 ? '已禁用' : '已启用')
-      loadList()
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : '操作失败')
     }
   }
 
@@ -394,7 +386,7 @@ function WhitelistPanel() {
     },
     { title: '创建时间', dataIndex: 'created_at', width: 180, render: (v: number) => v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '—' },
     {
-      title: '操作', width: 190, fixed: 'right',
+      title: '操作', width: 100, fixed: 'right',
       render: (_: unknown, record: WhitelistAccount) => (
         <Space>
           <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
@@ -404,31 +396,6 @@ function WhitelistPanel() {
             setEditRole(record.role ?? 'admin')
             setEditOpen(true)
           }} />
-          <Tooltip title="获取昵称">
-            <span>
-              <Button
-                type="text"
-                size="small"
-                icon={<ReloadOutlined spin={refreshingId === record.id} />}
-                disabled={!!record.nick_name || refreshingId === record.id}
-                onClick={() => handleRefreshNickname(record)}
-              />
-            </span>
-          </Tooltip>
-          <Tooltip title="白名单启用/禁用">
-            <span>
-              <Button
-                type="text"
-                size="small"
-                icon={
-                  record.is_active === 1
-                    ? <CheckCircleOutlined style={{ color: '#16a34a' }} />
-                    : <StopOutlined style={{ color: '#94a3b8' }} />
-                }
-                onClick={() => handleToggle(record)}
-              />
-            </span>
-          </Tooltip>
           <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => {
             setDeleting(record)
             setDeleteOpen(true)
@@ -443,12 +410,18 @@ function WhitelistPanel() {
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>人员管理</h2>
         <Space>
-          <Input.Search
+          <AutoComplete
             allowClear
-            placeholder="搜索账号/昵称"
-            style={{ width: 220 }}
-            onSearch={v => setSearch(v)}
-          />
+            style={{ width: 300 }}
+            value={searchValue}
+            options={userOptions}
+            onSearch={handleSearchUser}
+            onSelect={handleSelectUser}
+            onChange={(v) => { if (!v) { setSearch(''); setSearchValue(''); setUserOptions([]) } }}
+            placeholder="搜索用户账号/昵称"
+          >
+            <Input.Search onSearch={v => setSearch(v)} />
+          </AutoComplete>
           <Select
             placeholder="状态"
             allowClear
@@ -460,7 +433,6 @@ function WhitelistPanel() {
               { value: 0, label: '禁用' },
             ]}
           />
-          <Button icon={<PlusOutlined />} onClick={() => setBatchOpen(true)}>批量添加</Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>添加账号</Button>
         </Space>
       </div>
@@ -498,26 +470,6 @@ function WhitelistPanel() {
           <div style={{ marginBottom: 8, fontWeight: 500 }}>备注</div>
           <Input.TextArea value={newRemark} onChange={e => setNewRemark(e.target.value)} placeholder="请输入备注（选填）" autoSize={{ minRows: 2 }} />
         </div>
-      </Modal>
-
-      {/* 批量添加弹窗 */}
-      <Modal
-        title="批量添加账号"
-        open={batchOpen}
-        onCancel={() => { setBatchOpen(false); setBatchText('') }}
-        onOk={handleBatchCreate}
-        okText="添加"
-        okButtonProps={{ loading: batchLoading }}
-        cancelText="取消"
-      >
-        <div style={{ marginBottom: 8, fontWeight: 500 }}>账号列表（每行一个账号）</div>
-        <Input.TextArea
-          value={batchText}
-          onChange={e => setBatchText(e.target.value)}
-          placeholder={'admin\nzhangsan\nlisi'}
-          autoSize={{ minRows: 6 }}
-        />
-        <div style={{ marginTop: 8, color: '#94a3b8', fontSize: 12 }}>昵称将自动从用户表带出（仅空时补充）。</div>
       </Modal>
 
       {/* 编辑账号弹窗 */}

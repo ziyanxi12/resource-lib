@@ -136,27 +136,6 @@ def update_account(pk: int, body: WhitelistUpdate, request: Request, db: Session
     return _fmt(item)
 
 
-@router.post("/{pk}/refresh-nickname")
-def refresh_nickname(pk: int, request: Request, db: Session = Depends(get_db)):
-    """仅当 nick_name 为空时，从 users 表按 account 补全昵称。已有则跳过，未找到返回提示，均不报错。"""
-    item, updated, msg = whitelist_service.refresh_nick_name(db, pk)
-    if not item:
-        raise HTTPException(status_code=404, detail="白名单账号不存在")
-
-    op_account, op_name = get_operator(request)
-    operation_log_service.create_log(
-        db,
-        operator=op_name,
-        operator_account=op_account,
-        action="refresh_nickname",
-        target_type="whitelist",
-        target_id=item.id,
-        target_name=item.account,
-        detail={"updated": updated, "message": msg},
-    )
-    return {"updated": updated, "message": msg, **_fmt(item)}
-
-
 @router.delete("/{pk}")
 def delete_account(pk: int, request: Request, db: Session = Depends(get_db)):
     item = whitelist_service.get_account_by_id(db, pk)

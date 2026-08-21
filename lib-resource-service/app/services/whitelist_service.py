@@ -46,7 +46,7 @@ def create_account(
 
     nick = (nick_name or "").strip() or None
     if not nick:
-        nick = _lookup_nick_name(db, account)
+        nick = _lookup_nick_name(account)
 
     item = WhitelistAccount(
         account=account,
@@ -61,12 +61,12 @@ def create_account(
     return item
 
 
-def _lookup_nick_name(db: Session, account: str) -> Optional[str]:
-    """从 users 表按 account 查昵称，查不到返回 None（不报错，不阻塞）。"""
+def _lookup_nick_name(account: str) -> Optional[str]:
+    """调 USER_INFO_API_URL 获取昵称，查不到返回 None（不报错，不阻塞）。"""
     try:
-        from app.services.user_service import get_user_by_account
-        u = get_user_by_account(db, account)
-        return (u.nick_name or None) if u else None
+        from app.services.user_service import _fetch_user_from_api
+        info = _fetch_user_from_api(account)
+        return (info.get("nickName") or None) if info else None
     except Exception:
         return None
 
@@ -121,28 +121,3 @@ def is_whitelisted(db: Session, account: Optional[str]) -> bool:
         WhitelistAccount.is_active == 1,
     ).first()
     return item is not None
-
-
-def refresh_nick_name(db: Session, pk: int) -> tuple:
-    """仅当记录 nick_name 为空时，从 users 表按 account 补全。
-
-    返回 (item, updated, message)。
-    - item 为 None 表示记录不存在；
-    - updated=True 表示本次补全成功；
-    - nick_name 已有值则跳过（updated=False）。
-    """
-    item = get_account_by_id(db, pk)
-    if not item:
-        return (None, False, "白名单账号不存在")
-
-    if item.nick_name:
-        return (item, False, f"已有昵称（{item.nick_name}），跳过")
-
-    nick = _lookup_nick_name(db, item.account)
-    if not nick:
-        return (item, False, "用户表未找到该账号，无法补全")
-
-    item.nick_name = nick
-    db.commit()
-    db.refresh(item)
-    return (item, True, f"已补充昵称：{nick}")

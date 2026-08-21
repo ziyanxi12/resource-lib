@@ -88,6 +88,9 @@ class Settings:
     # 用户信息查询 API，resolve_display_names 查不到 account 时补查
     USER_INFO_API_URL:         str = os.getenv("USER_INFO_API_URL", "")
 
+    # 用户搜索 API（人员管理联想搜索），需转发 cookie 和 uiplustoken
+    USER_SEARCH_API_URL:       str = os.getenv("USER_SEARCH_API_URL", "")
+
     # ── 上传限制 ───────────────────────────────────────────────
     # 默认值可通过环境变量配置，但有硬编码最大上限
     MAX_UPLOAD_COUNT: int = int(os.getenv("MAX_UPLOAD_COUNT", "50000"))
