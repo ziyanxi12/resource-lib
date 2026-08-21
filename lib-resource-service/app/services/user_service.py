@@ -26,32 +26,55 @@ def _mock_search_users(keyword: str) -> List[dict]:
 
 
 def search_users(keyword: str, request: Request) -> List[dict]:
-    """按关键词搜索用户。USE_MOCK=true 返回模拟数据，否则调外部 API（转发 cookie + uiplustoken）。"""
+    """按关键词搜索用户。USE_MOCK=true 返回模拟数据，否则调外部 API（转发 cookie + uiplusToken）。"""
     if not keyword or not keyword.strip():
         return []
     keyword = keyword.strip()
 
     if settings.USE_MOCK:
+        logger.info("search_users: keyword=%s, USE_MOCK=true → mock", keyword)
         return _mock_search_users(keyword)
 
     if not settings.USER_SEARCH_API_URL:
+        logger.warning("search_users: USER_SEARCH_API_URL 未配置，返回空")
         return []
+
     try:
-        uiplustoken = request.headers.get("uiplustoken", "")
+        uiplustoken = request.headers.get("uiplusToken", "")
+        cookie_keys = list(request.cookies.keys())
+        logger.info(
+            "search_users: keyword=%s, uiplusToken=%s, cookie_keys=%s",
+            keyword,
+            f"present(len={len(uiplustoken)})" if uiplustoken else "missing",
+            cookie_keys,
+        )
+
+        api_url = f"{settings.USER_SEARCH_API_URL}?keyword={keyword}"
+        logger.debug("search_users: 调用外部 API: %s", api_url)
+
         resp = httpx.get(
-            f"{settings.USER_SEARCH_API_URL}?keyword={keyword}",
+            api_url,
             timeout=10,
             trust_env=False,
             cookies=request.cookies,
-            headers={"uiplustoken": uiplustoken},
+            headers={"uiplusToken": uiplustoken},
+        )
+        logger.info(
+            "search_users: 外部 API 返回: status=%s, body_len=%s",
+            resp.status_code,
+            len(resp.content),
         )
         resp.raise_for_status()
+
         content = resp.json().get("content", {})
         for _, users in content.items():
-            return users if isinstance(users, list) else []
+            result = users if isinstance(users, list) else []
+            logger.info("search_users: 解析成功, users_count=%d", len(result))
+            return result
+        logger.warning("search_users: content 为空或格式不符: %s", str(content)[:200])
         return []
     except Exception as e:
-        logger.warning("外部 API 搜索用户失败: keyword=%s, error=%s", keyword, e)
+        logger.warning("search_users: 外部 API 搜索用户失败: keyword=%s, error=%s", keyword, e)
         return []
 
 

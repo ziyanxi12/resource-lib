@@ -520,8 +520,8 @@ export const api = {
 
   searchUsers: (keyword: string): Promise<{ items: Array<{ userID: string; account: string; nickName: string; dept: string[] }> }> => {
     const headers: Record<string, string> = {}
-    const token = localStorage.getItem('uiplustoken')
-    if (token) headers['uiplustoken'] = token
+    const token = localStorage.getItem('uiplusToken')
+    if (token) headers['uiplusToken'] = token
     return request(`/api/users/search?keyword=${encodeURIComponent(keyword)}`, { headers })
   },
 
