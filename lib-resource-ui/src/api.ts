@@ -518,11 +518,11 @@ export const api = {
   deleteWhitelistAccount: (id: number): Promise<{ message: string }> =>
     request(`/api/whitelist/${id}`, { method: 'DELETE' }),
 
-  searchUsers: (keyword: string): Promise<{ items: Array<{ userID: string; account: string; nickName: string; dept: string[] }> }> => {
+  searchUsers: (keyword: string, signal?: AbortSignal): Promise<{ items: Array<{ userID: string; account: string; nickName: string; dept: string[] }> }> => {
     const headers: Record<string, string> = {}
     const token = localStorage.getItem('uiplusToken')
     if (token) headers['uiplusToken'] = token
-    return request(`/api/users/search?keyword=${encodeURIComponent(keyword)}`, { headers })
+    return request(`/api/users/search?keyword=${encodeURIComponent(keyword)}`, { headers, signal })
   },
 
   getUsers: (params?: { search?: string; whitelisted?: number }): Promise<{ items: UserRecord[] }> => {

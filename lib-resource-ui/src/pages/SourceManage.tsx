@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Button, Modal, Input, Select, message, Tabs, Tag, Table, Space, Tooltip, AutoComplete } from 'antd'
+import { Button, Modal, Input, Select, message, Tabs, Tag, Table, Space, Tooltip, Spin } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { PlusOutlined, EditOutlined, DeleteOutlined, CopyOutlined } from '@ant-design/icons'
 import dayjs from 'dayjs'
@@ -244,22 +244,14 @@ function SearchAppPanel() {
 function WhitelistPanel() {
   const [list, setList] = useState<WhitelistAccount[]>([])
   const [loading, setLoading] = useState(false)
-  const [isActive, setIsActive] = useState<number | undefined>(undefined)
-  const [search, setSearch] = useState('')
 
-  const [userOptions, setUserOptions] = useState<{ value: string; label: React.ReactNode }[]>([])
-  const [searchValue, setSearchValue] = useState('')
+  const [userOptions, setUserOptions] = useState<{ value: string; label: string; dept?: string[] }[]>([])
+  const [pendingUsers, setPendingUsers] = useState<Array<{ value: string; label: string }>>([])
+  const [searching, setSearching] = useState(false)
+  const [adding, setAdding] = useState(false)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const [createOpen, setCreateOpen] = useState(false)
-  const [newAccount, setNewAccount] = useState('')
-  const [newRemark, setNewRemark] = useState('')
-
-  const [editOpen, setEditOpen] = useState(false)
-  const [editing, setEditing] = useState<WhitelistAccount | null>(null)
-  const [editNick, setEditNick] = useState('')
-  const [editRemark, setEditRemark] = useState('')
-  const [editRole, setEditRole] = useState<string>('admin')
+  const abortRef = useRef<AbortController | null>(null)
+  const userMapRef = useRef<Map<string, { nickName: string; dept?: string[] }>>(new Map())
 
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState<WhitelistAccount | null>(null)
@@ -268,8 +260,21 @@ function WhitelistPanel() {
   const loadList = async () => {
     setLoading(true)
     try {
-      const data = await api.getWhitelist({ is_active: isActive, search: search.trim() || undefined })
+      const data = await api.getWhitelist()
       setList(data.items)
+
+      data.items.filter(r => !r.nick_name).forEach(async (r) => {
+        try {
+          const result = await api.searchUsers(r.account)
+          const match = result.items.find(u => u.account === r.account)
+          if (match?.nickName) {
+            await api.updateWhitelistAccount(r.id, { nick_name: match.nickName })
+            setList(prev => prev.map(item =>
+              item.id === r.id ? { ...item, nick_name: match.nickName } : item
+            ))
+          }
+        } catch { /* 静默忽略单条失败 */ }
+      })
     } catch {
       message.error('加载白名单失败')
     } finally {
@@ -279,80 +284,61 @@ function WhitelistPanel() {
 
   useEffect(() => {
     loadList()
-  }, [isActive, search])
+  }, [])
 
   const handleSearchUser = (value: string) => {
-    setSearchValue(value)
     if (debounceTimer.current) clearTimeout(debounceTimer.current)
+    if (abortRef.current) abortRef.current.abort()
     if (!value.trim()) {
       setUserOptions([])
+      setSearching(false)
       return
     }
     debounceTimer.current = setTimeout(async () => {
+      const controller = new AbortController()
+      abortRef.current = controller
+      const timeoutId = setTimeout(() => controller.abort(), 6000)
+      setSearching(true)
       try {
-        const data = await api.searchUsers(value.trim())
+        const data = await api.searchUsers(value.trim(), controller.signal)
+        userMapRef.current.clear()
+        data.items.forEach(u => userMapRef.current.set(u.account, { nickName: u.nickName, dept: u.dept }))
         setUserOptions(data.items.map(u => ({
           value: u.account,
-          label: (
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span>
-                <span style={{ fontWeight: 500 }}>{u.nickName}</span>
-                <span style={{ color: '#94a3b8', marginLeft: 8, fontSize: 12 }}>{u.account}</span>
-              </span>
-              {u.dept?.length > 0 && (
-                <span style={{ color: '#94a3b8', fontSize: 12 }}>
-                  {u.dept.length >= 4 ? `${u.dept[3]}[${u.dept[0]}]` : u.dept[0]}
-                </span>
-              )}
-            </div>
-          ),
+          label: u.nickName,
+          dept: u.dept,
         })))
-      } catch {
+      } catch (e: unknown) {
+        if (e instanceof DOMException && e.name === 'AbortError') {
+          message.warning('搜索超时，请重试')
+        }
         setUserOptions([])
+      } finally {
+        clearTimeout(timeoutId)
+        setSearching(false)
       }
     }, 300)
   }
 
-  const handleSelectUser = (account: string) => {
-    setSearchValue(account)
-    setSearch(account)
-    setUserOptions([])
-  }
-
-  const handleCreate = async () => {
-    if (!newAccount.trim()) {
-      message.error('请输入账号')
+  const handleBatchAdd = async () => {
+    if (pendingUsers.length === 0) {
+      message.warning('请先选择要添加的用户')
       return
     }
+    setAdding(true)
     try {
-      await api.createWhitelistAccount({
-        account: newAccount.trim(),
-        remark: newRemark.trim() || undefined,
-      })
-      message.success('添加成功')
-      setCreateOpen(false)
-      setNewAccount('')
-      setNewRemark('')
+      const accounts = pendingUsers.map(u => ({
+        account: u.value,
+        nick_name: u.label || undefined,
+      }))
+      const r = await api.batchCreateWhitelist(accounts)
+      message.success(`添加完成：新增 ${r.created} 个，跳过 ${r.skipped} 个`)
+      setPendingUsers([])
       loadList()
     } catch (e) {
       message.error(e instanceof Error ? e.message : '添加失败')
-    }
-  }
-
-  const handleEdit = async () => {
-    if (!editing) return
-    try {
-      await api.updateWhitelistAccount(editing.id, {
-        nick_name: editNick.trim() || undefined,
-        remark: editRemark.trim() || undefined,
-        role: editRole,
-      })
-      message.success('修改成功')
-      setEditOpen(false)
-      setEditing(null)
-      loadList()
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : '修改失败')
+    } finally {
+      setAdding(false)
     }
   }
 
@@ -375,32 +361,45 @@ function WhitelistPanel() {
   const columns: ColumnsType<WhitelistAccount> = [
     { title: '账号', dataIndex: 'account', width: 200, render: (v: string) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{v}</span> },
     { title: '昵称', dataIndex: 'nick_name', width: 160, render: (v: string | null) => v ?? '—' },
-    { title: '备注', dataIndex: 'remark', width: 220, render: (v: string | null) => v ?? '—' },
+    { title: '备注', dataIndex: 'remark', width: 220, hidden: true, render: (v: string | null) => v ?? '—' },
     {
-      title: '角色', dataIndex: 'role', width: 90,
-      render: (v: string) => v === 'super' ? <Tag color="purple">超管</Tag> : <Tag>管理员</Tag>,
+      title: '角色', dataIndex: 'role', width: 100,
+      render: (_, record) => (
+        <Select
+          size="small"
+          variant="borderless"
+          value={record.role}
+          style={{ width: '100%' }}
+          options={[
+            { value: 'super', label: <Tag color="purple" style={{ margin: 0 }}>超管</Tag> },
+            { value: 'admin', label: <Tag style={{ margin: 0 }}>管理员</Tag> },
+          ]}
+          onChange={async (v) => {
+            try {
+              await api.updateWhitelistAccount(record.id, { role: v })
+              message.success('角色已更新')
+              setList(prev => prev.map(item =>
+                item.id === record.id ? { ...item, role: v } : item
+              ))
+            } catch {
+              message.error('更新失败')
+            }
+          }}
+        />
+      ),
     },
     {
-      title: '状态', dataIndex: 'is_active', width: 90,
+      title: '状态', dataIndex: 'is_active', width: 90, hidden: true,
       render: (v: number) => v === 1 ? <Tag color="green">启用</Tag> : <Tag color="default">禁用</Tag>,
     },
     { title: '创建时间', dataIndex: 'created_at', width: 180, render: (v: number) => v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '—' },
     {
-      title: '操作', width: 100, fixed: 'right',
+      title: '操作', width: 60, fixed: 'right',
       render: (_: unknown, record: WhitelistAccount) => (
-        <Space>
-          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => {
-            setEditing(record)
-            setEditNick(record.nick_name ?? '')
-            setEditRemark(record.remark ?? '')
-            setEditRole(record.role ?? 'admin')
-            setEditOpen(true)
-          }} />
-          <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => {
-            setDeleting(record)
-            setDeleteOpen(true)
-          }} />
-        </Space>
+        <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => {
+          setDeleting(record)
+          setDeleteOpen(true)
+        }} />
       ),
     },
   ]
@@ -410,30 +409,71 @@ function WhitelistPanel() {
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>人员管理</h2>
         <Space>
-          <AutoComplete
-            allowClear
-            style={{ width: 300 }}
-            value={searchValue}
-            options={userOptions}
-            onSearch={handleSearchUser}
-            onSelect={handleSelectUser}
-            onChange={(v) => { if (!v) { setSearch(''); setSearchValue(''); setUserOptions([]) } }}
-            placeholder="搜索用户账号/昵称"
-          >
-            <Input.Search onSearch={v => setSearch(v)} />
-          </AutoComplete>
           <Select
-            placeholder="状态"
-            allowClear
-            style={{ width: 110 }}
-            value={isActive}
-            onChange={v => setIsActive(v)}
-            options={[
-              { value: 1, label: '启用' },
-              { value: 0, label: '禁用' },
-            ]}
+            mode="multiple"
+            labelInValue
+            placeholder="搜索用户账号/昵称添加"
+            style={{ width: 460 }}
+            value={pendingUsers}
+            options={userOptions}
+            filterOption={false}
+            onSearch={handleSearchUser}
+            onChange={(val) => setPendingUsers(val as Array<{ value: string; label: string }>)}
+            notFoundContent={searching ? <Spin size="small" /> : null}
+            optionRender={(option) => {
+              const info = userMapRef.current.get(option.value as string)
+              const dept = info?.dept
+              const deptText = dept?.length && dept.length >= 4
+                ? `${dept[3]}[${dept[1]}]`
+                : (dept?.length ? dept[0] : '')
+              return (
+                <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                  <span style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 0',
+                    textAlign: 'left',
+                  }}>
+                    {info?.nickName || option.label}
+                  </span>
+                  <span style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    flex: '1 1 0',
+                    textAlign: 'center',
+                    color: '#94a3b8',
+                    fontSize: 12,
+                  }}>
+                    {option.value}
+                  </span>
+                  {deptText && (
+                    <span style={{
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      flex: '1 1 0',
+                      textAlign: 'right',
+                      color: '#94a3b8',
+                      fontSize: 12,
+                    }}>
+                      {deptText}
+                    </span>
+                  )}
+                </div>
+              )
+            }}
           />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>添加账号</Button>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            loading={adding}
+            disabled={pendingUsers.length === 0}
+            onClick={handleBatchAdd}
+          >
+            添加{pendingUsers.length > 0 ? `(${pendingUsers.length})` : ''}
+          </Button>
         </Space>
       </div>
 
@@ -448,66 +488,6 @@ function WhitelistPanel() {
           pagination={false}
         />
       </div>
-
-      {/* 添加账号弹窗 */}
-      <Modal
-        title="添加账号"
-        open={createOpen}
-        onCancel={() => { setCreateOpen(false); setNewAccount(''); setNewRemark('') }}
-        onOk={handleCreate}
-        okText="确定"
-        cancelText="取消"
-      >
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, fontWeight: 500 }}>账号 <span style={{ color: '#ef4444' }}>*</span></div>
-          <Input
-            value={newAccount}
-            onChange={e => setNewAccount(e.target.value)}
-            placeholder="请输入登录账号"
-          />
-        </div>
-        <div>
-          <div style={{ marginBottom: 8, fontWeight: 500 }}>备注</div>
-          <Input.TextArea value={newRemark} onChange={e => setNewRemark(e.target.value)} placeholder="请输入备注（选填）" autoSize={{ minRows: 2 }} />
-        </div>
-      </Modal>
-
-      {/* 编辑账号弹窗 */}
-      <Modal
-        title="编辑账号"
-        open={editOpen}
-        onCancel={() => { setEditOpen(false); setEditing(null) }}
-        onOk={handleEdit}
-        okText="确定"
-        cancelText="取消"
-      >
-        {editing && (
-          <div style={{ marginBottom: 16, padding: '8px 12px', background: '#f8fafc', borderRadius: 6 }}>
-            <span style={{ color: '#64748b', fontSize: 13 }}>账号: </span>
-            <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{editing.account}</span>
-          </div>
-        )}
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, fontWeight: 500 }}>昵称</div>
-          <Input value={editNick} onChange={e => setEditNick(e.target.value)} placeholder="请输入昵称（选填）" />
-        </div>
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ marginBottom: 8, fontWeight: 500 }}>角色</div>
-          <Select
-            value={editRole}
-            onChange={setEditRole}
-            style={{ width: '100%' }}
-            options={[
-              { value: 'super', label: '超管' },
-              { value: 'admin', label: '管理员' },
-            ]}
-          />
-        </div>
-        <div>
-          <div style={{ marginBottom: 8, fontWeight: 500 }}>备注</div>
-          <Input.TextArea value={editRemark} onChange={e => setEditRemark(e.target.value)} placeholder="请输入备注（选填）" autoSize={{ minRows: 2 }} />
-        </div>
-      </Modal>
 
       {/* 删除账号弹窗 */}
       <Modal

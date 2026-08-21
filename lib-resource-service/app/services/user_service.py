@@ -54,7 +54,7 @@ def search_users(keyword: str, request: Request) -> List[dict]:
 
         resp = httpx.get(
             api_url,
-            timeout=10,
+            timeout=6,
             trust_env=False,
             cookies=request.cookies,
             headers={"uiplusToken": uiplustoken},
