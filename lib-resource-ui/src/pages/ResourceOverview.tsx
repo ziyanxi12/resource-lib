@@ -25,26 +25,6 @@ const RESOURCE_TYPE_LABELS: Record<string, string> = {
   unknown: '未知',
 }
 
-const FIXED_TYPE_ORDER = STATS.map(s => s.key)
-
-function appKeyOf(row: AppRow): string {
-  return row.app_id ?? ''
-}
-
-function getRowSpan(rows: AppRow[], index: number | undefined): number {
-  if (index === undefined) return 1
-  const current = rows[index]
-  const key = appKeyOf(current)
-  const prev = rows[index - 1]
-  if (prev && appKeyOf(prev) === key) return 0
-  let span = 1
-  for (let i = index + 1; i < rows.length; i++) {
-    if (appKeyOf(rows[i]) === key) span++
-    else break
-  }
-  return span
-}
-
 const EXTRA_COLOR_PALETTE = ['#94a3b8', '#a78bfa', '#22d3ee', '#fb923c', '#a3e635', '#f472b6', '#64748b', '#f43f5e']
 
 function buildColorScale(types: string[]): { domain: string[]; range: string[] } {
@@ -188,6 +168,23 @@ interface AppRow {
   resource_return_count: number
 }
 
+interface WideAppRow {
+  app_id: string | null
+  app_name: string
+  total_api: number
+  total_resource: number
+  component_api: number
+  component_resource: number
+  icon_api: number
+  icon_resource: number
+  illus_api: number
+  illus_resource: number
+  image_api: number
+  image_resource: number
+  file_api: number
+  file_resource: number
+}
+
 function SearchStatsSection() {
   const [dateRange, setDateRange] = useState<[Dayjs, Dayjs]>([
     dayjs().startOf('year'),
@@ -248,78 +245,99 @@ function SearchStatsSection() {
   }
 
   const groupedApps = useMemo(() => {
-    const byApp = new Map<string, { key: string; rows: Map<string, AppRow> }>()
+    const byApp = new Map<string, AppRow[]>()
     for (const row of apps) {
       const key = row.app_id ?? ''
-      let entry = byApp.get(key)
-      if (!entry) {
-        entry = { key, rows: new Map() }
-        byApp.set(key, entry)
+      let arr = byApp.get(key)
+      if (!arr) {
+        arr = []
+        byApp.set(key, arr)
       }
-      entry.rows.set(row.resource_type, row)
+      arr.push(row)
     }
 
-    const ordered: AppRow[] = []
-    for (const entry of Array.from(byApp.values()).sort((a, b) => {
-      if (!a.key) return 1
-      if (!b.key) return -1
-      return a.key.localeCompare(b.key)
-    })) {
-      const base = entry.rows.values().next().value as AppRow | undefined
-      const appName = base?.app_name ?? '匿名调用'
-      const appId = base?.app_id ?? null
-      const types = new Set(entry.rows.keys())
-      const order = [...FIXED_TYPE_ORDER, ...Array.from(types).filter(t => !FIXED_TYPE_ORDER.includes(t))]
-      let totalApiCall = 0
-      let totalResourceReturn = 0
-      for (const t of order) {
-        const existing = entry.rows.get(t)
-        if (!existing) continue
-        if (existing.api_call_count === 0 && existing.resource_return_count === 0) continue
-        ordered.push(existing)
-        totalApiCall += existing.api_call_count
-        totalResourceReturn += existing.resource_return_count
+    const result: WideAppRow[] = []
+    for (const [, rows] of byApp) {
+      const base = rows[0]
+      const row: WideAppRow = {
+        app_id: base.app_id,
+        app_name: base.app_name ?? '匿名调用',
+        total_api: 0,
+        total_resource: 0,
+        component_api: 0,
+        component_resource: 0,
+        icon_api: 0,
+        icon_resource: 0,
+        illus_api: 0,
+        illus_resource: 0,
+        image_api: 0,
+        image_resource: 0,
+        file_api: 0,
+        file_resource: 0,
       }
-      ordered.push({
-        app_id: appId,
-        app_name: appName,
-        resource_type: '__total__',
-        api_call_count: totalApiCall,
-        resource_return_count: totalResourceReturn,
-      })
+      for (const r of rows) {
+        const api = r.api_call_count || 0
+        const res = r.resource_return_count || 0
+        row.total_api += api
+        row.total_resource += res
+        switch (r.resource_type) {
+          case 'component': row.component_api += api; row.component_resource += res; break
+          case 'icon': row.icon_api += api; row.icon_resource += res; break
+          case 'illus': row.illus_api += api; row.illus_resource += res; break
+          case 'image': row.image_api += api; row.image_resource += res; break
+          case 'file': row.file_api += api; row.file_resource += res; break
+        }
+      }
+      result.push(row)
     }
-    return ordered
+    result.sort((a, b) => {
+      if (!a.app_id) return 1
+      if (!b.app_id) return -1
+      return b.total_api - a.total_api
+    })
+    return result
   }, [apps])
 
-  const appColumns: ColumnsType<AppRow> = [
+  const appColumns: ColumnsType<WideAppRow> = [
     {
-      title: '应用名称', dataIndex: 'app_name',
-      onCell: (record, index) => {
-        const span = getRowSpan(groupedApps, index)
-        return { rowSpan: span }
-      },
-      render: (v: string, record: AppRow) => {
-        if (record.app_id) {
-          return `${v}（${record.app_id}）`
-        }
-        return v
-      },
+      title: '应用名称',
+      dataIndex: 'app_name',
+      width: 140,
+      fixed: 'left',
+      render: (v: string) => v,
     },
     {
-      title: '调用类型', dataIndex: 'resource_type',
-      render: (v: string) => v === '__total__' ? <span style={{ fontWeight: 600 }}>合计</span> : RESOURCE_TYPE_LABELS[v] ?? v,
-      onCell: (record: AppRow) => record.resource_type === '__total__' ? { style: { background: '#fafafa' } } : {},
+      title: '总接口数',
+      dataIndex: 'total_api',
+      width: 90,
+      render: (v: number) => v.toLocaleString(),
     },
     {
-      title: '接口调用次数', dataIndex: 'api_call_count',
-      render: (v: number, record: AppRow) => record.resource_type === '__total__' ? <span style={{ fontWeight: 600 }}>{v.toLocaleString()}</span> : v.toLocaleString(),
-      onCell: (record: AppRow) => record.resource_type === '__total__' ? { style: { background: '#fafafa' } } : {},
+      title: '总资源数',
+      dataIndex: 'total_resource',
+      width: 90,
+      render: (v: number) => v.toLocaleString(),
     },
-    {
-      title: '资源返回数', dataIndex: 'resource_return_count',
-      render: (v: number, record: AppRow) => record.resource_type === '__total__' ? <span style={{ fontWeight: 600 }}>{v.toLocaleString()}</span> : v.toLocaleString(),
-      onCell: (record: AppRow) => record.resource_type === '__total__' ? { style: { background: '#fafafa' } } : {},
-    },
+    ...STATS.reduce<ColumnsType<WideAppRow>>((acc, s, idx) => {
+      const cellStyle = idx % 2 === 0 ? { style: { background: '#fafafa' } } : {}
+      acc.push(
+        {
+          title: `${s.label}接口数`,
+          dataIndex: `${s.key}_api`,
+          width: 80,
+          render: (v: number) => v.toLocaleString(),
+          onCell: () => cellStyle,
+        },
+        {
+          title: `${s.label}资源数`,
+          dataIndex: `${s.key}_resource`,
+          width: 80,
+          render: (v: number) => v.toLocaleString(),
+          onCell: () => cellStyle,
+        },
+      )
+      return acc
+    }, []),
   ]
 
   const pieColorScale = buildColorScale(pieData.map(d => d.type))
@@ -493,18 +511,19 @@ function SearchStatsSection() {
 
         <div style={{
           background: '#fff', borderRadius: 12, padding: 16,
-          border: '1px solid #e2e8f0',
+          border: '1px solid #e2e8f0', overflow: 'hidden',
         }}>
           <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: '#475569' }}>
             三方调用详情
           </h3>
-          <Table<AppRow>
-            rowKey={(r) => `${r.app_id ?? 'anonymous'}-${r.resource_type}`}
+          <Table<WideAppRow>
+            rowKey={(r) => r.app_id ?? 'anonymous'}
             size="small"
             columns={appColumns}
             dataSource={groupedApps}
             pagination={false}
             tableLayout="fixed"
+            scroll={{ x: 1200 }}
           />
         </div>
       </Spin>
