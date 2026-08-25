@@ -1,5 +1,5 @@
 from typing import List, Optional, Tuple
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from app.models.resource import ResourceGroup, Resource
 from app.enums import ResourceType
@@ -102,7 +102,9 @@ def _get_earliest_resources_per_group(
         return {}
     result = {}
     for gid in group_ids:
-        result[gid] = db.query(Resource).filter(
+        result[gid] = db.query(Resource).options(
+            joinedload(Resource.group), joinedload(Resource.source)
+        ).filter(
             Resource.group_id == gid,
             Resource.is_deleted == 0,
         ).order_by(Resource.created_at.asc()).limit(limit).all()

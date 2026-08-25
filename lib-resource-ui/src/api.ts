@@ -299,7 +299,7 @@ export const api = {
   }) => {
     const data = await request('/api/vector/search', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'octo-vs-token': 'octo_vs_986183500c8a8f7abdbb1690cc36ac58' },
+      headers: { 'Content-Type': 'application/json', 'octo-vs-token': 'octo_vs_7e91e862389139bab49247ba2550f366' },
       body: JSON.stringify({
         type: params.type,
         queries: [params.query],

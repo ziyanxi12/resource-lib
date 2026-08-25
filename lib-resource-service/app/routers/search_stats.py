@@ -69,3 +69,17 @@ def migrate_illustration(db: Session = Depends(get_db)):
     """
     result = search_stats_service.migrate_illustration_to_illus(db)
     return {"message": "修正完成", **result}
+
+
+@router.post("/migrate-app-id")
+def migrate_app_id(
+    old_app_id: str = Query(..., description="旧的 app_id"),
+    new_app_id: str = Query(..., description="新的 app_id"),
+    db: Session = Depends(get_db),
+):
+    """将 vector_search_logs 中 app_id=old 的记录批量修正为 new。
+
+    仅修正日志主表，不重建汇总表。如需更新看板，请再调用 /refresh 全量重建。
+    """
+    result = search_stats_service.migrate_app_id(db, old_app_id, new_app_id)
+    return {"message": "修正完成", **result}

@@ -16,7 +16,7 @@ import logging
 import time
 from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.clients import vector_client
 from app.config import settings
@@ -93,7 +93,9 @@ def _lookup_resources(db: Session, vec_type: str, data_ids: List[str]) -> Dict[s
         return {}
 
     int_ids = [int(d) for d in data_ids if d.isdigit()]
-    rows = db.query(Resource).filter(
+    rows = db.query(Resource).options(
+        joinedload(Resource.group), joinedload(Resource.source)
+    ).filter(
         Resource.id.in_(int_ids),
         Resource.is_deleted == 0,
     ).all()

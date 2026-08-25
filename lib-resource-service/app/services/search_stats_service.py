@@ -453,3 +453,18 @@ def migrate_illustration_to_illus(db: Session) -> dict:
     db.commit()
     logger.info("修正 vector_search_logs illustration -> illus: %d 条", updated)
     return {"logs_updated": int(updated)}
+
+
+def migrate_app_id(db: Session, old_app_id: str, new_app_id: str) -> dict:
+    """将 vector_search_logs 中 app_id=old 的记录批量修正为 new。
+
+    仅修正日志主表，不重建汇总表（如需更新看板，请手动调用 refresh_all_stats）。
+    """
+    updated = (
+        db.query(VectorSearchLog)
+        .filter(VectorSearchLog.app_id == old_app_id)
+        .update({VectorSearchLog.app_id: new_app_id}, synchronize_session=False)
+    )
+    db.commit()
+    logger.info("修正 vector_search_logs app_id %s -> %s: %d 条", old_app_id, new_app_id, updated)
+    return {"logs_updated": int(updated)}

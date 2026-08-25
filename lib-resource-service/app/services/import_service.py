@@ -161,6 +161,8 @@ def _precopy_files(
         file_uuid = str(uuid.uuid4())
 
         file_path_in_zip = item.get("file_path")
+        if file_path_in_zip:
+            file_path_in_zip = file_path_in_zip.replace("\\", "/")
         file_url = item.get("file_url")
 
         saved = {"_file_uuid": file_uuid}
@@ -188,6 +190,8 @@ def _precopy_files(
 
         # 复制缩略图
         thumbnail_path_in_zip = item.get("thumbnail_path")
+        if thumbnail_path_in_zip:
+            thumbnail_path_in_zip = thumbnail_path_in_zip.replace("\\", "/")
         if thumbnail_path_in_zip:
             thumb_src = os.path.join(extract_dir, thumbnail_path_in_zip)
             if not os.path.exists(thumb_src):
@@ -359,6 +363,8 @@ def full_batch_import(
     with tempfile.TemporaryDirectory() as extract_dir:
         try:
             with zipfile.ZipFile(zip_path) as zf:
+                for info in zf.infolist():
+                    info.filename = info.filename.replace("\\", "/")
                 zf.extractall(extract_dir)
         except zipfile.BadZipFile as e:
             raise ValueError(f"无效的 ZIP 文件: {e}")

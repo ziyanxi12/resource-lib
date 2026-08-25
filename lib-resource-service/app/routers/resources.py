@@ -593,6 +593,7 @@ def _fmt(r, display_map=None) -> dict:
         "resource_type": r.resource_type,
         "resource_type_name": ResourceType(r.resource_type).name,
         "source_id": r.source_id,
+        "source_name": r.source.name if r.source else None,
         "name": r.name,
         "description": r.description,
         "ai_description": r.ai_description,

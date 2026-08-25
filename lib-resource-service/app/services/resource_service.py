@@ -62,7 +62,7 @@ def get_resources(
 
     total = query.count()
     items = (
-        query.options(joinedload(Resource.group))
+        query.options(joinedload(Resource.group), joinedload(Resource.source))
              .order_by(Resource.created_at.desc())
              .offset((page - 1) * limit)
              .limit(limit)
