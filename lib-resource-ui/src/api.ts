@@ -15,6 +15,7 @@ export const RESOURCE_TYPE_MAP: Record<string, number> = {
 
 async function request(url: string, options?: RequestInit) {
   const headers: Record<string, string> = { ...(options?.headers as Record<string, string>) }
+  headers['octo-vs-token'] = 'octo_vs_7e91e862389139bab49247ba2550f366'
   try {
     const encrypted = await getEncryptedUserData()
     if (encrypted) headers['X-User-Data'] = encrypted

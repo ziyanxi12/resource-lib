@@ -13,6 +13,7 @@ vi.mock('../pages/ResourceOverview', () => ({ default: () => <div data-testid="o
 vi.mock('../pages/ResourceManage', () => ({ default: () => <div data-testid="manage">Manage</div> }))
 vi.mock('../pages/ResourceUpload', () => ({ default: () => <div data-testid="upload">Upload</div> }))
 vi.mock('../pages/SourceManage', () => ({ default: () => <div data-testid="source-manage">SourceManage</div> }))
+vi.mock('../pages/InnerShow', () => ({ default: () => <div data-testid="inner-show">InnerShow</div> }))
 vi.mock('../pages/Error', () => ({ default: () => <div data-testid="error">Error</div> }))
 
 // 从 App.tsx 提取的路由配置（与 App.tsx 保持一致）
@@ -23,6 +24,7 @@ const appRoutes = (
     <Route path="/overview" element={<div data-testid="overview">Overview</div>} />
     <Route path="/error" element={<div data-testid="error">Error</div>} />
     <Route path="/source-manage" element={<div data-testid="source-manage">SourceManage</div>} />
+    <Route path="/inner-show" element={<div data-testid="inner-show">InnerShow</div>} />
     <Route path="/:type" element={<div data-testid="manage">Manage</div>} />
     <Route path="/:type/upload" element={<div data-testid="upload">Upload</div>} />
   </Routes>

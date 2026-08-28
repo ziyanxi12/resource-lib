@@ -166,6 +166,7 @@ interface AppRow {
   resource_type: string
   api_call_count: number
   resource_return_count: number
+  last_call_time?: number | null
 }
 
 interface WideAppRow {
@@ -183,6 +184,7 @@ interface WideAppRow {
   image_resource: number
   file_api: number
   file_resource: number
+  last_call_time?: number | null
 }
 
 function SearchStatsSection() {
@@ -274,6 +276,7 @@ function SearchStatsSection() {
         image_resource: 0,
         file_api: 0,
         file_resource: 0,
+        last_call_time: base.last_call_time,
       }
       for (const r of rows) {
         const api = r.api_call_count || 0
@@ -307,6 +310,12 @@ function SearchStatsSection() {
       width: 140,
       fixed: 'left',
       render: (v: string) => v,
+    },
+    {
+      title: '最近调用',
+      dataIndex: 'last_call_time',
+      width: 150,
+      render: (v: number | null) => (v ? dayjs(v).format('YYYY-MM-DD HH:mm:ss') : '-'),
     },
     {
       title: '总接口数',

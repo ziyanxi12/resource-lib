@@ -19,11 +19,13 @@ from app.config import settings
 from app.database import get_db
 from app.enums import ResourceType
 from app.models.resource import Resource
+from app.middleware.search_log_middleware import set_search_log_ctx
 from app.services import resource_service, upload_service
 from app.services import vector_sync_service
 from app.services import image_meta_service
 from app.services import operation_log_service
 from app.services.operator import get_operator
+from app.services.search_app_service import verify_app_id
 from app.services.user_service import resolve_display_names
 
 logger = logging.getLogger(__name__)
@@ -102,7 +104,8 @@ def sync_vectors(
 
 
 @router.get("")
-def list_resources(
+async def list_resources(
+    request: Request,
     type:       Optional[str] = Query(None, description="资源类型名，如 component、icon、illus"),
     source_id:  Optional[int] = Query(None, description="来源ID筛选"),
     group_id:   Optional[int] = Query(None, description="分组ID筛选"),
@@ -112,6 +115,11 @@ def list_resources(
     db: Session = Depends(get_db),
 ):
     """获取资源列表"""
+    app_id = request.headers.get("octo-vs-token") or None
+    if not verify_app_id(db, app_id):
+        raise HTTPException(status_code=401, detail="无权限：app_id 缺失或无效")
+
+    set_search_log_ctx(resource_type=type or "all")
     resource_type_int = None
     if type:
         try:
@@ -135,6 +143,7 @@ def list_resources(
         if r.updated_by: accounts.add(r.updated_by)
     display_map = resolve_display_names(db, list(accounts))
 
+    set_search_log_ctx(result_count=len(items))
     return {
         "total": total,
         "page":  page,

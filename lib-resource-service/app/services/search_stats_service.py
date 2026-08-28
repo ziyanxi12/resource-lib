@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from sqlalchemy import func, text
@@ -229,6 +229,21 @@ def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "mo
         .order_by(func.sum(SearchDailyStats.api_call_count).desc())
         .all()
     )
+    # 5. 各 app 在范围内的最近调用时间（取自原始日志 vector_search_logs）
+    last_call_rows = (
+        db.query(
+            VectorSearchLog.app_id,
+            func.max(VectorSearchLog.created_at).label("last_call"),
+        )
+        .filter(
+            VectorSearchLog.created_at >= datetime.combine(start_date, datetime.min.time()),
+            VectorSearchLog.created_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time()),
+        )
+        .group_by(VectorSearchLog.app_id)
+        .all()
+    )
+    last_call_map = {r.app_id: r.last_call for r in last_call_rows}
+
     apps = [
         {
             "app_id": r.app_id,
@@ -236,6 +251,7 @@ def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "mo
             "resource_type": r.resource_type,
             "api_call_count": int(r.api_call_count),
             "resource_return_count": int(r.resource_return_count),
+            "last_call_time": int(dt.timestamp() * 1000) if (dt := last_call_map.get(r.app_id)) else None,
         }
         for r in app_rows
     ]

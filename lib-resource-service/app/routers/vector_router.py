@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 import json
 import logging
 import time
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
@@ -25,6 +25,7 @@ from app.enums import ResourceType
 from app.middleware.search_log_middleware import set_search_log_ctx
 from app.models.resource import Resource, ResourceGroup
 from app.routers.resources import _fmt
+from app.services.search_app_service import verify_app_id
 from app.services.vector_sync_service import detect_missing_resources, sync_vectors_by_type, rebuild_all_vectors_by_type
 
 logger = logging.getLogger(__name__)
@@ -179,12 +180,18 @@ async def vector_search_llm(req: SearchRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/detail")
-def get_resource_by_data_id(
+async def get_resource_by_data_id(
+    request: Request,
     type: str = Query(..., description="资源类型：component/icon/illus/image"),
     data_id: str = Query(..., description="向量库唯一标识"),
     db: Session = Depends(get_db),
 ):
     """通过 data_id + type 获取全量资源数据（完整字段）"""
+    app_id = request.headers.get("octo-vs-token") or None
+    if not verify_app_id(db, app_id):
+        raise HTTPException(status_code=401, detail="无权限：app_id 缺失或无效")
+
+    set_search_log_ctx(resource_type=type)
     vec_type = _resolve_vec_type(type)
     if vec_type is None:
         raise HTTPException(status_code=400, detail=f"不支持的 type：{type}")
@@ -193,13 +200,15 @@ def get_resource_by_data_id(
     resource = resources_by_data_id.get(data_id)
     
     if not resource:
+        set_search_log_ctx(result_count=0)
         raise HTTPException(status_code=404, detail="资源不存在或已删除")
     
+    set_search_log_ctx(result_count=1)
     return _fmt(resource)
 
 
 @router.post("/search")
-async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
+async def vector_search(req: SearchRequest, request: Request, db: Session = Depends(get_db)):
     """
     向量搜索接口（支持批量、三种响应模式）
     
@@ -217,6 +226,10 @@ async def vector_search(req: SearchRequest, db: Session = Depends(get_db)):
     - normal: 返回 id, vector_text, score, raw_data（外部系统调用）
     - complete: 返回全量数据（前端展示，默认）
     """
+    app_id = request.headers.get("octo-vs-token") or None
+    if not verify_app_id(db, app_id):
+        raise HTTPException(status_code=401, detail="无权限：app_id 缺失或无效")
+
     vec_type = _resolve_vec_type(req.type)
     if vec_type is None:
         raise HTTPException(status_code=400, detail=f"不支持的 type：{req.type}")

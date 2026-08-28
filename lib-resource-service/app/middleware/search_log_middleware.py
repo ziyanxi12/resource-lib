@@ -29,8 +29,7 @@ _search_log_ctx: ContextVar[dict] = ContextVar("search_log_ctx", default={})
 
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="search-log")
 
-TARGET_PATH = "/api/vector/search"
-TARGET_METHOD = "POST"
+TARGETS = {("/api/vector/search", "POST"), ("/api/vector/detail", "GET"), ("/api/resources", "GET")}
 
 
 def set_search_log_ctx(**kwargs):
@@ -108,8 +107,7 @@ class SearchLogMiddleware:
     async def __call__(self, scope, receive, send):
         if not (
             scope.get("type") == "http"
-            and scope.get("method") == TARGET_METHOD
-            and scope.get("path") == TARGET_PATH
+            and (scope.get("path"), scope.get("method")) in TARGETS
         ):
             await self.app(scope, receive, send)
             return
@@ -179,7 +177,7 @@ class SearchLogMiddleware:
 
         record = {
             "request_id": request_id,
-            "api_path": TARGET_PATH,
+            "api_path": scope.get("path", ""),
             "resource_type": ctx.get("resource_type"),
             "search_mode": ctx.get("search_mode"),
             "response_mode": ctx.get("response_mode"),

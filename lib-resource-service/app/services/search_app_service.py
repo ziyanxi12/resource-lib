@@ -166,3 +166,14 @@ def _parse_dt(dt_str: Optional[str]) -> Optional[datetime]:
         return datetime.fromisoformat(dt_str)
     except (ValueError, TypeError):
         return None
+
+
+def verify_app_id(db: Session, app_id: Optional[str]) -> Optional[SearchApp]:
+    """校验 app_id 合法性：非空、存在于 search_apps 表、且 is_active=1。合法返回 app，否则 None。"""
+    if not app_id:
+        return None
+    return (
+        db.query(SearchApp)
+        .filter(SearchApp.app_id == app_id, SearchApp.is_active == 1)
+        .first()
+    )
