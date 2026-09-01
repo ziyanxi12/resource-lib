@@ -171,6 +171,7 @@ def _precopy_files(
         if file_path_in_zip:
             src = os.path.join(extract_dir, file_path_in_zip)
             if not os.path.exists(src):
+                logger.warning("跳过资源 [name=%s, group=%s]: ZIP 内未找到文件: %s", item_name, group_label, file_path_in_zip)
                 errors.append({"group": group_label, "name": item_name, "reason": f"ZIP 内未找到文件: {file_path_in_zip}"})
                 continue
             ext = _resolve_ext(os.path.basename(file_path_in_zip))
@@ -195,6 +196,7 @@ def _precopy_files(
         if thumbnail_path_in_zip:
             thumb_src = os.path.join(extract_dir, thumbnail_path_in_zip)
             if not os.path.exists(thumb_src):
+                logger.warning("跳过资源 [name=%s, group=%s]: ZIP 内未找到缩略图: %s", item_name, group_label, thumbnail_path_in_zip)
                 errors.append({"group": group_label, "name": item_name, "reason": f"ZIP 内未找到缩略图: {thumbnail_path_in_zip}"})
                 continue
             thumb_ext = _resolve_ext(thumbnail_path_in_zip, default="png")

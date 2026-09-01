@@ -3,6 +3,8 @@ import os
 import re
 from logging.handlers import TimedRotatingFileHandler
 
+from app.config import settings
+
 
 class _DebugOnlyFilter(logging.Filter):
     """只放行 DEBUG 级别，INFO 及以上交给 app.txt。"""
@@ -46,7 +48,24 @@ def setup_logging(log_dir: str, log_level: str = "INFO") -> None:
     root.setLevel(getattr(logging, log_level.upper(), logging.INFO))
     root.addHandler(app_handler)
     root.addHandler(debug_handler)
-    
+
+    # 请求访问日志 → requests.txt（每请求一行，独立轮转，propagate=False 不进 app.txt/debug.txt）
+    request_handler = TimedRotatingFileHandler(
+        filename=os.path.join(log_dir, "requests.txt"),
+        when="midnight",
+        interval=1,
+        backupCount=settings.REQUEST_LOG_RETENTION_DAYS,
+        encoding="utf-8",
+    )
+    request_handler.setLevel(logging.INFO)
+    request_handler.namer = _namer
+    request_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+
+    request_log = logging.getLogger("request_log")
+    request_log.setLevel(logging.INFO)
+    request_log.addHandler(request_handler)
+    request_log.propagate = False
+
     # 抑制第三方库的 DEBUG/INFO 日志，只保留 WARNING 以上
     for lib in [
         "httpx", "httpcore", "httpx._client", "httpcore._backends",

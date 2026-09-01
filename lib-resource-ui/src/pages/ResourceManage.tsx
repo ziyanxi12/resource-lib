@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Button, Select, TreeSelect, message, Modal, Input, Spin, Dropdown, Upload, Progress, Alert, Tooltip } from 'antd'
+import { Button, Select, TreeSelect, message, notification, Modal, Input, Spin, Dropdown, Upload, Progress, Alert, Tooltip } from 'antd'
 import { UploadOutlined, SyncOutlined, DeleteOutlined, PlusOutlined, EditOutlined, UndoOutlined, SettingOutlined, SwapOutlined, ImportOutlined, CloseOutlined, DownloadOutlined, FileTextOutlined } from '@ant-design/icons'
 import JSZip from 'jszip'
 import ResourceTable, { type ResourceTableHandle } from '../components/ResourceTable'
@@ -194,11 +194,11 @@ export default function ResourceManage() {
         startPolling(parsed.task_id)
       } else {
         if (status.status === 'success') {
-          message.success(`导入完成：${status.groups_created} 个分组，${status.resources_created} 个资源`)
+          showImportResult(status)
           groupTreeRef.current?.refresh()
           tableRef.current?.refresh()
         } else if (status.status === 'failed') {
-          message.error(status.message || '导入失败')
+          showImportResult(status)
         } else if (status.status === 'cancelled') {
           message.info('导入已取消')
         }
@@ -526,6 +526,52 @@ export default function ResourceManage() {
     }
   }
 
+  const showImportResult = (status: {
+    status: string
+    message: string
+    groups_created: number
+    resources_created: number
+    errors: Array<{ group?: string; label?: string; name?: string; reason: string }>
+  }) => {
+    const errors = status.errors || []
+    const hasErrors = errors.length > 0
+
+    if (hasErrors) {
+      const errorList = (
+        <div style={{ maxHeight: 300, overflowY: 'auto', marginTop: 8 }}>
+          {errors.slice(0, 50).map((e, i) => (
+            <div key={i} style={{ fontSize: 12, marginBottom: 4, color: '#666' }}>
+              {e.name || e.group || e.label || `#${i + 1}`}：{e.reason}
+            </div>
+          ))}
+          {errors.length > 50 && (
+            <div style={{ fontSize: 12, color: '#999' }}>...还有 {errors.length - 50} 条错误</div>
+          )}
+        </div>
+      )
+
+      if (status.status === 'failed' || (status.status === 'success' && status.resources_created === 0)) {
+        notification.error({
+          message: status.status === 'failed'
+            ? `导入失败：${status.message || '未知原因'}`
+            : `导入失败：${errors.length} 个资源未成功导入`,
+          description: errorList,
+          duration: 0,
+          placement: 'bottomRight',
+        })
+      } else {
+        notification.warning({
+          message: `导入完成，但有 ${errors.length} 个资源被跳过（成功 ${status.resources_created} 个）`,
+          description: errorList,
+          duration: 0,
+          placement: 'bottomRight',
+        })
+      }
+    } else if (status.status === 'success') {
+      message.success(`导入完成：${status.groups_created} 个分组，${status.resources_created} 个资源`)
+    }
+  }
+
   const startPolling = (taskId: string) => {
     stopPolling()
     importTaskIdRef.current = taskId
@@ -538,11 +584,11 @@ export default function ResourceManage() {
         stopPolling()
         importTaskIdRef.current = null
         if (status.status === 'success') {
-          message.success(`导入完成：${status.groups_created} 个分组，${status.resources_created} 个资源`)
+          showImportResult(status)
           groupTreeRef.current?.refresh()
           tableRef.current?.refresh()
         } else if (status.status === 'failed') {
-          message.error(status.message || '导入失败')
+          showImportResult(status)
         } else if (status.status === 'cancelled') {
           message.info('导入已取消')
         }

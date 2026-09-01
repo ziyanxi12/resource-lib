@@ -47,6 +47,7 @@ from app.routers import users
 
 from app.middleware.search_log_middleware import SearchLogMiddleware
 from app.middleware.auth_middleware import AuthMiddleware
+from app.middleware.access_log_middleware import AccessLogMiddleware
 
 # ===== 移除上传限制 =====
 # 修改 Starlette 的内存阈值，避免大文件上传时的临时文件问题
@@ -175,6 +176,8 @@ app.add_middleware(
 
 app.add_middleware(SearchLogMiddleware)
 app.add_middleware(AuthMiddleware)
+# 访问日志放最后注册 = 最外层，耗时统计含认证全链路
+app.add_middleware(AccessLogMiddleware)
 
 # 注册各业务路由
 app.include_router(resources.router)

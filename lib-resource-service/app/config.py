@@ -46,6 +46,11 @@ class Settings:
     LOG_DIR:   str = os.getenv("LOG_DIR",   "./logs")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "DEBUG")
 
+    # ── 访问日志（requests.txt，全量请求一行一条）──────────────
+    ACCESS_LOG_ENABLED: bool = True
+    SLOW_REQUEST_MS: int = 200
+    REQUEST_LOG_RETENTION_DAYS: int = 30
+
     # ── 翻译文件 ──────────────────────────────────────────────────
     # 组件属性值中文翻译表，build_component_text 使用
     TRANSLATION_FILE: str = os.getenv(
