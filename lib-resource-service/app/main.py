@@ -103,6 +103,7 @@ async def lifespan(app: FastAPI):
     _ensure_column(engine, "resources", "updated_by", "VARCHAR(100)")
     _ensure_column(engine, "resource_sources", "created_by", "VARCHAR(100)")
     _ensure_column(engine, "resource_sources", "updated_by", "VARCHAR(100)")
+    _ensure_column(engine, "search_daily_stats", "last_call_time", "DATETIME")
 
     # 增量补索引（create_all 只建新表的索引，不补已有表）
     _ensure_index(engine, "resources", "idx_resources_type_source_deleted", "resource_type, source_id, is_deleted")

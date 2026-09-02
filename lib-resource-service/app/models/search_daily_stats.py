@@ -18,5 +18,6 @@ class SearchDailyStats(Base):
     resource_type          = Column(String(20), nullable=False, index=True, comment="资源类型 component/icon/illus/image/file")
     api_call_count         = Column(Integer, default=0, comment="接口调用次数")
     resource_return_count  = Column(Integer, default=0, comment="资源返回数")
+    last_call_time         = Column(DateTime, nullable=True, comment="当天最后一次成功调用时间")
     created_at             = Column(DateTime, default=datetime.now)
     updated_at             = Column(DateTime, default=datetime.now, onupdate=datetime.now)

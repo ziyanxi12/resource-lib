@@ -7,7 +7,7 @@ import logging
 import os
 import re
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Optional
 
 from sqlalchemy import func, text
@@ -34,10 +34,11 @@ def refresh_daily_stats(db: Session, target_date) -> dict:
             VectorSearchLog.resource_type,
             func.count().label("api_call_count"),
             func.coalesce(func.sum(VectorSearchLog.result_count), 0).label("resource_return_count"),
+            func.max(VectorSearchLog.created_at).label("last_call_time"),
         )
         .filter(
             date_expr == date_str,
-            VectorSearchLog.status == "success",
+            VectorSearchLog.http_status == 200,
         )
         .group_by(VectorSearchLog.app_id, VectorSearchLog.resource_type)
         .all()
@@ -73,6 +74,7 @@ def refresh_daily_stats(db: Session, target_date) -> dict:
             resource_type=r.resource_type or "unknown",
             api_call_count=r.api_call_count,
             resource_return_count=int(r.resource_return_count),
+            last_call_time=r.last_call_time,
         )
         db.add(stat)
         created += 1
@@ -91,7 +93,7 @@ def refresh_all_stats(db: Session) -> dict:
 
     dates = (
         db.query(date_col.distinct().label("d"))
-        .filter(VectorSearchLog.status == "success")
+        .filter(VectorSearchLog.http_status == 200)
         .all()
     )
 
@@ -229,17 +231,17 @@ def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "mo
         .order_by(func.sum(SearchDailyStats.api_call_count).desc())
         .all()
     )
-    # 5. 各 app 在范围内的最近调用时间（取自原始日志 vector_search_logs）
+    # 5. 各 app 在范围内的最近调用时间（取自汇总表 search_daily_stats，与统计次数同源）
     last_call_rows = (
         db.query(
-            VectorSearchLog.app_id,
-            func.max(VectorSearchLog.created_at).label("last_call"),
+            SearchDailyStats.app_id,
+            func.max(SearchDailyStats.last_call_time).label("last_call"),
         )
         .filter(
-            VectorSearchLog.created_at >= datetime.combine(start_date, datetime.min.time()),
-            VectorSearchLog.created_at < datetime.combine(end_date + timedelta(days=1), datetime.min.time()),
+            SearchDailyStats.stat_date >= start_date,
+            SearchDailyStats.stat_date <= end_date,
         )
-        .group_by(VectorSearchLog.app_id)
+        .group_by(SearchDailyStats.app_id)
         .all()
     )
     last_call_map = {r.app_id: r.last_call for r in last_call_rows}
