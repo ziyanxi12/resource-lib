@@ -119,13 +119,16 @@ def _get_last_updated(db: Session) -> Optional[int]:
     return int(last_updated)
 
 
-def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "month") -> dict:
+def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "month", app_granularity: str = "month") -> dict:
     """一次返回看板所需的全部统计数据。
 
-    granularity: 柱状图统计粒度，day/week/month。
+    granularity: 资源类型柱状图统计粒度，day/week/month。
+    app_granularity: 三方占用柱状图统计粒度，day/week/month。
     """
     if granularity not in {"day", "week", "month"}:
         raise ValueError(f"无效的 granularity: {granularity}，可选值: day/week/month")
+    if app_granularity not in {"day", "week", "month"}:
+        raise ValueError(f"无效的 app_granularity: {app_granularity}，可选值: day/week/month")
 
     # 1. 汇总数字
     summary_row = (
@@ -258,11 +261,59 @@ def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "mo
         for r in app_rows
     ]
 
+    # 6. 三方占用柱状图：按 app + 统计粒度（天/周/月）
+    if app_granularity == "day":
+        if _is_sqlite:
+            app_period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date)
+        else:
+            app_period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m-%d")
+    elif app_granularity == "week":
+        if _is_sqlite:
+            app_period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date, "weekday 1", "-7 days")
+        else:
+            app_period_expr = func.date_format(
+                func.date_sub(SearchDailyStats.stat_date, text("interval weekday(stat_date) day")),
+                "%Y-%m-%d",
+            )
+    else:
+        if _is_sqlite:
+            app_period_expr = func.strftime("%Y-%m", SearchDailyStats.stat_date)
+        else:
+            app_period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m")
+
+    app_bar_rows = (
+        db.query(
+            SearchDailyStats.app_id,
+            SearchDailyStats.app_name,
+            app_period_expr.label("period"),
+            func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
+            func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
+        )
+        .filter(
+            SearchDailyStats.stat_date >= start_date,
+            SearchDailyStats.stat_date <= end_date,
+        )
+        .group_by(SearchDailyStats.app_id, SearchDailyStats.app_name, app_period_expr)
+        .order_by(app_period_expr)
+        .all()
+    )
+    app_bar = [
+        {
+            "app_id": r.app_id,
+            "app_name": r.app_name or "匿名调用",
+            "period": r.period,
+            "api_call_count": int(r.api_call_count),
+            "resource_return_count": int(r.resource_return_count),
+        }
+        for r in app_bar_rows
+    ]
+
     return {
         "summary": summary,
         "pie": pie,
         "bar": bar,
         "apps": apps,
+        "app_bar": app_bar,
         "last_updated": _get_last_updated(db),
     }
 

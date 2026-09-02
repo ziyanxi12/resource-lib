@@ -457,14 +457,15 @@ export const api = {
   deleteSearchApp: (id: number): Promise<{ message: string }> =>
     request(`/api/search-apps/${id}`, { method: 'DELETE' }),
 
-  getSearchStats: (params: { start_date: string; end_date: string; granularity?: string }): Promise<{
+  getSearchStats: (params: { start_date: string; end_date: string; granularity?: string; app_granularity?: string }): Promise<{
     summary: { api_call_count: number; resource_return_count: number }
     pie: Array<{ resource_type: string; api_call_count: number; resource_return_count: number }>
     bar: Array<{ resource_type: string; period: string; api_call_count: number; resource_return_count: number }>
     apps: Array<{ app_id: string | null; app_name: string; resource_type: string; api_call_count: number; resource_return_count: number }>
+    app_bar: Array<{ app_id: string | null; app_name: string; period: string; api_call_count: number; resource_return_count: number }>
     last_updated: number | null
   }> =>
-    request(`/api/search-stats?start_date=${params.start_date}&end_date=${params.end_date}&granularity=${params.granularity ?? 'month'}`),
+    request(`/api/search-stats?start_date=${params.start_date}&end_date=${params.end_date}&granularity=${params.granularity ?? 'month'}&app_granularity=${params.app_granularity ?? 'month'}`),
 
   refreshSearchStats: (target_date?: string): Promise<{ message: string; date?: string; rows?: number; dates?: number }> =>
     request(`/api/search-stats/refresh${target_date ? `?target_date=${target_date}` : ''}`, { method: 'POST' }),

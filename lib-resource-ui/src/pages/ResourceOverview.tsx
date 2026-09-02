@@ -194,22 +194,27 @@ function SearchStatsSection() {
   ])
   const [metric, setMetric] = useState<MetricType>('api_call_count')
   const [granularity, setGranularity] = useState<Granularity>('month')
+  const [appGranularity, setAppGranularity] = useState<Granularity>('month')
   const [loading, setLoading] = useState(false)
   const [summary, setSummary] = useState({ api_call_count: 0, resource_return_count: 0 })
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
   const [pieData, setPieData] = useState<Array<{ type: string; value: number }>>([])
   const [barData, setBarData] = useState<Array<{ resource_type: string; period: string; value: number }>>([])
+  const [appPieData, setAppPieData] = useState<Array<{ type: string; value: number }>>([])
+  const [appBarData, setAppBarData] = useState<Array<{ app_name: string; period: string; value: number }>>([])
   const [apps, setApps] = useState<AppRow[]>([])
 
-  const fetchData = useCallback((range?: [Dayjs, Dayjs], m?: MetricType, g?: Granularity) => {
+  const fetchData = useCallback((range?: [Dayjs, Dayjs], m?: MetricType, g?: Granularity, ag?: Granularity) => {
     const [start, end] = range ?? dateRange
     const metricKey = m ?? metric
     const granularityKey = g ?? granularity
+    const appGranularityKey = ag ?? appGranularity
     setLoading(true)
     api.getSearchStats({
       start_date: start.format('YYYY-MM-DD'),
       end_date: end.format('YYYY-MM-DD'),
       granularity: granularityKey,
+      app_granularity: appGranularityKey,
     }).then(data => {
       setSummary(data.summary)
       setLastUpdated(typeof data.last_updated === 'number' ? data.last_updated : null)
@@ -226,11 +231,26 @@ function SearchStatsSection() {
           value: d[metricKey],
         }))
       )
+      setAppBarData(
+        data.app_bar.map(d => ({
+          app_name: d.app_name,
+          period: d.period,
+          value: d[metricKey],
+        }))
+      )
       setApps(data.apps)
+      const byApp = new Map<string, number>()
+      for (const r of data.apps) {
+        const key = r.app_name
+        byApp.set(key, (byApp.get(key) ?? 0) + (r[metricKey] || 0))
+      }
+      setAppPieData(
+        Array.from(byApp.entries()).map(([name, value]) => ({ type: name, value }))
+      )
     }).catch(err => {
       message.error(err.message || '加载统计数据失败')
     }).finally(() => setLoading(false))
-  }, [dateRange, metric, granularity])
+  }, [dateRange, metric, granularity, appGranularity])
 
   useEffect(() => {
     fetchData()
@@ -244,6 +264,11 @@ function SearchStatsSection() {
   const handleGranularityChange = (g: Granularity) => {
     setGranularity(g)
     fetchData(undefined, undefined, g)
+  }
+
+  const handleAppGranularityChange = (ag: Granularity) => {
+    setAppGranularity(ag)
+    fetchData(undefined, undefined, undefined, ag)
   }
 
   const groupedApps = useMemo(() => {
@@ -431,6 +456,87 @@ function SearchStatsSection() {
     height: 300,
   }
 
+  const appPieColorScale = buildColorScale(appPieData.map(d => d.type))
+
+  const appPieConfig = {
+    data: appPieData,
+    angleField: 'value',
+    colorField: 'type',
+    label: {
+      text: (d: { type: string; value: number }, i: number, data: { type: string; value: number }[]) => {
+        const total = data.reduce((s, x) => s + x.value, 0)
+        return total > 0 ? `${(d.value / total * 100).toFixed(1)}%` : '0%'
+      },
+      position: 'outside',
+      connectorLength: 16,
+      connectorLength2: 8,
+      connectorDistance: 2,
+      transform: [
+        { type: 'overlapDodgeY' },
+      ],
+    },
+    tooltip: {
+      items: [(d: { type: string; value: number }) => ({ name: d.type, value: d.value.toLocaleString() })],
+    },
+    legend: {
+      color: {
+        title: false,
+        position: 'right',
+        rowPadding: 5,
+      },
+    },
+    scale: {
+      color: appPieColorScale,
+    },
+    radius: 0.75,
+    height: 300,
+  }
+
+  const appBarColorScale = buildColorScale(appBarData.map(d => d.app_name))
+
+  const appColumnConfig = {
+    data: appBarData,
+    xField: 'period',
+    yField: 'value',
+    colorField: 'app_name',
+    stack: true,
+    style: { maxWidth: 20 },
+    label: {
+      text: (d: { app_name: string; period: string; value: number }, i: number, data: any[]) => {
+        const samePeriod = data.filter((x: any) => x.period === d.period)
+        if (d !== samePeriod[samePeriod.length - 1]) return ''
+        const total = samePeriod.reduce((s: number, x: any) => s + x.value, 0)
+        return total > 0 ? total.toLocaleString() : ''
+      },
+      position: 'top',
+      dy: -16,
+    },
+    scrollbar: appGranularity === 'day' ? { x: {} } : undefined,
+    legend: {
+      color: {
+        title: false,
+        position: 'right',
+      },
+    },
+    scale: {
+      color: appBarColorScale,
+    },
+    tooltip: {
+      title: (d: { app_name: string; period: string; value: number }) => d.period,
+      items: [(d: { app_name: string; period: string; value: number }) => ({ name: d.app_name, value: d.value })],
+    },
+    axis: {
+      x: {
+        labelFormatter: (v: string) => v.slice(5),
+      },
+      y: {
+        title: METRIC_LABELS[metric],
+        labelFormatter: (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v),
+      },
+    },
+    height: 300,
+  }
+
   return (
     <div>
       <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
@@ -516,6 +622,40 @@ function SearchStatsSection() {
               </Radio.Group>
             </div>
             <Column {...columnConfig} />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
+          <div style={{
+            background: '#fff', borderRadius: 12, padding: 16,
+            border: '1px solid #e2e8f0', flex: 1, minWidth: 0,
+          }}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: '#475569' }}>
+              三方调用占比
+            </h3>
+            <Pie {...appPieConfig} />
+          </div>
+          <div style={{
+            background: '#fff', borderRadius: 12, padding: 16,
+            border: '1px solid #e2e8f0', flex: 1.5, minWidth: 0,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: '#475569' }}>
+                三方占用按{GRANULARITY_LABELS[appGranularity]}分布
+              </h3>
+              <Radio.Group
+                size="small"
+                value={appGranularity}
+                onChange={e => handleAppGranularityChange(e.target.value)}
+                optionType="button"
+                buttonStyle="solid"
+              >
+                <Radio.Button value="day">按天</Radio.Button>
+                <Radio.Button value="week">按周</Radio.Button>
+                <Radio.Button value="month">按月</Radio.Button>
+              </Radio.Group>
+            </div>
+            <Column {...appColumnConfig} />
           </div>
         </div>
 
