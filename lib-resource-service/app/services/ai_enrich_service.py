@@ -31,11 +31,6 @@ logger = logging.getLogger(__name__)
 # ──────────────────────────────────────────────────────────────────
 
 _TYPE_DIMENSIONS = {
-    ResourceType.component: {
-        "label": "组件",
-        "dim2_label": "交互功能",
-        "dim2_guidance": "支持什么操作、有哪些交互状态（默认/悬置/禁用）、组件类型（按钮/输入框/卡片/弹窗等）",
-    },
     ResourceType.icon: {
         "label": "图标",
         "dim2_label": "符号含义",

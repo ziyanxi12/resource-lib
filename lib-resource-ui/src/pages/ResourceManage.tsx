@@ -9,7 +9,7 @@ import OperationLogModal from '../components/OperationLogModal'
 import { api, Source, GroupNode, RESOURCE_TYPE_MAP } from '../api'
 
 export default function ResourceManage() {
-  const { type = 'component' } = useParams<{ type: string }>()
+  const { type = 'icon' } = useParams<{ type: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const sourceIdParam = searchParams.get('sourceId')

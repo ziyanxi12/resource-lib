@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  BlockOutlined, FunctionOutlined, StarOutlined, PictureOutlined, FileOutlined,
+  FunctionOutlined, StarOutlined, PictureOutlined, FileOutlined,
 } from '@ant-design/icons'
 import { Table, Radio, DatePicker, Space, message, Spin } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
@@ -9,7 +9,6 @@ import dayjs, { type Dayjs } from 'dayjs'
 import { api } from '../api'
 
 const STATS = [
-  { key: 'component', label: '组件',  icon: <BlockOutlined />,    bg: '#f2effe', color: '#715AFB' },
   { key: 'icon',      label: '图标',  icon: <FunctionOutlined />, bg: '#e8f1fe', color: '#2070F3' },
   { key: 'illus',     label: '插画',  icon: <StarOutlined />,     bg: '#fff5ea', color: '#F69E39' },
   { key: 'image',     label: '图片',  icon: <PictureOutlined />,  bg: '#eef8e4', color: '#62B42E' },
@@ -17,7 +16,6 @@ const STATS = [
 ]
 
 const RESOURCE_TYPE_LABELS: Record<string, string> = {
-  component: '组件',
   icon: '图标',
   illus: '插画',
   image: '图片',
@@ -124,7 +122,7 @@ export default function ResourceOverview() {
     <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, minWidth: 0, paddingTop: 4, paddingBottom: 8 }}>
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: '#0f172a' }}>数据总览</h1>
-        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>五类设计资源的当前数量</p>
+        <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>四类设计资源的当前数量</p>
       </div>
 
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 28 }}>
@@ -174,8 +172,6 @@ interface WideAppRow {
   app_name: string
   total_api: number
   total_resource: number
-  component_api: number
-  component_resource: number
   icon_api: number
   icon_resource: number
   illus_api: number
@@ -291,8 +287,6 @@ function SearchStatsSection() {
         app_name: base.app_name ?? '匿名调用',
         total_api: 0,
         total_resource: 0,
-        component_api: 0,
-        component_resource: 0,
         icon_api: 0,
         icon_resource: 0,
         illus_api: 0,
@@ -309,7 +303,6 @@ function SearchStatsSection() {
         row.total_api += api
         row.total_resource += res
         switch (r.resource_type) {
-          case 'component': row.component_api += api; row.component_resource += res; break
           case 'icon': row.icon_api += api; row.icon_resource += res; break
           case 'illus': row.illus_api += api; row.illus_resource += res; break
           case 'image': row.image_api += api; row.image_resource += res; break

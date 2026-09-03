@@ -22,7 +22,6 @@ from app.services.vector_text_builder import ingest_vectors
 def get_file_dir(resource_type: ResourceType) -> str:
     """根据资源类型返回存储目录名"""
     return {
-        ResourceType.component: "component",
         ResourceType.icon: "icon",
         ResourceType.illus: "illus",
         ResourceType.image: "image",

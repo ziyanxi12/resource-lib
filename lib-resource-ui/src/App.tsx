@@ -5,7 +5,6 @@ import zhCN from 'antd/locale/zh_CN'
 import {
   HomeOutlined,
   AppstoreOutlined,
-  BlockOutlined,
   PictureOutlined,
   StarOutlined,
   FunctionOutlined,
@@ -22,11 +21,10 @@ import Error from './pages/Error'
 import { AuthGuard, useDenied, useRole } from './components/AuthGuard'
 import { getUserInfo, redirectToLogout } from './utils/auth'
 
-type PageKey = 'home' | 'overview' | 'component' | 'icon' | 'illus' | 'image' | 'file' | 'source-manage'
+type PageKey = 'home' | 'overview' | 'icon' | 'illus' | 'image' | 'file' | 'source-manage'
 
 const NAV: { key: PageKey; path: string; icon: React.ReactNode; label: string; superOnly?: boolean }[] = [
   { key: 'home'      , path: '/home'      , icon: <HomeOutlined />,       label: '首页' },
-  { key: 'component' , path: '/component' , icon: <BlockOutlined />,     label: '组件' },
   { key: 'icon'      , path: '/icon'      , icon: <FunctionOutlined />, label: '图标' },
   { key: 'illus'     , path: '/illus'     , icon: <StarOutlined />,     label: '插画' },
   { key: 'image'     , path: '/image'     , icon: <PictureOutlined />,  label: '图片' },

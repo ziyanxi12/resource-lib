@@ -1,6 +1,7 @@
 """
 搜索日志采集查询接口
-GET /api/search-logs  分页查看 vector_search_logs 表记录
+GET    /api/search-logs                    分页查看 vector_search_logs 表记录
+DELETE /api/search-logs?resource_type=      按资源类型删除搜索日志
 """
 
 from typing import Optional
@@ -69,3 +70,18 @@ def list_search_logs(
         "page": page,
         "limit": limit,
     }
+
+
+@router.delete("")
+def delete_logs_by_type(
+    resource_type: str = Query(..., description="要删除的资源类型，如 component/icon/illus/image/file"),
+    db: Session = Depends(get_db),
+):
+    """按资源类型删除 vector_search_logs 日志记录。
+
+    子表 search_log_results / search_log_filters 随 FK ondelete=CASCADE 自动删除。
+    删除后请调用 POST /api/search-stats/refresh 重建统计汇总。
+    """
+    from app.services import search_stats_service
+    result = search_stats_service.delete_logs_by_type(db, resource_type)
+    return {"message": "删除完成", **result}

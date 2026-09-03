@@ -299,7 +299,6 @@ async def update_resource(
             thumb_relative_path = f"image/{thumb_name}"
         else:
             type_dir_map = {
-                ResourceType.component: "component",
                 ResourceType.icon: "icon",
                 ResourceType.illus: "illus",
                     ResourceType.file: "file",
@@ -325,7 +324,6 @@ async def update_resource(
         
         resource_type = ResourceType(resource.resource_type)
         type_dir_map = {
-            ResourceType.component: "component",
             ResourceType.icon: "icon",
             ResourceType.illus: "illus",
             ResourceType.image: "image",

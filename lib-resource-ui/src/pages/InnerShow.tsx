@@ -6,7 +6,6 @@ import dayjs from 'dayjs'
 import { api, Source, GroupNode, UserRecord } from '../api'
 
 const RESOURCE_TYPE_OPTIONS = [
-  { value: 'component', label: '组件' },
   { value: 'icon', label: '图标' },
   { value: 'illus', label: '插画' },
   { value: 'image', label: '图片' },
@@ -14,7 +13,6 @@ const RESOURCE_TYPE_OPTIONS = [
 ]
 
 const RESOURCE_TYPE_ID_TO_NAME: Record<number, string> = {
-  1: 'component',
   3: 'icon',
   4: 'illus',
   5: 'image',

@@ -537,3 +537,34 @@ def migrate_app_id(db: Session, old_app_id: str, new_app_id: str) -> dict:
     db.commit()
     logger.info("修正 vector_search_logs app_id %s -> %s: %d 条", old_app_id, new_app_id, updated)
     return {"logs_updated": int(updated)}
+
+
+def delete_stats_by_type(db: Session, resource_type: str) -> dict:
+    """删除 search_daily_stats 中指定 resource_type 的所有汇总记录。
+
+    用于彻底移除某资源类型时清理统计数据。清理后请调用 refresh_all_stats 重建。
+    """
+    deleted = (
+        db.query(SearchDailyStats)
+        .filter(SearchDailyStats.resource_type == resource_type)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    logger.info("删除 search_daily_stats resource_type=%s: %d 条", resource_type, deleted)
+    return {"deleted": int(deleted)}
+
+
+def delete_logs_by_type(db: Session, resource_type: str) -> dict:
+    """删除 vector_search_logs 中指定 resource_type 的所有日志记录。
+
+    子表 search_log_results / search_log_filters 随 FK ondelete=CASCADE 自动删除。
+    清理后请调用 refresh_all_stats 重建统计汇总。
+    """
+    deleted = (
+        db.query(VectorSearchLog)
+        .filter(VectorSearchLog.resource_type == resource_type)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    logger.info("删除 vector_search_logs resource_type=%s: %d 条", resource_type, deleted)
+    return {"deleted": int(deleted)}

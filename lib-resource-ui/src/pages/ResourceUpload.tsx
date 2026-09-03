@@ -27,7 +27,6 @@ interface ZipItem {
 }
 
 const RESOURCE_TYPE_MAP: Record<string, number> = {
-  component: 1,
   image: 5,
   file: 6,
   icon: 3,
@@ -35,7 +34,6 @@ const RESOURCE_TYPE_MAP: Record<string, number> = {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  component: '组件',
   image: '图片',
   file: '文件',
   icon: '图标',

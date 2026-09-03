@@ -6,7 +6,6 @@ const BASE = import.meta.env.VITE_API_BASE ?? ''
 export const staticUrl = (path: string) => `${BASE}/static/${path}`
 
 export const RESOURCE_TYPE_MAP: Record<string, number> = {
-  component: 1,
   icon: 3,
   illus: 4,
   image: 5,

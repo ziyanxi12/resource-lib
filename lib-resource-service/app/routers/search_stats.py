@@ -1,9 +1,10 @@
 """
 搜索统计看板路由
-GET  /api/search-stats?start_date=&end_date=   看板数据
-POST /api/search-stats/refresh?target_date=    聚合指定日期（不传则全量重建）
-POST /api/search-stats/import-logs             从历史日志文件导入搜索记录
-POST /api/search-stats/migrate-illustration    将日志表 illustration 修正为 illus
+GET    /api/search-stats?start_date=&end_date=           看板数据
+POST   /api/search-stats/refresh?target_date=            聚合指定日期（不传则全量重建）
+POST   /api/search-stats/import-logs                     从历史日志文件导入搜索记录
+POST   /api/search-stats/migrate-illustration            将日志表 illustration 修正为 illus
+DELETE /api/search-stats?resource_type=                   按资源类型删除统计汇总
 """
 
 from datetime import date, datetime, timedelta
@@ -87,3 +88,13 @@ def migrate_app_id(
     """
     result = search_stats_service.migrate_app_id(db, old_app_id, new_app_id)
     return {"message": "修正完成", **result}
+
+
+@router.delete("")
+def delete_stats_by_type(
+    resource_type: str = Query(..., description="要删除的资源类型，如 component/icon/illus/image/file"),
+    db: Session = Depends(get_db),
+):
+    """按资源类型删除 search_daily_stats 汇总数据。删除后请调用 /refresh 重建。"""
+    result = search_stats_service.delete_stats_by_type(db, resource_type)
+    return {"message": "删除完成", **result}

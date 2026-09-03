@@ -111,7 +111,7 @@ async def lifespan(app: FastAPI):
     _ensure_index(engine, "resources", "idx_resources_created_at", "created_at")
     
     # 创建文件存储子目录
-    for sub in ["component", "template", "icon", "illus", "image", "file"]:
+    for sub in ["template", "icon", "illus", "image", "file"]:
         os.makedirs(os.path.join(settings.FILE_ROOT_DIR, sub), exist_ok=True)
 
     # 启动时按需导入搜索应用（测试→生产迁移，SEARCH_APPS_AUTO_IMPORT=true 时生效）
@@ -159,7 +159,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="资源库管理服务",
-    description="统一管理五类设计资源：组件集、图标、插画、图片、文件",
+    description="统一管理四类设计资源：图标、插画、图片、文件",
     version=__version__,
     lifespan=lifespan,
     docs_url=None if settings.ROOT_PATH else "/docs",
