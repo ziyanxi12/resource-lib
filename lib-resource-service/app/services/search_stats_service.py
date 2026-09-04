@@ -21,6 +21,27 @@ from app.models.search_app import SearchApp
 
 logger = logging.getLogger(__name__)
 
+_app_name_cache: dict = {}
+_app_name_cache_ts: Optional[datetime] = None
+
+
+def _get_app_name_map(db: Session) -> dict:
+    """从 search_apps 表读取 app_id → name 映射，内存缓存 60 秒。"""
+    global _app_name_cache, _app_name_cache_ts
+    if _app_name_cache and _app_name_cache_ts and (datetime.now() - _app_name_cache_ts).total_seconds() < 60:
+        return _app_name_cache
+    apps = db.query(SearchApp).filter(SearchApp.is_active == 1).all()
+    _app_name_cache = {a.app_id: a.name for a in apps}
+    _app_name_cache_ts = datetime.now()
+    return _app_name_cache
+
+
+def _resolve_app_name(app_id: Optional[str], app_map: dict) -> str:
+    """根据 app_id 从映射表解析应用名称。"""
+    if app_id is None:
+        return "匿名调用"
+    return app_map.get(app_id, "未注册应用")
+
 
 def refresh_daily_stats(db: Session, target_date) -> dict:
     """聚合指定日期的搜索日志，写入 search_daily_stats（先删后插）。"""
@@ -218,10 +239,10 @@ def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "mo
     ]
 
     # 4. 三方调用详情：按 app + 资源类型
+    app_map = _get_app_name_map(db)
     app_rows = (
         db.query(
             SearchDailyStats.app_id,
-            SearchDailyStats.app_name,
             SearchDailyStats.resource_type,
             func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
             func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
@@ -230,7 +251,7 @@ def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "mo
             SearchDailyStats.stat_date >= start_date,
             SearchDailyStats.stat_date <= end_date,
         )
-        .group_by(SearchDailyStats.app_id, SearchDailyStats.app_name, SearchDailyStats.resource_type)
+        .group_by(SearchDailyStats.app_id, SearchDailyStats.resource_type)
         .order_by(func.sum(SearchDailyStats.api_call_count).desc())
         .all()
     )
@@ -252,7 +273,7 @@ def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "mo
     apps = [
         {
             "app_id": r.app_id,
-            "app_name": r.app_name or "匿名调用",
+            "app_name": _resolve_app_name(r.app_id, app_map),
             "resource_type": r.resource_type,
             "api_call_count": int(r.api_call_count),
             "resource_return_count": int(r.resource_return_count),
@@ -284,7 +305,6 @@ def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "mo
     app_bar_rows = (
         db.query(
             SearchDailyStats.app_id,
-            SearchDailyStats.app_name,
             app_period_expr.label("period"),
             func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
             func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
@@ -293,14 +313,14 @@ def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "mo
             SearchDailyStats.stat_date >= start_date,
             SearchDailyStats.stat_date <= end_date,
         )
-        .group_by(SearchDailyStats.app_id, SearchDailyStats.app_name, app_period_expr)
+        .group_by(SearchDailyStats.app_id, app_period_expr)
         .order_by(app_period_expr)
         .all()
     )
     app_bar = [
         {
             "app_id": r.app_id,
-            "app_name": r.app_name or "匿名调用",
+            "app_name": _resolve_app_name(r.app_id, app_map),
             "period": r.period,
             "api_call_count": int(r.api_call_count),
             "resource_return_count": int(r.resource_return_count),
