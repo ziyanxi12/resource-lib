@@ -31,6 +31,7 @@ const RESOURCE_TYPE_MAP: Record<string, number> = {
   file: 6,
   icon: 3,
   illus: 4,
+  person: 7,
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -38,6 +39,7 @@ const TYPE_LABELS: Record<string, string> = {
   file: '文件',
   icon: '图标',
   illus: '插画',
+  person: '个人',
 }
 
 const MAX_UPLOAD_COUNT = 50000
@@ -154,7 +156,7 @@ export default function ResourceUpload() {
       
       try {
         const [sourcesData, groupsData] = await Promise.all([
-          api.getSources(),
+          api.getSources(type === 'person' ? { mine: true } : undefined),
           api.getGroups(type, sourceIdNum, false)
         ])
         

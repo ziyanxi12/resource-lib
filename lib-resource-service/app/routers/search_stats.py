@@ -4,6 +4,7 @@ GET    /api/search-stats?start_date=&end_date=           看板数据
 POST   /api/search-stats/refresh?target_date=            聚合指定日期（不传则全量重建）
 POST   /api/search-stats/import-logs                     从历史日志文件导入搜索记录
 POST   /api/search-stats/migrate-illustration            将日志表 illustration 修正为 illus
+POST   /api/search-stats/migrate-app-id                  批量修正日志 app_id（old 不传表示匿名记录）
 DELETE /api/search-stats?resource_type=                   按资源类型删除统计汇总
 """
 
@@ -32,18 +33,22 @@ def get_stats(
     end_date: str = Query(..., description="结束日期 YYYY-MM-DD"),
     granularity: str = Query("month", description="柱状图统计粒度 day/week/month"),
     app_granularity: str = Query("month", description="三方占用柱状图统计粒度 day/week/month"),
+    section: str = Query("all", description="返回范围 all/bar/app-bar"),
     db: Session = Depends(get_db),
 ):
     if granularity not in {"day", "week", "month"}:
         raise HTTPException(status_code=400, detail=f"无效的 granularity: {granularity}，可选值: day/week/month")
     if app_granularity not in {"day", "week", "month"}:
         raise HTTPException(status_code=400, detail=f"无效的 app_granularity: {app_granularity}，可选值: day/week/month")
+    if section not in {"all", "bar", "app-bar"}:
+        raise HTTPException(status_code=400, detail=f"无效的 section: {section}，可选值: all/bar/app-bar")
     return search_stats_service.get_dashboard_data(
         db,
         _parse_date(start_date),
         _parse_date(end_date),
         granularity=granularity,
         app_granularity=app_granularity,
+        section=section,
     )
 
 
@@ -78,11 +83,11 @@ def migrate_illustration(db: Session = Depends(get_db)):
 
 @router.post("/migrate-app-id")
 def migrate_app_id(
-    old_app_id: str = Query(..., description="旧的 app_id"),
+    old_app_id: Optional[str] = Query(None, description="旧的 app_id，不传/为空表示匿名记录"),
     new_app_id: str = Query(..., description="新的 app_id"),
     db: Session = Depends(get_db),
 ):
-    """将 vector_search_logs 中 app_id=old 的记录批量修正为 new。
+    """将 vector_search_logs 中 app_id=old 的记录批量修正为 new；old_app_id 为空时匹配匿名记录。
 
     仅修正日志主表，不重建汇总表。如需更新看板，请再调用 /refresh 全量重建。
     """

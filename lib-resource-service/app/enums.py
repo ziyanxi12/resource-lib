@@ -10,6 +10,7 @@ class ResourceType(IntEnum):
     illus     = 4  # 插画
     image     = 5  # 图片
     file      = 6  # 文件
+    person    = 7  # 个人
 
     @classmethod
     def from_name(cls, name: str) -> "ResourceType":
@@ -24,6 +25,7 @@ class ResourceType(IntEnum):
             4: "插画",
             5: "图片",
             6: "文件",
+            7: "个人",
         }
         return _labels[self.value]
 
@@ -35,5 +37,6 @@ class ResourceType(IntEnum):
             4: "illustration",
             5: "image",
             6: "file",
+            7: "person",
         }
         return _vec_types[self.value]

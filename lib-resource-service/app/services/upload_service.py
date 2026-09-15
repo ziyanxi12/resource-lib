@@ -26,6 +26,7 @@ def get_file_dir(resource_type: ResourceType) -> str:
         ResourceType.illus: "illus",
         ResourceType.image: "image",
         ResourceType.file: "file",
+        ResourceType.person: "person",
     }[resource_type]
 
 

@@ -140,202 +140,201 @@ def _get_last_updated(db: Session) -> Optional[int]:
     return int(last_updated)
 
 
-def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "month", app_granularity: str = "month") -> dict:
+def get_dashboard_data(db: Session, start_date, end_date, granularity: str = "month", app_granularity: str = "month", section: str = "all") -> dict:
     """一次返回看板所需的全部统计数据。
 
     granularity: 资源类型柱状图统计粒度，day/week/month。
     app_granularity: 三方占用柱状图统计粒度，day/week/month。
+    section: 返回范围，all=全部，bar=资源类型图表，app-bar=三方调用图表。
     """
     if granularity not in {"day", "week", "month"}:
         raise ValueError(f"无效的 granularity: {granularity}，可选值: day/week/month")
     if app_granularity not in {"day", "week", "month"}:
         raise ValueError(f"无效的 app_granularity: {app_granularity}，可选值: day/week/month")
 
-    # 1. 汇总数字
-    summary_row = (
-        db.query(
-            func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
-            func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
-        )
-        .filter(
-            SearchDailyStats.stat_date >= start_date,
-            SearchDailyStats.stat_date <= end_date,
-        )
-        .first()
-    )
+    result: dict = {}
 
-    summary = {
-        "api_call_count": int(summary_row.api_call_count) if summary_row else 0,
-        "resource_return_count": int(summary_row.resource_return_count) if summary_row else 0,
-    }
-
-    # 2. 饼图：按资源类型
-    pie_rows = (
-        db.query(
-            SearchDailyStats.resource_type,
-            func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
-            func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
-        )
-        .filter(
-            SearchDailyStats.stat_date >= start_date,
-            SearchDailyStats.stat_date <= end_date,
-        )
-        .group_by(SearchDailyStats.resource_type)
-        .all()
-    )
-    pie = [
-        {
-            "resource_type": r.resource_type,
-            "api_call_count": int(r.api_call_count),
-            "resource_return_count": int(r.resource_return_count),
-        }
-        for r in pie_rows
-    ]
-
-    # 3. 柱状图：按资源类型 + 统计粒度（天/周/月）
-    if granularity == "day":
-        if _is_sqlite:
-            period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date)
-        else:
-            period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m-%d")
-    elif granularity == "week":
-        if _is_sqlite:
-            # 取本周周一日期作为分组标签，跨年排序也正确
-            period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date, "weekday 1", "-7 days")
-        else:
-            period_expr = func.date_format(
-                func.date_sub(SearchDailyStats.stat_date, text("interval weekday(stat_date) day")),
-                "%Y-%m-%d",
+    if section in ("all", "bar"):
+        # 1. 汇总数字
+        summary_row = (
+            db.query(
+                func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
+                func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
             )
-    else:
-        if _is_sqlite:
-            period_expr = func.strftime("%Y-%m", SearchDailyStats.stat_date)
-        else:
-            period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m")
-
-    bar_rows = (
-        db.query(
-            SearchDailyStats.resource_type,
-            period_expr.label("period"),
-            func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
-            func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
-        )
-        .filter(
-            SearchDailyStats.stat_date >= start_date,
-            SearchDailyStats.stat_date <= end_date,
-        )
-        .group_by(SearchDailyStats.resource_type, period_expr)
-        .order_by(period_expr)
-        .all()
-    )
-    bar = [
-        {
-            "resource_type": r.resource_type,
-            "period": r.period,
-            "api_call_count": int(r.api_call_count),
-            "resource_return_count": int(r.resource_return_count),
-        }
-        for r in bar_rows
-    ]
-
-    # 4. 三方调用详情：按 app + 资源类型
-    app_map = _get_app_name_map(db)
-    app_rows = (
-        db.query(
-            SearchDailyStats.app_id,
-            SearchDailyStats.resource_type,
-            func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
-            func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
-        )
-        .filter(
-            SearchDailyStats.stat_date >= start_date,
-            SearchDailyStats.stat_date <= end_date,
-        )
-        .group_by(SearchDailyStats.app_id, SearchDailyStats.resource_type)
-        .order_by(func.sum(SearchDailyStats.api_call_count).desc())
-        .all()
-    )
-    # 5. 各 app 在范围内的最近调用时间（取自汇总表 search_daily_stats，与统计次数同源）
-    last_call_rows = (
-        db.query(
-            SearchDailyStats.app_id,
-            func.max(SearchDailyStats.last_call_time).label("last_call"),
-        )
-        .filter(
-            SearchDailyStats.stat_date >= start_date,
-            SearchDailyStats.stat_date <= end_date,
-        )
-        .group_by(SearchDailyStats.app_id)
-        .all()
-    )
-    last_call_map = {r.app_id: r.last_call for r in last_call_rows}
-
-    apps = [
-        {
-            "app_id": r.app_id,
-            "app_name": _resolve_app_name(r.app_id, app_map),
-            "resource_type": r.resource_type,
-            "api_call_count": int(r.api_call_count),
-            "resource_return_count": int(r.resource_return_count),
-            "last_call_time": int(dt.timestamp() * 1000) if (dt := last_call_map.get(r.app_id)) else None,
-        }
-        for r in app_rows
-    ]
-
-    # 6. 三方占用柱状图：按 app + 统计粒度（天/周/月）
-    if app_granularity == "day":
-        if _is_sqlite:
-            app_period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date)
-        else:
-            app_period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m-%d")
-    elif app_granularity == "week":
-        if _is_sqlite:
-            app_period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date, "weekday 1", "-7 days")
-        else:
-            app_period_expr = func.date_format(
-                func.date_sub(SearchDailyStats.stat_date, text("interval weekday(stat_date) day")),
-                "%Y-%m-%d",
+            .filter(
+                SearchDailyStats.stat_date >= start_date,
+                SearchDailyStats.stat_date <= end_date,
             )
-    else:
-        if _is_sqlite:
-            app_period_expr = func.strftime("%Y-%m", SearchDailyStats.stat_date)
-        else:
-            app_period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m")
+            .first()
+        )
 
-    app_bar_rows = (
-        db.query(
-            SearchDailyStats.app_id,
-            app_period_expr.label("period"),
-            func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
-            func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
-        )
-        .filter(
-            SearchDailyStats.stat_date >= start_date,
-            SearchDailyStats.stat_date <= end_date,
-        )
-        .group_by(SearchDailyStats.app_id, app_period_expr)
-        .order_by(app_period_expr)
-        .all()
-    )
-    app_bar = [
-        {
-            "app_id": r.app_id,
-            "app_name": _resolve_app_name(r.app_id, app_map),
-            "period": r.period,
-            "api_call_count": int(r.api_call_count),
-            "resource_return_count": int(r.resource_return_count),
+        result["summary"] = {
+            "api_call_count": int(summary_row.api_call_count) if summary_row else 0,
+            "resource_return_count": int(summary_row.resource_return_count) if summary_row else 0,
         }
-        for r in app_bar_rows
-    ]
 
-    return {
-        "summary": summary,
-        "pie": pie,
-        "bar": bar,
-        "apps": apps,
-        "app_bar": app_bar,
-        "last_updated": _get_last_updated(db),
-    }
+        # 2. 饼图：按资源类型
+        pie_rows = (
+            db.query(
+                SearchDailyStats.resource_type,
+                func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
+                func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
+            )
+            .filter(
+                SearchDailyStats.stat_date >= start_date,
+                SearchDailyStats.stat_date <= end_date,
+            )
+            .group_by(SearchDailyStats.resource_type)
+            .all()
+        )
+        result["pie"] = [
+            {
+                "resource_type": r.resource_type,
+                "api_call_count": int(r.api_call_count),
+                "resource_return_count": int(r.resource_return_count),
+            }
+            for r in pie_rows
+        ]
+
+        # 3. 柱状图：按资源类型 + 统计粒度（天/周/月）
+        if granularity == "day":
+            if _is_sqlite:
+                period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date)
+            else:
+                period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m-%d")
+        elif granularity == "week":
+            if _is_sqlite:
+                period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date, "weekday 1", "-7 days")
+            else:
+                period_expr = func.date_format(
+                    func.date_sub(SearchDailyStats.stat_date, text("interval weekday(stat_date) day")),
+                    "%Y-%m-%d",
+                )
+        else:
+            if _is_sqlite:
+                period_expr = func.strftime("%Y-%m", SearchDailyStats.stat_date)
+            else:
+                period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m")
+
+        bar_rows = (
+            db.query(
+                SearchDailyStats.resource_type,
+                period_expr.label("period"),
+                func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
+                func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
+            )
+            .filter(
+                SearchDailyStats.stat_date >= start_date,
+                SearchDailyStats.stat_date <= end_date,
+            )
+            .group_by(SearchDailyStats.resource_type, period_expr)
+            .order_by(period_expr)
+            .all()
+        )
+        result["bar"] = [
+            {
+                "resource_type": r.resource_type,
+                "period": r.period,
+                "api_call_count": int(r.api_call_count),
+                "resource_return_count": int(r.resource_return_count),
+            }
+            for r in bar_rows
+        ]
+
+        result["last_updated"] = _get_last_updated(db)
+
+    if section in ("all", "app-bar"):
+        # 4. 三方调用详情：按 app + 资源类型
+        app_map = _get_app_name_map(db)
+        app_rows = (
+            db.query(
+                SearchDailyStats.app_id,
+                SearchDailyStats.resource_type,
+                func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
+                func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
+            )
+            .filter(
+                SearchDailyStats.stat_date >= start_date,
+                SearchDailyStats.stat_date <= end_date,
+            )
+            .group_by(SearchDailyStats.app_id, SearchDailyStats.resource_type)
+            .order_by(func.sum(SearchDailyStats.api_call_count).desc())
+            .all()
+        )
+        # 5. 各 app 在范围内的最近调用时间（取自汇总表 search_daily_stats，与统计次数同源）
+        last_call_rows = (
+            db.query(
+                SearchDailyStats.app_id,
+                func.max(SearchDailyStats.last_call_time).label("last_call"),
+            )
+            .filter(
+                SearchDailyStats.stat_date >= start_date,
+                SearchDailyStats.stat_date <= end_date,
+            )
+            .group_by(SearchDailyStats.app_id)
+            .all()
+        )
+        last_call_map = {r.app_id: r.last_call for r in last_call_rows}
+
+        result["apps"] = [
+            {
+                "app_id": r.app_id,
+                "app_name": _resolve_app_name(r.app_id, app_map),
+                "resource_type": r.resource_type,
+                "api_call_count": int(r.api_call_count),
+                "resource_return_count": int(r.resource_return_count),
+                "last_call_time": int(dt.timestamp() * 1000) if (dt := last_call_map.get(r.app_id)) else None,
+            }
+            for r in app_rows
+        ]
+
+        # 6. 三方占用柱状图：按 app + 统计粒度（天/周/月）
+        if app_granularity == "day":
+            if _is_sqlite:
+                app_period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date)
+            else:
+                app_period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m-%d")
+        elif app_granularity == "week":
+            if _is_sqlite:
+                app_period_expr = func.strftime("%Y-%m-%d", SearchDailyStats.stat_date, "weekday 1", "-7 days")
+            else:
+                app_period_expr = func.date_format(
+                    func.date_sub(SearchDailyStats.stat_date, text("interval weekday(stat_date) day")),
+                    "%Y-%m-%d",
+                )
+        else:
+            if _is_sqlite:
+                app_period_expr = func.strftime("%Y-%m", SearchDailyStats.stat_date)
+            else:
+                app_period_expr = func.date_format(SearchDailyStats.stat_date, "%Y-%m")
+
+        app_bar_rows = (
+            db.query(
+                SearchDailyStats.app_id,
+                app_period_expr.label("period"),
+                func.coalesce(func.sum(SearchDailyStats.api_call_count), 0).label("api_call_count"),
+                func.coalesce(func.sum(SearchDailyStats.resource_return_count), 0).label("resource_return_count"),
+            )
+            .filter(
+                SearchDailyStats.stat_date >= start_date,
+                SearchDailyStats.stat_date <= end_date,
+            )
+            .group_by(SearchDailyStats.app_id, app_period_expr)
+            .order_by(app_period_expr)
+            .all()
+        )
+        result["app_bar"] = [
+            {
+                "app_id": r.app_id,
+                "app_name": _resolve_app_name(r.app_id, app_map),
+                "period": r.period,
+                "api_call_count": int(r.api_call_count),
+                "resource_return_count": int(r.resource_return_count),
+            }
+            for r in app_bar_rows
+        ]
+
+    return result
 
 
 # ── 历史日志导入 ──────────────────────────────────────────────
@@ -544,18 +543,21 @@ def migrate_illustration_to_illus(db: Session) -> dict:
     return {"logs_updated": int(updated)}
 
 
-def migrate_app_id(db: Session, old_app_id: str, new_app_id: str) -> dict:
+def migrate_app_id(db: Session, old_app_id: Optional[str], new_app_id: str) -> dict:
     """将 vector_search_logs 中 app_id=old 的记录批量修正为 new。
+    old_app_id 为空时匹配匿名记录（app_id IS NULL）。
 
     仅修正日志主表，不重建汇总表（如需更新看板，请手动调用 refresh_all_stats）。
     """
-    updated = (
-        db.query(VectorSearchLog)
-        .filter(VectorSearchLog.app_id == old_app_id)
-        .update({VectorSearchLog.app_id: new_app_id}, synchronize_session=False)
-    )
+    query = db.query(VectorSearchLog)
+    if old_app_id:
+        query = query.filter(VectorSearchLog.app_id == old_app_id)
+    else:
+        query = query.filter(VectorSearchLog.app_id.is_(None))
+    updated = query.update({VectorSearchLog.app_id: new_app_id}, synchronize_session=False)
     db.commit()
-    logger.info("修正 vector_search_logs app_id %s -> %s: %d 条", old_app_id, new_app_id, updated)
+    logger.info("修正 vector_search_logs app_id %s -> %s: %d 条",
+                old_app_id or "(匿名)", new_app_id, updated)
     return {"logs_updated": int(updated)}
 
 

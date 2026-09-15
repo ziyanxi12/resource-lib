@@ -9,6 +9,7 @@ import {
   StarOutlined,
   FunctionOutlined,
   FileOutlined,
+  UserOutlined,
   SettingOutlined,
 } from '@ant-design/icons'
 import Guide from './pages/Guide'
@@ -29,6 +30,7 @@ const NAV: { key: PageKey; path: string; icon: React.ReactNode; label: string; s
   { key: 'illus'     , path: '/illus'     , icon: <StarOutlined />,     label: '插画' },
   { key: 'image'     , path: '/image'     , icon: <PictureOutlined />,  label: '图片' },
   { key: 'file'      , path: '/file'      , icon: <FileOutlined />,     label: '文件' },
+  // { key: 'person'    , path: '/person'    , icon: <UserOutlined />,     label: '个人' }, // 下个需求启用
   { key: 'overview'  , path: '/overview' , icon: <AppstoreOutlined />,  label: '数据统计', superOnly: true },
   { key: 'source-manage', path: '/source-manage', icon: <SettingOutlined />, label: '管理页面', superOnly: true },
 ]

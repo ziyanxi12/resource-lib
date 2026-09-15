@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react'
 import {
   FunctionOutlined, StarOutlined, PictureOutlined, FileOutlined,
 } from '@ant-design/icons'
@@ -7,6 +7,15 @@ import type { ColumnsType } from 'antd/es/table'
 import { Pie, Column } from '@ant-design/charts'
 import dayjs, { type Dayjs } from 'dayjs'
 import { api } from '../api'
+
+const ColumnMemo = memo(({ chartKey, config }: { chartKey: string; config: Record<string, unknown> }) => {
+  console.log('[ColumnMemo] render', chartKey)
+  return <Column key={chartKey} {...config} />
+}, (prev, next) => prev.chartKey === next.chartKey && prev.config === next.config)
+const PieMemo = memo(({ config }: { config: Record<string, unknown> }) => {
+  console.log('[PieMemo] render')
+  return <Pie {...config} />
+}, (prev, next) => prev.config === next.config)
 
 const STATS = [
   { key: 'icon',      label: '图标',  icon: <FunctionOutlined />, bg: '#e8f1fe', color: '#2070F3' },
@@ -23,7 +32,7 @@ const RESOURCE_TYPE_LABELS: Record<string, string> = {
   unknown: '未知',
 }
 
-const EXTRA_COLOR_PALETTE = ['#94a3b8', '#a78bfa', '#22d3ee', '#fb923c', '#a3e635', '#f472b6', '#64748b', '#f43f5e']
+const EXTRA_COLOR_PALETTE = ['#FCCE92', '#B8D9F9', '#D9B1FD', '#C6E9A8', '#A4ECF1']
 
 function buildColorScale(types: string[]): { domain: string[]; range: string[] } {
   const present = new Set(types)
@@ -41,14 +50,13 @@ function buildColorScale(types: string[]): { domain: string[]; range: string[] }
     }
   }
 
+  const extraTypes = [...present].filter(t => !colorMap[t]).sort()
   let paletteIdx = 0
-  for (const t of present) {
-    if (!colorMap[t]) {
-      const c = EXTRA_COLOR_PALETTE[paletteIdx++ % EXTRA_COLOR_PALETTE.length]
-      colorMap[t] = c
-      domain.push(t)
-      range.push(c)
-    }
+  for (const t of extraTypes) {
+    const c = EXTRA_COLOR_PALETTE[paletteIdx++ % EXTRA_COLOR_PALETTE.length]
+    colorMap[t] = c
+    domain.push(t)
+    range.push(c)
   }
 
   return { domain, range }
@@ -191,7 +199,7 @@ function SearchStatsSection() {
   const [metric, setMetric] = useState<MetricType>('api_call_count')
   const [granularity, setGranularity] = useState<Granularity>('month')
   const [appGranularity, setAppGranularity] = useState<Granularity>('month')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState({ api_call_count: 0, resource_return_count: 0 })
   const [lastUpdated, setLastUpdated] = useState<number | null>(null)
   const [pieData, setPieData] = useState<Array<{ type: string; value: number }>>([])
@@ -199,72 +207,149 @@ function SearchStatsSection() {
   const [appPieData, setAppPieData] = useState<Array<{ type: string; value: number }>>([])
   const [appBarData, setAppBarData] = useState<Array<{ app_name: string; period: string; value: number }>>([])
   const [apps, setApps] = useState<AppRow[]>([])
+  const [barFetchCounter, setBarFetchCounter] = useState(0)
+  const [appFetchCounter, setAppFetchCounter] = useState(0)
 
-  const fetchData = useCallback((range?: [Dayjs, Dayjs], m?: MetricType, g?: Granularity, ag?: Granularity) => {
-    const [start, end] = range ?? dateRange
-    const metricKey = m ?? metric
-    const granularityKey = g ?? granularity
-    const appGranularityKey = ag ?? appGranularity
-    setLoading(true)
-    api.getSearchStats({
+  const dateRangeRef = useRef(dateRange)
+  const metricRef = useRef(metric)
+  const granularityRef = useRef(granularity)
+  const appGranularityRef = useRef(appGranularity)
+  const fetchIdRef = useRef(0)
+  const appFetchIdRef = useRef(0)
+  const hasLoadedRef = useRef(false)
+
+  useEffect(() => { dateRangeRef.current = dateRange }, [dateRange])
+  useEffect(() => { metricRef.current = metric }, [metric])
+  useEffect(() => { granularityRef.current = granularity }, [granularity])
+  useEffect(() => { appGranularityRef.current = appGranularity }, [appGranularity])
+
+  const fetchBarData = useCallback((range?: [Dayjs, Dayjs], m?: MetricType, g?: Granularity) => {
+    const [start, end] = range ?? dateRangeRef.current
+    const metricKey = m ?? metricRef.current
+    const granularityKey = g ?? granularityRef.current
+    const thisId = ++fetchIdRef.current
+    if (!hasLoadedRef.current) setLoading(true)
+    return api.getSearchStats({
       start_date: start.format('YYYY-MM-DD'),
       end_date: end.format('YYYY-MM-DD'),
       granularity: granularityKey,
-      app_granularity: appGranularityKey,
+      app_granularity: appGranularityRef.current,
+      section: 'bar',
     }).then(data => {
-      setSummary(data.summary)
-      setLastUpdated(typeof data.last_updated === 'number' ? data.last_updated : null)
-      setPieData(
-        data.pie.map(d => ({
-          type: RESOURCE_TYPE_LABELS[d.resource_type] ?? d.resource_type,
-          value: d[metricKey],
-        }))
-      )
-      setBarData(
-        data.bar.map(d => ({
-          resource_type: RESOURCE_TYPE_LABELS[d.resource_type] ?? d.resource_type,
-          period: d.period,
-          value: d[metricKey],
-        }))
-      )
-      setAppBarData(
-        data.app_bar.map(d => ({
-          app_name: d.app_name,
-          period: d.period,
-          value: d[metricKey],
-        }))
-      )
-      setApps(data.apps)
-      const byApp = new Map<string, number>()
-      for (const r of data.apps) {
-        const key = r.app_name
-        byApp.set(key, (byApp.get(key) ?? 0) + (r[metricKey] || 0))
+      if (thisId !== fetchIdRef.current) return
+      if (data.summary) setSummary(data.summary)
+      if (typeof data.last_updated === 'number') setLastUpdated(data.last_updated)
+      if (data.pie) {
+        setPieData(
+          data.pie.map(d => ({
+            type: RESOURCE_TYPE_LABELS[d.resource_type] ?? d.resource_type,
+            value: d[metricKey],
+          }))
+        )
       }
-      setAppPieData(
-        Array.from(byApp.entries()).map(([name, value]) => ({ type: name, value }))
-      )
+      if (data.bar) {
+        setBarData(
+          data.bar.map(d => ({
+            resource_type: RESOURCE_TYPE_LABELS[d.resource_type] ?? d.resource_type,
+            period: d.period,
+            value: d[metricKey],
+          }))
+        )
+      }
+      setBarFetchCounter(c => c + 1)
+      if (!hasLoadedRef.current) {
+        hasLoadedRef.current = true
+        setLoading(false)
+      }
     }).catch(err => {
+      if (thisId !== fetchIdRef.current) return
       message.error(err.message || '加载统计数据失败')
-    }).finally(() => setLoading(false))
-  }, [dateRange, metric, granularity, appGranularity])
+      if (!hasLoadedRef.current) {
+        hasLoadedRef.current = true
+        setLoading(false)
+      }
+    })
+  }, [])
+
+  const fetchAppData = useCallback((range?: [Dayjs, Dayjs], m?: MetricType, ag?: Granularity) => {
+    const [start, end] = range ?? dateRangeRef.current
+    const metricKey = m ?? metricRef.current
+    const appGranularityKey = ag ?? appGranularityRef.current
+    const thisId = ++appFetchIdRef.current
+    if (!hasLoadedRef.current) setLoading(true)
+    return api.getSearchStats({
+      start_date: start.format('YYYY-MM-DD'),
+      end_date: end.format('YYYY-MM-DD'),
+      granularity: granularityRef.current,
+      app_granularity: appGranularityKey,
+      section: 'app-bar',
+    }).then(data => {
+      if (thisId !== appFetchIdRef.current) return
+      if (data.apps) {
+        setApps(data.apps)
+        const byApp = new Map<string, number>()
+        for (const r of data.apps) {
+          const key = r.app_name
+          byApp.set(key, (byApp.get(key) ?? 0) + (r[metricKey] || 0))
+        }
+        setAppPieData(
+          Array.from(byApp.entries()).map(([name, value]) => ({ type: name, value }))
+        )
+      }
+      if (data.app_bar) {
+        setAppBarData(
+          data.app_bar.map(d => ({
+            app_name: d.app_name,
+            period: d.period,
+            value: d[metricKey],
+          }))
+        )
+      }
+      setAppFetchCounter(c => c + 1)
+      if (!hasLoadedRef.current) {
+        hasLoadedRef.current = true
+        setLoading(false)
+      }
+    }).catch(err => {
+      if (thisId !== appFetchIdRef.current) return
+      message.error(err.message || '加载统计数据失败')
+      if (!hasLoadedRef.current) {
+        hasLoadedRef.current = true
+        setLoading(false)
+      }
+    })
+  }, [])
+
+  const fetchData = useCallback((range?: [Dayjs, Dayjs], m?: MetricType, g?: Granularity, ag?: Granularity) => {
+    fetchBarData(range, m, g)
+    fetchAppData(range, m, ag)
+  }, [fetchBarData, fetchAppData])
 
   useEffect(() => {
     fetchData()
   }, [])
 
   const handleMetricChange = (m: MetricType) => {
-    setMetric(m)
-    fetchData(undefined, m)
+    metricRef.current = m
+    Promise.all([
+      fetchBarData(undefined, m),
+      fetchAppData(undefined, m),
+    ]).then(() => {
+      setMetric(m)
+    })
   }
 
   const handleGranularityChange = (g: Granularity) => {
-    setGranularity(g)
-    fetchData(undefined, undefined, g)
+    fetchBarData(undefined, undefined, g).then(() => {
+      setGranularity(g)
+    })
   }
 
   const handleAppGranularityChange = (ag: Granularity) => {
-    setAppGranularity(ag)
-    fetchData(undefined, undefined, undefined, ag)
+    appGranularityRef.current = ag
+    fetchAppData(undefined, undefined, ag).then(() => {
+      setAppGranularity(ag)
+    })
   }
 
   const groupedApps = useMemo(() => {
@@ -368,9 +453,9 @@ function SearchStatsSection() {
     }, []),
   ]
 
-  const pieColorScale = buildColorScale(pieData.map(d => d.type))
+  const pieColorScale = useMemo(() => buildColorScale(pieData.map(d => d.type)), [pieData])
 
-  const pieConfig = {
+  const pieConfig = useMemo(() => ({
     data: pieData,
     angleField: 'value',
     colorField: 'type',
@@ -402,17 +487,30 @@ function SearchStatsSection() {
     },
     radius: 0.75,
     height: 300,
-  }
+  }), [pieData, pieColorScale])
 
-  const barColorScale = buildColorScale(barData.map(d => d.resource_type))
+  const barColorScale = useMemo(() => buildColorScale(barData.map(d => d.resource_type)), [barData])
+  const barPeriodCount = useMemo(() => [...new Set(barData.map(d => d.period))].length, [barData])
 
-  const columnConfig = {
+  const barMaxValue = useMemo(() => {
+    return barData.reduce((max, d) => {
+      const samePeriod = barData.filter(x => x.period === d.period)
+      const total = samePeriod.reduce((s, x) => s + x.value, 0)
+      return Math.max(max, total)
+    }, 0)
+  }, [barData])
+
+  const barDomainMax = useMemo(() => {
+    return barMaxValue > 0 ? Math.ceil(barMaxValue * 1.15) : undefined
+  }, [barMaxValue])
+
+  const columnConfig = useMemo(() => ({
     data: barData,
     xField: 'period',
     yField: 'value',
     colorField: 'resource_type',
     stack: true,
-    style: { maxWidth: 20 },
+    style: { maxWidth: 12, radius: 8 },
     label: {
       text: (d: { resource_type: string; period: string; value: number }, i: number, data: any[]) => {
         const samePeriod = data.filter((x: any) => x.period === d.period)
@@ -421,9 +519,14 @@ function SearchStatsSection() {
         return total > 0 ? total.toLocaleString() : ''
       },
       position: 'top',
-      dy: -16,
+      dy: -12,
     },
-    scrollbar: granularity === 'day' ? { x: {} } : undefined,
+    scrollbar: granularity === 'day' && barPeriodCount > 15 ? {
+      x: { 
+        ratio: 15 / barPeriodCount,
+        value: 1,
+      },
+    } : undefined,
     legend: {
       color: {
         title: false,
@@ -432,6 +535,7 @@ function SearchStatsSection() {
     },
     scale: {
       color: barColorScale,
+      y: barDomainMax ? { domainMax: barDomainMax } : undefined,
     },
     tooltip: {
       title: (d: { resource_type: string; period: string; value: number }) => d.period,
@@ -443,15 +547,21 @@ function SearchStatsSection() {
       },
       y: {
         title: METRIC_LABELS[metric],
-        labelFormatter: (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v),
+        labelFormatter: (v: number) => {
+          if (v >= 1000) {
+            const k = parseFloat((v / 1000).toFixed(1))
+            return `${k}k`
+          }
+          return String(v)
+        },
       },
     },
-    height: 300,
-  }
+    height: 340,
+  }), [barData, barColorScale, barDomainMax, barPeriodCount, granularity, metric])
 
-  const appPieColorScale = buildColorScale(appPieData.map(d => d.type))
+  const appPieColorScale = useMemo(() => buildColorScale(appPieData.map(d => d.type)), [appPieData])
 
-  const appPieConfig = {
+  const appPieConfig = useMemo(() => ({
     data: appPieData,
     angleField: 'value',
     colorField: 'type',
@@ -483,17 +593,30 @@ function SearchStatsSection() {
     },
     radius: 0.75,
     height: 300,
-  }
+  }), [appPieData, appPieColorScale])
 
-  const appBarColorScale = buildColorScale(appBarData.map(d => d.app_name))
+  const appBarColorScale = useMemo(() => buildColorScale(appBarData.map(d => d.app_name)), [appBarData])
+  const appBarPeriodCount = useMemo(() => [...new Set(appBarData.map(d => d.period))].length, [appBarData])
 
-  const appColumnConfig = {
+  const appBarMaxValue = useMemo(() => {
+    return appBarData.reduce((max, d) => {
+      const samePeriod = appBarData.filter(x => x.period === d.period)
+      const total = samePeriod.reduce((s, x) => s + x.value, 0)
+      return Math.max(max, total)
+    }, 0)
+  }, [appBarData])
+
+  const appBarDomainMax = useMemo(() => {
+    return appBarMaxValue > 0 ? Math.ceil(appBarMaxValue * 1.15) : undefined
+  }, [appBarMaxValue])
+
+  const appColumnConfig = useMemo(() => ({
     data: appBarData,
     xField: 'period',
     yField: 'value',
     colorField: 'app_name',
     stack: true,
-    style: { maxWidth: 20 },
+    style: { maxWidth: 12, radius: 8 },
     label: {
       text: (d: { app_name: string; period: string; value: number }, i: number, data: any[]) => {
         const samePeriod = data.filter((x: any) => x.period === d.period)
@@ -502,9 +625,14 @@ function SearchStatsSection() {
         return total > 0 ? total.toLocaleString() : ''
       },
       position: 'top',
-      dy: -16,
+      dy: -12,
     },
-    scrollbar: appGranularity === 'day' ? { x: {} } : undefined,
+    scrollbar: appGranularity === 'day' && appBarPeriodCount > 15 ? {
+      x: { 
+        ratio: 15 / appBarPeriodCount,
+        value: 1,
+      },
+    } : undefined,
     legend: {
       color: {
         title: false,
@@ -513,6 +641,7 @@ function SearchStatsSection() {
     },
     scale: {
       color: appBarColorScale,
+      y: appBarDomainMax ? { domainMax: appBarDomainMax } : undefined,
     },
     tooltip: {
       title: (d: { app_name: string; period: string; value: number }) => d.period,
@@ -524,11 +653,37 @@ function SearchStatsSection() {
       },
       y: {
         title: METRIC_LABELS[metric],
-        labelFormatter: (v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v),
+        labelFormatter: (v: number) => {
+          if (v >= 1000) {
+            const k = parseFloat((v / 1000).toFixed(1))
+            return `${k}k`
+          }
+          return String(v)
+        },
       },
     },
-    height: 300,
-  }
+    height: 340,
+  }), [appBarData, appBarColorScale, appBarDomainMax, appBarPeriodCount, appGranularity, metric])
+
+  const barChart = useMemo(() => {
+    console.log('[barChart useMemo] recompute, barFetchCounter=', barFetchCounter)
+    return <ColumnMemo chartKey={`bar-${barFetchCounter}`} config={columnConfig} />
+  }, [columnConfig, barFetchCounter])
+
+  const pieChart = useMemo(() => {
+    console.log('[pieChart useMemo] recompute')
+    return <PieMemo config={pieConfig} />
+  }, [pieConfig])
+
+  const appBarChart = useMemo(() => {
+    console.log('[appBarChart useMemo] recompute, appFetchCounter=', appFetchCounter)
+    return <ColumnMemo chartKey={`app-bar-${appFetchCounter}`} config={appColumnConfig} />
+  }, [appColumnConfig, appFetchCounter])
+
+  const appPieChart = useMemo(() => {
+    console.log('[appPieChart useMemo] recompute')
+    return <PieMemo config={appPieConfig} />
+  }, [appPieConfig])
 
   return (
     <div>
@@ -592,7 +747,7 @@ function SearchStatsSection() {
             <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: '#475569' }}>
               各类资源占比
             </h3>
-            <Pie {...pieConfig} />
+            {pieChart}
           </div>
           <div style={{
             background: '#fff', borderRadius: 12, padding: 16,
@@ -614,7 +769,7 @@ function SearchStatsSection() {
                 <Radio.Button value="month">按月</Radio.Button>
               </Radio.Group>
             </div>
-            <Column {...columnConfig} />
+            {barChart}
           </div>
         </div>
 
@@ -626,7 +781,7 @@ function SearchStatsSection() {
             <h3 style={{ margin: '0 0 12px', fontSize: 14, fontWeight: 600, color: '#475569' }}>
               三方调用占比
             </h3>
-            <Pie {...appPieConfig} />
+            {appPieChart}
           </div>
           <div style={{
             background: '#fff', borderRadius: 12, padding: 16,
@@ -648,7 +803,7 @@ function SearchStatsSection() {
                 <Radio.Button value="month">按月</Radio.Button>
               </Radio.Group>
             </div>
-            <Column {...appColumnConfig} />
+            {appBarChart}
           </div>
         </div>
 

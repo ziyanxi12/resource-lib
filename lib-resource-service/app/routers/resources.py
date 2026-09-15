@@ -302,6 +302,7 @@ async def update_resource(
                 ResourceType.icon: "icon",
                 ResourceType.illus: "illus",
                     ResourceType.file: "file",
+                ResourceType.person: "person",
             }
             type_dir = type_dir_map.get(resource_type, "file")
             thumb_dir = os.path.join(settings.FILE_ROOT_DIR, type_dir, "image")
@@ -328,6 +329,7 @@ async def update_resource(
             ResourceType.illus: "illus",
             ResourceType.image: "image",
             ResourceType.file: "file",
+            ResourceType.person: "person",
         }
         type_dir = type_dir_map.get(resource_type, "file")
         file_dir = os.path.join(settings.FILE_ROOT_DIR, type_dir)

@@ -78,7 +78,13 @@ export default function ResourceManage() {
   useEffect(() => {
     setPageLoading(true)
     let cancelled = false
-    api.getSources()
+    const isPerson = type === 'person'
+    // 个人类型：先幂等初始化个人空间，再仅拉取自己的来源
+    const prepare = isPerson
+      ? api.ensurePersonalSource().catch(() => null)
+      : Promise.resolve(null as unknown as void)
+    prepare
+      .then(() => api.getSources(isPerson ? { mine: true } : undefined))
       .then(async data => {
         if (cancelled) return
         const typeNum = RESOURCE_TYPE_MAP[type]
@@ -404,8 +410,8 @@ export default function ResourceManage() {
       await api.updateSource(sourceId!, { name: editSourceName.trim() })
       message.success('修改成功')
       setEditSourceModalOpen(false)
-      
-      const data = await api.getSources()
+
+      const data = await api.getSources(type === 'person' ? { mine: true } : undefined)
       const typeNum = RESOURCE_TYPE_MAP[type]
       const filtered = data.items.filter(s => s.resource_type === typeNum)
       setSources(filtered)
@@ -440,7 +446,7 @@ export default function ResourceManage() {
 
   const loadTrashSources = async () => {
     try {
-      const data = await api.getTrashSources({ type })
+      const data = await api.getTrashSources(type === 'person' ? { type, mine: true } : { type })
       setTrashSources(data.items)
     } catch (e) {
       message.error('加载回收站失败')
@@ -454,8 +460,8 @@ export default function ResourceManage() {
       message.success('恢复成功')
       
       const [normalData, trashData] = await Promise.all([
-        api.getSources(),
-        api.getTrashSources({ type })
+        api.getSources(type === 'person' ? { mine: true } : undefined),
+        api.getTrashSources(type === 'person' ? { type, mine: true } : { type })
       ])
       
       const typeNum = RESOURCE_TYPE_MAP[type]
@@ -800,17 +806,19 @@ config.json 的顶层是 \`group\` 数组，每个元素是一个分组节点，
               来源
             </div>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <Button
-                type="primary"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={() => setCreateSourceModalOpen(true)}
-              />
+              {type !== 'person' && (
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={() => setCreateSourceModalOpen(true)}
+                />
+              )}
               <Dropdown
                 menu={{
                   items: [
                     { key: 'edit', label: '编辑名称', icon: <EditOutlined /> },
-                    { key: 'delete', label: '删除来源', icon: <DeleteOutlined />, danger: true },
+                    ...(type !== 'person' ? [{ key: 'delete', label: '删除来源', icon: <DeleteOutlined />, danger: true }] : []),
                     { key: 'trash', label: '回收站', icon: <UndoOutlined /> },
                     { type: 'divider' as const },
                     { key: 'sync', label: '向量同步', icon: <SyncOutlined spin={syncing} /> },

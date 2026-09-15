@@ -15,11 +15,13 @@ from app.config import settings
 from app.database import SessionLocal, get_db
 from app.schemas.source import SourceCreate, SourceUpdate
 from app.services import source_service, import_service, import_task_registry, vector_sync_service
+from app.services import group_service
 from app.services import operation_log_service
 from app.services.operator import get_operator
 from app.services.user_service import resolve_display_names
 from app.enums import ResourceType
 from app.clients import vector_client
+from app.models.resource import ResourceSource, ResourceGroup
 
 logger = logging.getLogger(__name__)
 
@@ -49,8 +51,10 @@ def _format_source(s, display_map=None):
 
 @router.get("")
 def list_sources(
+    request: Request,
     type: Optional[str] = Query(None, description="资源类型名，如 component、icon、illus"),
     is_active: Optional[int] = Query(None, description="是否启用筛选"),
+    mine: bool = Query(False, description="仅返回当前登录用户创建的来源"),
     db: Session = Depends(get_db),
 ):
     """获取来源列表"""
@@ -60,8 +64,11 @@ def list_sources(
             resource_type_int = int(ResourceType.from_name(type))
         except KeyError:
             raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
-    
+
     sources = source_service.get_sources(db, resource_type=resource_type_int, is_active=is_active)
+    if mine:
+        account, _ = get_operator(request)
+        sources = [s for s in sources if s.created_by == account]
     accounts = set()
     for s in sources:
         if s.created_by: accounts.add(s.created_by)
@@ -72,7 +79,9 @@ def list_sources(
 
 @router.get("/trash")
 def list_trash_sources(
+    request: Request,
     type: Optional[str] = Query(None, description="资源类型名"),
+    mine: bool = Query(False, description="仅返回当前登录用户创建的来源"),
     db: Session = Depends(get_db),
 ):
     """获取回收站中的来源列表"""
@@ -82,8 +91,11 @@ def list_trash_sources(
             resource_type_int = int(ResourceType.from_name(type))
         except KeyError:
             raise HTTPException(status_code=400, detail=f"未知资源类型: {type}")
-    
+
     sources = source_service.get_deleted_sources(db, resource_type=resource_type_int)
+    if mine:
+        account, _ = get_operator(request)
+        sources = [s for s in sources if s.created_by == account]
     accounts = set()
     for s in sources:
         if s.created_by: accounts.add(s.created_by)
@@ -138,6 +150,76 @@ def create_source(body: SourceCreate, request: Request, db: Session = Depends(ge
         return _format_source(source, display_map)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+_ensure_person_lock = threading.Lock()
+
+
+@router.post("/person/ensure")
+def ensure_personal_source(request: Request, db: Session = Depends(get_db)):
+    """幂等获取当前用户的个人空间来源（person 类型），不存在则自动创建（含默认分组）。
+
+    全局锁串行化 query-then-create，防止并发请求（如前端 StrictMode 双触发）重复创建；
+    同账号若已存在多条，固定返回 id 最小的一条。
+    """
+    account, name = get_operator(request)
+    if not account or account == "unknown":
+        raise HTTPException(status_code=401, detail="无法识别当前用户，请先登录")
+
+    person_type = int(ResourceType.person)
+    with _ensure_person_lock:
+        source = (
+            db.query(ResourceSource)
+            .filter(
+                ResourceSource.resource_type == person_type,
+                ResourceSource.created_by == account,
+                ResourceSource.is_active == 1,
+            )
+            .order_by(ResourceSource.id)
+            .first()
+        )
+        if not source:
+            source = source_service.create_source(db, {
+                "name": "个人空间",
+                "resource_type": person_type,
+                "is_sync_source": 0,
+                "config": None,
+                "is_active": 1,
+                "created_by": account,
+                "updated_by": account,
+            })
+            operation_log_service.create_log(
+                db,
+                source_id=source.id,
+                resource_type=person_type,
+                operator=name,
+                operator_account=account,
+                action="create",
+                target_type="source",
+                target_id=source.id,
+                target_name=source.name,
+            )
+
+        # 默认分组缺失时补建（幂等，create_group 对根分组重名会抛错，捕获兜底并发）
+        has_root_group = (
+            db.query(ResourceGroup)
+            .filter(
+                ResourceGroup.resource_type == person_type,
+                ResourceGroup.source_id == source.id,
+                ResourceGroup.parent_id.is_(None),
+            )
+            .first()
+        )
+        if not has_root_group:
+            try:
+                group_service.create_group(
+                    db, resource_type=person_type, source_id=source.id, name="默认分组", parent_id=None
+                )
+            except ValueError:
+                db.rollback()
+
+    display_map = resolve_display_names(db, [x for x in [source.created_by, source.updated_by] if x])
+    return _format_source(source, display_map)
 
 
 @router.put("/{source_id}")

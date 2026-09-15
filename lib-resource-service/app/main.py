@@ -111,7 +111,7 @@ async def lifespan(app: FastAPI):
     _ensure_index(engine, "resources", "idx_resources_created_at", "created_at")
     
     # 创建文件存储子目录
-    for sub in ["template", "icon", "illus", "image", "file"]:
+    for sub in ["template", "icon", "illus", "image", "file", "person"]:
         os.makedirs(os.path.join(settings.FILE_ROOT_DIR, sub), exist_ok=True)
 
     # 启动时按需导入搜索应用（测试→生产迁移，SEARCH_APPS_AUTO_IMPORT=true 时生效）
