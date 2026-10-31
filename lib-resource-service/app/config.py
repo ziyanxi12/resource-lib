@@ -76,6 +76,11 @@ class Settings:
     # true = 启用白名单校验（/api/whitelist/check 生效），false = 开发环境放行所有账号
     WHITELIST_ENABLED: bool = os.getenv("WHITELIST_ENABLED", "false").lower() == "true"
 
+    # ── 设计系统模块白名单（与上方完全隔离）─────────────────────
+    # 只作用于 /api/design-systems/whitelist/check，不影响原白名单；
+    # 默认 true = 设计系统管理台白名单始终生效（放行请往 ds_whitelist_accounts 加账号）
+    DS_WHITELIST_ENABLED: bool = os.getenv("DS_WHITELIST_ENABLED", "true").lower() == "true"
+
     # ── 用户认证加密 ──────────────────────────────────────────
     # AES-256-CBC 密钥（32字节 base64），前后端必须一致
     AUTH_AES_KEY: str = os.getenv("AUTH_AES_KEY", "")
