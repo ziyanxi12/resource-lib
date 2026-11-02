@@ -78,3 +78,25 @@ def update_account(
 def soft_delete(db: Session, item: DsWhitelistAccount) -> None:
     item.is_active = 0
     db.commit()
+
+
+def batch_create(db: Session, accounts: list) -> dict:
+    """批量新增。跳过空账号与已存在账号。返回 {created, skipped}"""
+    created = 0
+    skipped = 0
+    for raw in accounts:
+        account = (raw.get("account") or "").strip() if isinstance(raw, dict) else str(raw).strip()
+        if not account:
+            continue
+        try:
+            create_account(
+                db,
+                account=account,
+                nick_name=(raw.get("nick_name") if isinstance(raw, dict) else None),
+                remark=(raw.get("remark") if isinstance(raw, dict) else None),
+                role=(raw.get("role") if isinstance(raw, dict) else "admin"),
+            )
+            created += 1
+        except ValueError:
+            skipped += 1
+    return {"created": created, "skipped": skipped}

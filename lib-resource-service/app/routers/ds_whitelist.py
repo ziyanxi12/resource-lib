@@ -7,7 +7,7 @@
 - DELETE /api/design-systems/whitelist/{id}    删除（软）
 """
 
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -97,6 +97,38 @@ def create_account(body: DsWhitelistCreate, request: Request, db: Session = Depe
         target_name=item.account,
     )
     return _fmt(item)
+
+
+class DsWhitelistBatchItem(BaseModel):
+    account: str
+    nick_name: Optional[str] = None
+    remark: Optional[str] = None
+    role: str = "admin"
+
+
+class DsWhitelistBatchCreate(BaseModel):
+    accounts: List[DsWhitelistBatchItem]
+
+
+@router.post("/batch")
+def batch_create_accounts(body: DsWhitelistBatchCreate, request: Request, db: Session = Depends(get_db)):
+    accounts = [item.model_dump(exclude_unset=True) for item in body.accounts]
+    if not accounts:
+        raise HTTPException(status_code=400, detail="accounts is required")
+
+    result = ds_whitelist_service.batch_create(db, accounts)
+
+    account_, name_ = get_operator(request)
+    operation_log_service.create_log(
+        db,
+        operator=name_,
+        operator_account=account_,
+        action="batch_create",
+        target_type="ds_whitelist",
+        target_name="批量新增设计系统白名单",
+        detail={"created": result["created"], "skipped": result["skipped"]},
+    )
+    return result
 
 
 class DsWhitelistUpdate(BaseModel):
