@@ -20,7 +20,8 @@ dist/
 .vite/
 
 # Service runtime storage
-lib-resource-service/storage/
+lib-resource-service/storage/*
+!lib-resource-service/storage/design-systems/
 lib-resource-service/logs/
 # !lib-resource-service/storage/template/templates.json
 # !lib-resource-service/storage/image/images.json
@@ -41,6 +42,9 @@ deploy.sh
 # Temporary files
 reset.sh
 A.md
+
+# Local service runtime (PID + logs)
+.run/
 
 # SQLite WAL/shared memory
 *.db-shm
