@@ -109,6 +109,8 @@ async def lifespan(app: FastAPI):
     _ensure_column(engine, "resource_sources", "created_by", "VARCHAR(100)")
     _ensure_column(engine, "resource_sources", "updated_by", "VARCHAR(100)")
     _ensure_column(engine, "search_daily_stats", "last_call_time", "DATETIME")
+    _ensure_column(engine, "design_systems", "icon", "TEXT")
+    _ensure_column(engine, "design_systems", "source_md_path", "VARCHAR(500)")
 
     # 增量补索引（create_all 只建新表的索引，不补已有表）
     _ensure_index(engine, "resources", "idx_resources_type_source_deleted", "resource_type, source_id, is_deleted")
@@ -184,6 +186,16 @@ app.add_middleware(SearchLogMiddleware)
 app.add_middleware(AuthMiddleware)
 # 访问日志放最后注册 = 最外层，耗时统计含认证全链路
 app.add_middleware(AccessLogMiddleware)
+
+
+# svg 静态文件加 CSP 响应头（禁脚本执行），与保存时的 sanitize_svg 双保险防 XSS
+@app.middleware("http")
+async def _svg_csp_header(request, call_next):
+    response = await call_next(request)
+    if request.url.path.endswith(".svg"):
+        response.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 # 注册各业务路由
 app.include_router(resources.router)
