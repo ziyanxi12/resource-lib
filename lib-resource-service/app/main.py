@@ -111,15 +111,31 @@ async def lifespan(app: FastAPI):
     _ensure_column(engine, "search_daily_stats", "last_call_time", "DATETIME")
     _ensure_column(engine, "design_systems", "icon", "TEXT")
     _ensure_column(engine, "design_systems", "source_md_path", "VARCHAR(500)")
+    _ensure_column(engine, "design_systems", "source_slug", "VARCHAR(100)")
+    _ensure_column(engine, "design_systems", "source_zip_path", "VARCHAR(500)")
+    _ensure_column(engine, "design_systems", "skill_zip_path", "VARCHAR(500)")
+
+    # design_systems.source_slug 存量回填：老数据 slug == MD id，回填后 URL/语义零变化
+    try:
+        from sqlalchemy import text as _text
+        with engine.begin() as conn:
+            conn.execute(_text(
+                "UPDATE design_systems SET source_slug = slug WHERE source_slug IS NULL OR source_slug = ''"
+            ))
+    except Exception as e:
+        logger.warning("design_systems.source_slug 回填失败: %s", e)
 
     # 增量补索引（create_all 只建新表的索引，不补已有表）
     _ensure_index(engine, "resources", "idx_resources_type_source_deleted", "resource_type, source_id, is_deleted")
     _ensure_index(engine, "resources", "idx_resources_group", "group_id")
     _ensure_index(engine, "resources", "idx_resources_created_at", "created_at")
-    
+    _ensure_index(engine, "design_systems", "idx_design_systems_source_slug", "source_slug")
+
     # 创建文件存储子目录
     for sub in ["template", "icon", "illus", "image", "file", "person"]:
         os.makedirs(os.path.join(settings.FILE_ROOT_DIR, sub), exist_ok=True)
+    # 设计系统模块：分片上传临时目录（zip 落盘走临时会话目录）
+    os.makedirs(os.path.join(settings.FILE_ROOT_DIR, "design-systems", "uploads"), exist_ok=True)
 
     # 启动时按需导入搜索应用（测试→生产迁移，SEARCH_APPS_AUTO_IMPORT=true 时生效）
     if getattr(settings, "SEARCH_APPS_AUTO_IMPORT", False):

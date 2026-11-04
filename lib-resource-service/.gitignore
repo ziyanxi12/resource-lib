@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 storage/*
 !storage/design-systems/
+storage/design-systems/uploads/
 *.egg-info/
 .venv/
 venv/

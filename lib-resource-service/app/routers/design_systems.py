@@ -1,24 +1,30 @@
 """设计系统管理路由（对齐 requirement/api.md 契约）
 
-- 列表（api1）/ 上传 / 详情 JSON / 改 meta / 重传覆盖 / 软删
-- 存储：FILE_ROOT_DIR/design-systems/{slug}/design-system.json（经 /static 对外可访问）
+- 列表（api1）/ zip 上传 / 解析预览（parse）/ 分片上传（init/chunk/complete）
+  / 详情 JSON / 改 meta / zip 重传覆盖 / 软删
+- 上传物为 zip 包（DESIGN.md + assets + skill-design.zip，octo-design-zip/1），
+  服务端解压解析为 design-system.json（app/services/design_system_zip.py）
+- slug 由后端生成（8 位随机）；MD 的 id 原样保留在 source_slug（允许重复）
+- 存储：FILE_ROOT_DIR/design-systems/{slug}/（design-system.json + source.zip +
+  source.md + skill-design.zip + assets/**，经 /static 对外可访问）
 - 操作日志复用 operation_log_service；操作人来自 AuthMiddleware 解密的 X-User-Data
 """
 
 import logging
 import os
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request, UploadFile, File
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from typing import Optional
 
 from app.database import get_db
 from app.models.design_system import DesignSystem
 from app.models.operation_log import OperationLog
 from app.services import design_system_service as svc
+from app.services import design_system_zip as dzip
 from app.services import operation_log_service
 from app.services.operator import get_operator
 from app.config import settings
@@ -59,11 +65,18 @@ def _clear_default(db: Session, except_slug: Optional[str] = None):
             row.is_default = False
 
 
+def _check_zip_ext(filename: Optional[str]):
+    """上传只收 zip 包（octo-design-zip/1：DESIGN.md + assets + skill-design.zip）"""
+    ext = (filename or "").lower().rsplit(".", 1)[-1] if "." in (filename or "") else ""
+    if ext != "zip":
+        raise HTTPException(status_code=400, detail="仅支持上传 zip 包（octo-design-zip/1 格式：DESIGN.md + assets + skill-design.zip），收到：%s" % (filename or "未知文件"))
+
+
 # ─────────────────────────── 1. 列表（api1） ───────────────────────────
 
 @router.get("")
 def list_design_systems(
-    search: Optional[str] = Query(None, description="按名称/slug/作者模糊搜索"),
+    search: Optional[str] = Query(None, description="按名称/slug/规范id(source_slug)/作者模糊搜索"),
     db: Session = Depends(get_db),
 ):
     q = db.query(DesignSystem).filter(DesignSystem.is_deleted == 0)
@@ -73,10 +86,12 @@ def list_design_systems(
             or_(
                 DesignSystem.name.ilike(kw),
                 DesignSystem.slug.ilike(kw),
+                DesignSystem.source_slug.ilike(kw),
                 DesignSystem.author.ilike(kw),
             )
         )
-    rows = q.order_by(DesignSystem.is_default.desc(), DesignSystem.slug.asc()).all()
+    # slug 为后端随机分配（字典序无意义），非默认系统按创建时间倒序（新上传靠前）
+    rows = q.order_by(DesignSystem.is_default.desc(), DesignSystem.created_at.desc()).all()
     display_map = svc.resolve_display_map(
         db, [a for r in rows for a in (r.created_by, r.updated_by)]
     )
@@ -117,19 +132,108 @@ def list_operation_logs(
     }
 
 
-# ─────────────────────────── 2. 上传 ───────────────────────────
+# ─────────────────────────── zip 解析预览（不落库） ───────────────────────────
 
-def _check_md_ext(filename: Optional[str]):
-    """上传只收 DESIGN.md（.md / .markdown）"""
-    ext = (filename or "").lower().rsplit(".", 1)[-1] if "." in (filename or "") else ""
-    if ext not in ("md", "markdown"):
-        raise HTTPException(status_code=400, detail="仅支持上传 DESIGN.md（octo-design-md/1 格式），收到：%s" % (filename or "未知文件"))
+@router.post("/parse")
+async def parse_design_system_zip(
+    file: UploadFile = File(..., description="zip 包（octo-design-zip/1）；解析返回 design-system.json + 统计，不落库"),
+):
+    """管理台「Zip 解析」预览页数据源：上传 zip → md 转 json + assets 树扫描结果。
 
+    校验同正式上传（zip 安全 + MD 解析 + design-system.json 结构）：
+    预览阶段即拦截不可入库的包（缺 token 区块等），对齐 api.md 契约。
+    """
+    _check_zip_ext(file.filename)
+    content = await file.read()
+    try:
+        result = dzip.parse_zip_info(content)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    errors = svc.validate_design_system_json(result["ds"])
+    if errors:
+        raise HTTPException(status_code=400, detail="；".join(errors))
+    return result
+
+
+# ─────────────────────────── 分片上传（大 zip：>20MB 由前端自动切换） ───────────────────────────
+
+class UploadInitBody(BaseModel):
+    filename: str
+    size: int
+
+
+@router.post("/uploads/init")
+def upload_init(body: UploadInitBody):
+    """创建分片上传会话：{upload_id, chunk_size(5MB), chunk_count}。
+
+    会话目录 FILE_ROOT_DIR/design-systems/uploads/{upload_id}/，TTL 24h 自动清理。
+    """
+    try:
+        return dzip.upload_init(body.filename, body.size)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.put("/uploads/{upload_id}/chunks/{index}")
+async def upload_chunk(upload_id: str, index: int, request: Request):
+    """写入第 index 片（raw binary body，Content-Type: application/octet-stream）。"""
+    body = await request.body()
+    try:
+        return dzip.upload_chunk(upload_id, index, body)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/uploads/{upload_id}/complete")
+async def upload_complete(
+    upload_id: str,
+    request: Request,
+    name: Optional[str] = Form(None),
+    desc: Optional[str] = Form(None),
+    author: Optional[str] = Form(None, description="作者，JSON 数组字符串 [{account, nick_name, dept}]；缺省回落 MD 派生"),
+    usage: Optional[str] = Form(None),
+    default: Optional[str] = Form(None),
+    slug: Optional[str] = Form(None, description="重传模式：目标系统 slug（对齐 PUT /{slug}/json 语义）；缺省为新增"),
+    cover_file: Optional[UploadFile] = File(None, description="可选封面图片（jpg/png/webp ≤2MB）"),
+    icon_file: Optional[UploadFile] = File(None, description="可选图标（jpg/png/webp/svg ≤2MB）"),
+    db: Session = Depends(get_db),
+):
+    """合并分片 → zip 导入。slug 表单字段提供时走重传（内容替换、管理字段保留），否则新增。"""
+    try:
+        content, filename = dzip.upload_merge(upload_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        if slug:
+            row = _reupload_zip(db, request, slug, content, filename)
+        else:
+            row = await _create_from_zip(
+                db, request, content, filename,
+                name=name, desc=desc, author=author, usage=usage,
+                default=default, cover_file=cover_file, icon_file=icon_file,
+            )
+            db.commit()
+            db.refresh(row)
+            _log(db, request, "create", row, {
+                "slug": row.slug, "source_slug": row.source_slug,
+                "file": filename, "size": len(content), "chunked": True,
+            })
+        db.commit()
+        db.refresh(row)
+        dzip.upload_discard(upload_id)
+        return svc.format_item(row, svc.resolve_display_map(db, [row.created_by, row.updated_by]))
+    except HTTPException:
+        # 导入失败（zip 内容/结构问题居多）：会话无重试价值，直接清理避免占磁盘
+        dzip.upload_discard(upload_id)
+        raise
+
+
+# ─────────────────────────── 2. 上传（zip 直传） ───────────────────────────
 
 @router.post("")
 async def create_design_system(
     request: Request,
-    file: UploadFile = File(..., description="DESIGN.md（octo-design-md/1 格式，≤10MB，服务端解析为 design-system.json）"),
+    file: UploadFile = File(..., description="zip 包（octo-design-zip/1 格式，≤200MB；服务端解压解析为 design-system.json）"),
     name: Optional[str] = Form(None),
     desc: Optional[str] = Form(None),
     author: Optional[str] = Form(None, description="作者，JSON 数组字符串 [{account, nick_name, dept}]；缺省回落 MD 派生"),
@@ -140,36 +244,63 @@ async def create_design_system(
     icon_file: Optional[UploadFile] = File(None, description="可选图标（jpg/png/webp/svg ≤2MB）"),
     db: Session = Depends(get_db),
 ):
-    _check_md_ext(file.filename)
+    _check_zip_ext(file.filename)
     content = await file.read()
-    if len(content) > svc.MAX_JSON_BYTES:
-        raise HTTPException(status_code=413, detail="文件超过 10MB 上限")
+    if len(content) > dzip.MAX_ZIP_BYTES:
+        raise HTTPException(status_code=413, detail="zip 包超过 %dMB 上限" % (dzip.MAX_ZIP_BYTES // 1024 // 1024))
+    row = await _create_from_zip(
+        db, request, content, file.filename,
+        name=name, desc=desc, author=author, usage=usage,
+        cover=cover, default=default, cover_file=cover_file, icon_file=icon_file,
+    )
+    db.commit()
+    db.refresh(row)
+    _log(db, request, "create", row, {"slug": row.slug, "source_slug": row.source_slug, "file": file.filename, "size": len(content)})
+    return svc.format_item(row, svc.resolve_display_map(db, [row.created_by, row.updated_by]))
 
-    # MD → design-system.json 同构 dict；解析与结构校验分离
+
+async def _create_from_zip(
+    db: Session,
+    request: Request,
+    content: bytes,
+    filename: Optional[str],
+    *,
+    name: Optional[str],
+    desc: Optional[str],
+    author: Optional[str],
+    usage: Optional[str],
+    cover: Optional[str] = None,
+    default: Optional[str] = None,
+    cover_file: Optional[UploadFile],
+    icon_file: Optional[UploadFile],
+) -> DesignSystem:
+    """zip 导入 + 新建记录（直传 POST 与分片 complete 共用；调用方负责 commit/日志）。
+
+    - slug 后端随机生成（无冲突/无 409/无软删复活），source_slug 原样保留 MD id（允许重复）
+    - usage 恒 0 起步（MD frontmatter 的 usage 不采信），表单可覆盖（手动修正通道）
+    """
     try:
-        data = svc.parse_md_upload(content)
+        result = svc.import_zip(db, content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    errors = svc.validate_design_system_json(data)
-    if errors:
-        raise HTTPException(status_code=400, detail="；".join(errors))
 
-    meta = svc.extract_meta(data)
-    if db.query(DesignSystem).filter(DesignSystem.slug == meta["slug"], DesignSystem.is_deleted == 0).first():
-        raise HTTPException(status_code=409, detail="slug「%s」已存在；如需更新内容，请在列表页对该系统使用「重传」" % meta["slug"])
+    meta = svc.extract_meta(result["data"])
     # 表单覆盖派生值
     if name and name.strip():
         meta["name"] = name.strip()
     if desc is not None and desc != "":
         meta["desc"] = desc
-    try:
-        usage_val = svc.parse_form_int(usage)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    if usage_val is not None:
-        meta["usage"] = usage_val
     if cover:
         meta["cover"] = svc.normalize_cover(cover)
+    usage_val = None
+    if usage is not None and str(usage).strip() != "":
+        try:
+            usage_val = svc.parse_form_int(usage)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    if usage_val is None:
+        # 需求明确：md 里的 usage 不允许直接使用 —— 新增系统恒 0 起步
+        usage_val = 0
     # 作者：表单（JSON 数组字符串）优先，回落 MD 派生；写入时经 users 表补全昵称/部门
     author_json = svc.resolve_authors(db, author, meta.get("author"))
     # 自定义封面图片：上传则覆盖内置名（文件名固定 {slug}.{ext}）
@@ -179,53 +310,81 @@ async def create_design_system(
             ext = svc.validate_cover_upload(cover_file.filename, cover_content)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        meta["cover"] = svc.save_cover_file(meta["slug"], ext, cover_content)
+        meta["cover"] = svc.save_cover_file(result["slug"], ext, cover_content)
     # 自定义图标
     icon_rel = None
     if icon_file is not None:
         icon_content = await icon_file.read()
         try:
             ext = svc.validate_icon_upload(icon_file.filename, icon_content)
-            icon_rel = svc.save_icon_file(meta["slug"], ext, icon_content)
+            icon_rel = svc.save_icon_file(result["slug"], ext, icon_content)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-    default_val = svc.parse_form_bool(default)
-    if default_val is not None:
-        meta["default"] = default_val
 
-    # 存解析产物 + MD 原件（可追溯；source_md_path 驱动 design_md_url）
-    svc.save_json_file(meta["slug"], data, len(content))
-    source_md_rel = svc.save_source_md(meta["slug"], content)
+    default_val = svc.parse_form_bool(default)
     account, _op_name = get_operator(request)
-    # 软删行仍占用 slug 的 DB 唯一约束：同 slug 重建时复活该行（保留 id 与历史操作日志关联）
-    row = (
-        db.query(DesignSystem)
-        .filter(DesignSystem.slug == meta["slug"], DesignSystem.is_deleted == 1)
-        .first()
+    row = DesignSystem(
+        slug=result["slug"],
+        source_slug=result["source_slug"],
+        name=meta["name"],
+        desc=meta["desc"] or None,
+        author=author_json,
+        icon=icon_rel,
+        usage=usage_val,
+        cover=meta["cover"],
+        is_default=bool(default_val) if default_val is not None else False,
+        file_path=svc.rel_path(result["slug"]),
+        source_md_path=result["source_md_rel"],
+        source_zip_path=result["source_zip_rel"],
+        skill_zip_path=result["skill_zip_rel"],
+        file_size=len(content),
+        created_by=account,
+        updated_by=account,
+        is_deleted=0,
     )
-    if row is None:
-        row = DesignSystem(slug=meta["slug"], created_by=account, updated_by=account)
-    # 统一覆盖字段（复活 = 全量重建，created_by 归属本次上传者）
-    row.name = meta["name"]
-    row.desc = meta["desc"] or None
-    row.author = author_json
-    row.icon = icon_rel
-    row.usage = meta["usage"]
-    row.cover = meta["cover"]
-    row.is_default = bool(meta["default"])
-    row.file_path = svc.rel_path(meta["slug"])
-    row.source_md_path = source_md_rel
-    row.file_size = len(content)
-    row.created_by = account
-    row.updated_by = account
-    row.is_deleted = 0
     if row.is_default:
         _clear_default(db, row.slug)
-    db.add(row)  # 复活行已在 session，重复 add 幂等
-    db.commit()
-    db.refresh(row)
-    _log(db, request, "create", row, {"slug": row.slug, "file": file.filename})
-    return svc.format_item(row, svc.resolve_display_map(db, [row.created_by, row.updated_by]))
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _reupload_zip(
+    db: Session,
+    request: Request,
+    slug: str,
+    content: bytes,
+    filename: Optional[str],
+) -> DesignSystem:
+    """zip 重传覆盖（PUT /{slug}/json 与分片 complete 重传模式共用；调用方负责 commit/日志）。
+
+    - 内容替换：design-system.json / source.zip / source.md / skill-design.zip / assets
+    - name 跟随新 MD；usage/封面/图标/作者/描述/默认标记保留（管理字段不被覆盖）
+    - MD id 变化只更新 source_slug 并记录日志（slug 与落盘目录不动）
+    """
+    row = _get_by_slug(db, slug)
+    try:
+        result = svc.import_zip(db, content, existing_slug=slug)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    derived = svc.extract_meta(result["data"])
+    source_slug_changed = result["source_slug"] != (row.source_slug or "")
+    row.source_slug = result["source_slug"]
+    row.name = derived["name"]
+    row.file_size = len(content)
+    row.file_path = svc.rel_path(slug)
+    row.source_md_path = result["source_md_rel"]
+    row.source_zip_path = result["source_zip_rel"]
+    row.skill_zip_path = result["skill_zip_rel"]
+    account, _ = get_operator(request)
+    row.updated_by = account
+    _log(db, request, "reupload", row, {
+        "file": filename,
+        "size": len(content),
+        **({"source_slug": row.source_slug} if source_slug_changed else {}),
+    })
+    return row
 
 
 # ─────────────────────────── 3. 详情 JSON ───────────────────────────
@@ -308,43 +467,26 @@ async def patch_design_system(
     return svc.format_item(row, svc.resolve_display_map(db, [row.created_by, row.updated_by]))
 
 
-# ─────────────────────────── 5. 重传覆盖 ───────────────────────────
+# ─────────────────────────── 5. zip 重传覆盖 ───────────────────────────
 
 @router.put("/{slug}/json")
 async def put_design_system_json(
     slug: str,
     request: Request,
-    file: UploadFile = File(..., description="新 DESIGN.md（octo-design-md/1 格式）"),
+    file: UploadFile = File(..., description="新 zip 包（octo-design-zip/1 格式，≤200MB）"),
     db: Session = Depends(get_db),
 ):
-    row = _get_by_slug(db, slug)
-    _check_md_ext(file.filename)
+    """重传覆盖：zip 解析后替换全部内容文件；name 跟随新 MD，管理字段保留。
+
+    （大文件由前端走分片 complete 的 slug 重传模式，语义与本接口一致）
+    """
+    _check_zip_ext(file.filename)
     content = await file.read()
-    if len(content) > svc.MAX_JSON_BYTES:
-        raise HTTPException(status_code=413, detail="文件超过 10MB 上限")
-
-    try:
-        data = svc.parse_md_upload(content)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    errors = svc.validate_design_system_json(data)
-    if errors:
-        raise HTTPException(status_code=400, detail="；".join(errors))
-
-    derived = svc.extract_meta(data)
-    if derived["slug"] != slug:
-        raise HTTPException(status_code=400, detail="DESIGN.md 的 id「%s」与目标系统「%s」不一致" % (derived["slug"], slug))
-
-    # 内容替换：name/file_size/source_md_path 跟随新 MD；封面/图标/作者/调用量/描述/默认标记等管理字段保留
-    svc.save_json_file(slug, data, len(content))
-    row.source_md_path = svc.save_source_md(slug, content)
-    row.name = derived["name"]
-    row.file_size = len(content)
-    account, _ = get_operator(request)
-    row.updated_by = account
+    if len(content) > dzip.MAX_ZIP_BYTES:
+        raise HTTPException(status_code=413, detail="zip 包超过 %dMB 上限" % (dzip.MAX_ZIP_BYTES // 1024 // 1024))
+    row = _reupload_zip(db, request, slug, content, file.filename)
     db.commit()
     db.refresh(row)
-    _log(db, request, "reupload", row, {"file": file.filename, "size": len(content)})
     return svc.format_item(row, svc.resolve_display_map(db, [row.created_by, row.updated_by]))
 
 
@@ -352,11 +494,11 @@ async def put_design_system_json(
 
 @router.post("/{slug}/usage")
 def increment_usage(slug: str, db: Session = Depends(get_db)):
-    """展示端打开/使用该设计系统时调用，usage += delta（默认 1）。
+    """展示端打开/使用该设计系统时调用，usage += 1。
 
     说明：
     - 高频调用，不写操作日志、不改动 updated_at（那是内容/管理字段的更新时间）
-    - SQL 端自增（usage = usage + delta），避免并发读改写丢失
+    - SQL 端自增（usage = usage + 1），避免并发读改写丢失
     """
     row = (
         db.query(DesignSystem)

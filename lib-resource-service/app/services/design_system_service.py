@@ -1,9 +1,13 @@
-"""设计系统业务逻辑：DESIGN.md 解析与校验、卡片 meta 派生、作者/封面/图标、文件存储。
+"""设计系统业务逻辑：zip 包导入、卡片 meta 派生、作者/封面/图标、文件存储、分片上传。
 
 校验与语义严格对齐 requirement/api.md 契约：
-- 上传只收 DESIGN.md（octo-design-md/1 格式），服务端解析为 design-system.json
-- slug = 解析结果的 id，格式 ^[a-z0-9][a-z0-9-]*$，唯一
+- 上传只收 zip 包（DESIGN.md + assets + skill-design.zip，octo-design-zip/1 格式），
+  服务端解压解析为 design-system.json（app/services/design_system_zip.py）
+- slug 由后端生成（8 位随机 [a-z0-9]）：API 路径 / 落盘目录 / 静态 URL；
+  MD frontmatter 的 id 原样保留在 source_slug（不唯一，允许重复）
 - name 非空；color/typography/spacing/radius/shadow 至少一个区块
+- usage 不从 MD frontmatter 派生（需求明确：md 里的 usage 不允许直接使用）：
+  新增恒 0，修正通道仅表单 usage 字段；重传保留现值
 - author 为对象数组 [{account, nick_name, dept}]，写入时经 users 表补全昵称/部门（固化存储）；
   旧字符串数据读取时自动包装为单元素数组（无需迁移）
 - cover 不在内置封面集时回落默认（不报错）；icon 支持自定义上传（jpg/png/webp/svg）
@@ -13,14 +17,19 @@
 import json
 import os
 import re
+import secrets
+import shutil
+import tempfile
 from typing import Dict, List, Optional, Tuple
 
 from app.config import settings
 from app.services import design_system_md
+from app.services import design_system_zip as dzip
 
 BUILTIN_COVERS = ["cover-blue.jpg", "cover-cyan.jpg", "cover-purple.jpg", "cover-violet.jpg"]
 DEFAULT_COVER = "cover-cyan.jpg"
-MAX_JSON_BYTES = 10 * 1024 * 1024
+MAX_JSON_BYTES = 10 * 1024 * 1024  # 兼容保留（旧 MD 上传时代限额；zip 上限见 design_system_zip.MAX_ZIP_BYTES）
+MAX_ZIP_BYTES = dzip.MAX_ZIP_BYTES
 MAX_COVER_BYTES = 2 * 1024 * 1024
 ALLOWED_COVER_EXTS = {"jpg", "jpeg", "png", "webp"}
 COVERS_REL_DIR = "design-systems/covers"
@@ -29,6 +38,10 @@ ALLOWED_ICON_EXTS = {"jpg", "jpeg", "png", "webp", "svg"}
 ICONS_REL_DIR = "design-systems/icons"
 SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 REQUIRED_SECTIONS = ["color", "typography", "spacing", "radius", "shadow"]
+
+# slug 随机生成（后端分配，与 MD 内容解耦）：8 位 [a-z0-9] ≈ 2.8e12 组合
+SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
+SLUG_LENGTH = 8
 
 
 def validate_design_system_json(data) -> list:
@@ -77,15 +90,17 @@ def resolve_cover(cover) -> str:
 
 
 def extract_meta(data: dict) -> dict:
-    """从 JSON 派生卡片 meta（管理字段默认值，可被表单覆盖）"""
+    """从 JSON 派生卡片 meta（管理字段默认值，可被表单覆盖）。
+
+    注意：usage 不再从 MD frontmatter 派生（需求明确：md 里的 usage 不允许直接使用）。
+    新增系统恒 0 起步；修正通道仅表单 usage 字段（手动）与 /usage 自增接口。
+    """
     meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
-    usage = meta.get("usage")
     return {
-        "slug": str(data.get("id") or ""),
+        "source_slug": str(data.get("id") or ""),
         "name": str(data.get("name") or ""),
         "desc": meta.get("desc") if isinstance(meta.get("desc"), str) else "",
         "author": meta.get("author") if isinstance(meta.get("author"), str) else "",
-        "usage": usage if isinstance(usage, int) else 0,
         "cover": normalize_cover(data.get("cover")),
         "default": False,
     }
@@ -194,6 +209,7 @@ def format_item(row, display_map=None) -> dict:
 
     return {
         "slug": row.slug,
+        "source_slug": row.source_slug or row.slug,
         "name": row.name,
         "desc": row.desc or "",
         "author": parse_author_column(row.author),
@@ -204,6 +220,8 @@ def format_item(row, display_map=None) -> dict:
         "icon_url": icon_url(row.icon),
         "json_url": json_url(row.file_path),
         "design_md_url": _to_public_url(row.source_md_path) if row.source_md_path else None,
+        "zip_url": _to_public_url(row.source_zip_path) if row.source_zip_path else None,
+        "skill_zip_url": _to_public_url(row.skill_zip_path) if row.skill_zip_path else None,
         "default": bool(row.is_default),
         "file_size": row.file_size,
         "created_by": row.created_by or "",
@@ -329,10 +347,31 @@ def resolve_authors(db, form_author: Optional[str], md_author) -> str:
     return json.dumps(authors, ensure_ascii=False)
 
 
-# ─────────────────────────── MD 上传与存储 ───────────────────────────
+# ─────────────────────────── slug 生成（后端分配，与 MD 解耦） ───────────────────────────
+
+def generate_slug(db) -> str:
+    """8 位随机 [a-z0-9]，DB 唯一约束兜底 + 冲突重试。
+
+    slug 只由后端分配（API 路径 / 落盘目录 / 静态 URL），彻底隔离用户输入；
+    MD 的 id 原样保留在 source_slug 列（允许重复，仅展示/搜索/追溯）。
+    """
+    from app.models.design_system import DesignSystem
+
+    for _attempt in range(20):
+        slug = "".join(secrets.choice(SLUG_ALPHABET) for _ in range(SLUG_LENGTH))
+        if not db.query(DesignSystem).filter(DesignSystem.slug == slug).first():
+            return slug
+    raise RuntimeError("slug 生成失败：随机空间冲突（理论不可达，请检查数据库）")
+
+
+# ─────────────────────────── zip 导入与存储 ───────────────────────────
+
+def _slug_dir(slug: str) -> str:
+    return os.path.join(settings.FILE_ROOT_DIR, "design-systems", slug)
+
 
 def parse_md_upload(content: bytes) -> dict:
-    """DESIGN.md 字节 → design-system.json 同构 dict（解析失败抛 ValueError）。"""
+    """DESIGN.md 字节 → design-system.json 同构 dict（兼容保留：模板下载后的快速校验路径）。"""
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError as e:
@@ -341,17 +380,115 @@ def parse_md_upload(content: bytes) -> dict:
 
 
 def source_md_rel_path(slug: str) -> str:
-    """DESIGN.md 原件相对 FILE_ROOT_DIR 的路径（固定命名）"""
+    """DESIGN.md 原件相对 FILE_ROOT_DIR 的路径（固定命名；zip 上传时为包内提取件）"""
     return "design-systems/%s/source.md" % slug
 
 
+def source_zip_rel_path(slug: str) -> str:
+    """zip 原件相对 FILE_ROOT_DIR 的路径（驱动 zip_url 下载）"""
+    return "design-systems/%s/source.zip" % slug
+
+
+def skill_zip_rel_path(slug: str) -> str:
+    """skill-design.zip 附件相对路径（驱动 skill_zip_url 下载）"""
+    return "design-systems/%s/skill-design.zip" % slug
+
+
+def assets_rel_path(slug: str) -> str:
+    """解压后 assets 目录相对路径（html 等文件经 /static 可直接访问）"""
+    return "design-systems/%s/assets" % slug
+
+
 def save_source_md(slug: str, content: bytes) -> str:
-    """保存 MD 原件到 design-systems/{slug}/source.md，返回相对路径（存 DB source_md_path 列）。"""
+    """保存 DESIGN.md 原件到 design-systems/{slug}/source.md，返回相对路径（存 DB source_md_path 列）。"""
     path = os.path.join(settings.FILE_ROOT_DIR, source_md_rel_path(slug))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         f.write(content)
     return source_md_rel_path(slug)
+
+
+def save_source_zip(slug: str, content: bytes) -> str:
+    """保存 zip 原件（先落盘，可追溯/下载），返回相对路径（存 DB source_zip_path 列）。"""
+    rel = source_zip_rel_path(slug)
+    path = os.path.join(settings.FILE_ROOT_DIR, rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(content)
+    return rel
+
+
+def save_skill_zip(slug: str, abs_path: str) -> str:
+    """把解压出的 skill-design.zip 原样拷到 design-systems/{slug}/（附件不需要解析）。"""
+    rel = skill_zip_rel_path(slug)
+    path = os.path.join(settings.FILE_ROOT_DIR, rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    shutil.copyfile(abs_path, path)
+    return rel
+
+
+def remove_skill_zip(slug: str) -> None:
+    """新 zip 无 skill-design.zip 时清理旧附件（重传场景）。"""
+    path = os.path.join(settings.FILE_ROOT_DIR, skill_zip_rel_path(slug))
+    if os.path.isfile(path):
+        os.remove(path)
+
+
+def replace_assets_dir(slug: str, src_assets_dir: str) -> Optional[str]:
+    """整体替换 design-systems/{slug}/assets：旧目录删除、解压目录拷入（重传/新增通用）。"""
+    dst = os.path.join(settings.FILE_ROOT_DIR, assets_rel_path(slug))
+    if os.path.isdir(dst):
+        shutil.rmtree(dst)
+    if not os.path.isdir(src_assets_dir):
+        return None
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    shutil.copytree(src_assets_dir, dst)
+    return assets_rel_path(slug)
+
+
+def import_zip(db, content: bytes, existing_slug: Optional[str] = None) -> dict:
+    """zip 字节 → 解析 + 校验 + 全部文件落盘。导入主流程（create 与重传共用）。
+
+    - existing_slug 为空：新增（slug 后端随机生成，全新目录）
+    - existing_slug 非空：重传（目录复用，design-system.json/source.zip/source.md/
+      skill-design.zip/assets 全量替换；封面/图标/作者/调用量等管理字段由路由层保留）
+    - 校验（zip 安全 + DESIGN.md 结构）失败抛 ValueError，此时不落任何文件
+
+    返回 {"data": design-system.json dict, "slug": 落盘 slug, "source_slug": MD id,
+          "source_md_rel": …, "source_zip_rel": …, "skill_zip_rel": …或 None, "zip_size": n}
+    """
+    dzip.validate_zip_bytes(content)
+    with tempfile.TemporaryDirectory(prefix="ds-import-") as tmp:
+        dzip.extract_zip(content, tmp)
+        root, skill_path = dzip.locate_root_entries(tmp)
+
+        data = dzip.parse_md_root(root)
+        dzip.merge_assets(data, root)
+        errors = validate_design_system_json(data)
+        if errors:
+            raise ValueError("；".join(errors))
+
+        slug = existing_slug or generate_slug(db)
+        save_json_file(slug, data, len(content))
+        with open(os.path.join(root, "DESIGN.md"), "rb") as f:
+            source_md_rel = save_source_md(slug, f.read())
+        source_zip_rel = save_source_zip(slug, content)
+        if skill_path:
+            skill_zip_rel = save_skill_zip(slug, skill_path)
+        else:
+            remove_skill_zip(slug)
+            skill_zip_rel = None
+        replace_assets_dir(slug, os.path.join(root, "assets"))
+
+    return {
+        "data": data,
+        "slug": slug,
+        "source_slug": str(data.get("id") or ""),
+        "source_md_rel": source_md_rel,
+        "source_zip_rel": source_zip_rel,
+        "skill_zip_rel": skill_zip_rel,
+        "zip_size": len(content),
+    }
 
 
 def cover_rel_path(slug: str, ext: str) -> str:
