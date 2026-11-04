@@ -2,11 +2,11 @@
 
 - 列表（api1）/ zip 上传 / 解析预览（parse）/ 分片上传（init/chunk/complete）
   / 详情 JSON / 改 meta / zip 重传覆盖 / 软删
-- 上传物为 zip 包（DESIGN.md + assets + skill-design.zip，octo-design-zip/1），
+- 上传物为 zip 包（DESIGN.md + assets + 任意名 .zip 附件，octo-design-zip/1），
   服务端解压解析为 design-system.json（app/services/design_system_zip.py）
 - slug 由后端生成（8 位随机）；MD 的 id 原样保留在 source_slug（允许重复）
 - 存储：FILE_ROOT_DIR/design-systems/{slug}/（design-system.json + source.zip +
-  source.md + skill-design.zip + assets/**，经 /static 对外可访问）
+  source.md + 附件（原文件名） + assets/**，经 /static 对外可访问）
 - 操作日志复用 operation_log_service；操作人来自 AuthMiddleware 解密的 X-User-Data
 """
 
@@ -66,10 +66,10 @@ def _clear_default(db: Session, except_slug: Optional[str] = None):
 
 
 def _check_zip_ext(filename: Optional[str]):
-    """上传只收 zip 包（octo-design-zip/1：DESIGN.md + assets + skill-design.zip）"""
+    """上传只收 zip 包（octo-design-zip/1：DESIGN.md + assets + 任意名 .zip 附件）"""
     ext = (filename or "").lower().rsplit(".", 1)[-1] if "." in (filename or "") else ""
     if ext != "zip":
-        raise HTTPException(status_code=400, detail="仅支持上传 zip 包（octo-design-zip/1 格式：DESIGN.md + assets + skill-design.zip），收到：%s" % (filename or "未知文件"))
+        raise HTTPException(status_code=400, detail="仅支持上传 zip 包（octo-design-zip/1 格式：DESIGN.md + assets + 附件 .zip），收到：%s" % (filename or "未知文件"))
 
 
 # ─────────────────────────── 1. 列表（api1） ───────────────────────────
@@ -358,13 +358,16 @@ def _reupload_zip(
 ) -> DesignSystem:
     """zip 重传覆盖（PUT /{slug}/json 与分片 complete 重传模式共用；调用方负责 commit/日志）。
 
-    - 内容替换：design-system.json / source.zip / source.md / skill-design.zip / assets
+    - 内容替换：design-system.json / source.zip / source.md / 附件（DESIGN.md 同级任意 .zip，
+      保留原文件名落盘） / assets；旧附件与新附件名不同（或新包无附件）时按 DB 列清理旧文件
     - name 跟随新 MD；usage/封面/图标/作者/描述/默认标记保留（管理字段不被覆盖）
     - MD id 变化只更新 source_slug 并记录日志（slug 与落盘目录不动）
     """
     row = _get_by_slug(db, slug)
     try:
-        result = svc.import_zip(db, content, existing_slug=slug)
+        result = svc.import_zip(
+            db, content, existing_slug=slug, old_skill_zip_rel=row.skill_zip_path
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

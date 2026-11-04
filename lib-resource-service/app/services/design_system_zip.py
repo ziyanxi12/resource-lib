@@ -20,6 +20,7 @@ zip 结构（requirement/1.md）：
 解析失败抛 ZipPackageError(ValueError)（路由层转 400）。
 """
 
+import base64
 import io
 import json
 import os
@@ -42,12 +43,15 @@ MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024  # 解压后总大小上限（zip bom
 MAX_ZIP_ENTRIES = 5000                      # zip 内条目数上限（含目录）
 MAX_COMPRESS_RATIO = 100                    # 单文件压缩比上限（>100 且 >1MB 视为异常）
 MAX_EMBED_HTML_BYTES = 2 * 1024 * 1024      # 单个 html 内嵌 design-system.json 上限（超出只存路径）
+MAX_SKILL_B64_BYTES = 50 * 1024 * 1024      # 附件经 parse 接口 base64 回传的上限（超出只回元信息）
 
 CHUNK_SIZE = 5 * 1024 * 1024                # 每片 5MB（S3 multipart 同款下限）
 UPLOADS_REL_DIR = "design-systems/uploads"  # 分片临时目录（FILE_ROOT_DIR 下）
 UPLOAD_TTL_SECONDS = 24 * 3600              # 孤儿分片清理阈值
 
-SKILL_ZIP_NAME = "skill-design.zip"
+# 附件（DESIGN.md 同级任意 .zip）落盘时不得与 design-systems/{slug}/ 下
+# 的系统保留文件重名（source.zip 会被顶掉原件；其余防御性保留），大小写不敏感
+RESERVED_SKILL_NAMES = {"source.zip", "source.md", "design-system.json"}
 
 # macOS 打包垃圾与隐藏文件，直接跳过
 _JUNK_RE = re.compile(r"^(__MACOSX/|Thumbs\.db|\._|\.DS_Store)")
@@ -162,10 +166,13 @@ def _list_rel(root: str) -> List[str]:
     return sorted(out)
 
 
-def locate_root_entries(dest_dir: str) -> Tuple[str, Optional[str]]:
-    """定位有效根（DESIGN.md 所在层），返回 (有效根绝对路径, skill-design.zip 绝对路径或 None)。
+def locate_root_entries(dest_dir: str) -> Tuple[str, Optional[str], Optional[str]]:
+    """定位有效根（DESIGN.md 所在层），返回 (有效根绝对路径, 附件绝对路径或 None, 附件原文件名或 None)。
 
-    支持两种布局：entry 直接在 zip 根；或根下只有一个目录（打包工具常见包裹目录）时向内一层。
+    - 支持两种布局：entry 直接在 zip 根；或根下只有一个目录（打包工具常见包裹目录）时向内一层
+    - 附件不强制命名（v2 需求）：DESIGN.md 同级（有效根第一层）**任意 .zip 文件**即视为
+      skill 附件；多个时取名称排序第一个；文件名保留原名落盘
+    - 附件名与保留文件（source.zip 等）冲突直接拒绝（防顶掉 zip 原件）
     """
     root = dest_dir
     if "DESIGN.md" not in _list_rel(root):
@@ -177,8 +184,13 @@ def locate_root_entries(dest_dir: str) -> Tuple[str, Optional[str]]:
     files = _list_rel(root)
     if "DESIGN.md" not in files:
         raise ZipPackageError("zip 包内缺少 DESIGN.md（应在 zip 根目录，octo-design-md/1 格式）")
-    skill_path = os.path.join(root, SKILL_ZIP_NAME) if SKILL_ZIP_NAME in files else None
-    return root, skill_path
+    root_zips = sorted(f for f in files if "/" not in f and f.lower().endswith(".zip"))
+    skill_path = os.path.join(root, root_zips[0]) if root_zips else None
+    skill_name = root_zips[0] if root_zips else None
+    if skill_name and skill_name.lower() in RESERVED_SKILL_NAMES:
+        raise ZipPackageError("附件文件名「%s」与系统保留文件（%s）冲突，请重命名后重新打包"
+                              % (skill_name, " / ".join(sorted(RESERVED_SKILL_NAMES))))
+    return root, skill_path, skill_name
 
 
 # ─────────────────────────── assets 树扫描 ───────────────────────────
@@ -348,21 +360,29 @@ def parse_zip(content: bytes) -> Dict:
     validate_zip_bytes(content)
     with tempfile.TemporaryDirectory(prefix="ds-zip-") as dest:
         extract_zip(content, dest)
-        root, _skill_path = locate_root_entries(dest)
+        root, _skill_path, _skill_name = locate_root_entries(dest)
         data = parse_md_root(root)
         merge_assets(data, root)
         return data
 
 
 def parse_zip_info(content: bytes) -> Dict:
-    """parse 预览接口用：解析结果 + 统计（不落库）。"""
+    """parse 预览接口用：解析结果 + 统计 + 附件元信息与内容（不落库）。
+
+    skill_zip.content_base64：附件 ≤50MB 时 base64 回传（管理台解析页直接提供下载链接），
+    超限省略（前端提示入库后经 skill_zip_url 下载）。filename 为附件原文件名（不强制命名）。
+    """
     validate_zip_bytes(content)
     with tempfile.TemporaryDirectory(prefix="ds-zip-") as dest:
         extract_zip(content, dest)
-        root, skill_path = locate_root_entries(dest)
+        root, skill_path, skill_name = locate_root_entries(dest)
         data = parse_md_root(root)
         merge_assets(data, root)
         skill_size = os.path.getsize(skill_path) if skill_path else 0
+        content_b64 = None
+        if skill_path and skill_size <= MAX_SKILL_B64_BYTES:
+            with open(skill_path, "rb") as f:
+                content_b64 = base64.b64encode(f.read()).decode("ascii")
     comp_items = ((data.get("components") or {}).get("items")) or []
     pat_items = ((data.get("patterns") or {}).get("items")) or []
     levels = sorted({
@@ -382,8 +402,9 @@ def parse_zip_info(content: bytes) -> Dict:
         },
         "skill_zip": {
             "present": bool(skill_path),
-            "filename": SKILL_ZIP_NAME if skill_path else None,
+            "filename": skill_name,
             "size": skill_size,
+            "content_base64": content_b64,
         },
     }
 

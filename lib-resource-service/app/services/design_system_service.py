@@ -389,9 +389,9 @@ def source_zip_rel_path(slug: str) -> str:
     return "design-systems/%s/source.zip" % slug
 
 
-def skill_zip_rel_path(slug: str) -> str:
-    """skill-design.zip 附件相对路径（驱动 skill_zip_url 下载）"""
-    return "design-systems/%s/skill-design.zip" % slug
+def skill_zip_rel_path(slug: str, orig_name: str) -> str:
+    """附件相对路径（驱动 skill_zip_url 下载）：保留 zip 内原文件名（不强制 skill-design.zip）"""
+    return "design-systems/%s/%s" % (slug, os.path.basename(orig_name))
 
 
 def assets_rel_path(slug: str) -> str:
@@ -418,18 +418,24 @@ def save_source_zip(slug: str, content: bytes) -> str:
     return rel
 
 
-def save_skill_zip(slug: str, abs_path: str) -> str:
-    """把解压出的 skill-design.zip 原样拷到 design-systems/{slug}/（附件不需要解析）。"""
-    rel = skill_zip_rel_path(slug)
+def save_skill_zip(slug: str, abs_path: str, orig_name: str) -> str:
+    """把解压出的附件原样拷到 design-systems/{slug}/{原文件名}（附件不需要解析，保留原名）。"""
+    rel = skill_zip_rel_path(slug, orig_name)
     path = os.path.join(settings.FILE_ROOT_DIR, rel)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     shutil.copyfile(abs_path, path)
     return rel
 
 
-def remove_skill_zip(slug: str) -> None:
-    """新 zip 无 skill-design.zip 时清理旧附件（重传场景）。"""
-    path = os.path.join(settings.FILE_ROOT_DIR, skill_zip_rel_path(slug))
+def remove_skill_zip(rel_path: Optional[str]) -> None:
+    """按 DB 列记录的相对路径删除旧附件。
+
+    重传时新附件名可能与旧的不同（保留原文件名），固定路径「覆盖」不到旧文件，
+    故按 skill_zip_path 列的路径清理；同名时无需调用（copyfile 已覆盖）。
+    """
+    if not rel_path:
+        return
+    path = os.path.join(settings.FILE_ROOT_DIR, rel_path)
     if os.path.isfile(path):
         os.remove(path)
 
@@ -446,12 +452,16 @@ def replace_assets_dir(slug: str, src_assets_dir: str) -> Optional[str]:
     return assets_rel_path(slug)
 
 
-def import_zip(db, content: bytes, existing_slug: Optional[str] = None) -> dict:
+def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skill_zip_rel: Optional[str] = None) -> dict:
     """zip 字节 → 解析 + 校验 + 全部文件落盘。导入主流程（create 与重传共用）。
 
     - existing_slug 为空：新增（slug 后端随机生成，全新目录）
     - existing_slug 非空：重传（目录复用，design-system.json/source.zip/source.md/
-      skill-design.zip/assets 全量替换；封面/图标/作者/调用量等管理字段由路由层保留）
+      附件/assets 全量替换；封面/图标/作者/调用量等管理字段由路由层保留）
+    - old_skill_zip_rel：重传时 DB 列记录的旧附件路径；新附件名不同或新包无附件时，
+      新内容落盘成功后按此路径清理旧文件（校验失败时零写入，旧文件不受影响）
+    - 附件不强制命名：DESIGN.md 同级任意 .zip（dzip.locate_root_entries 识别），
+      保留原文件名落盘；与保留文件（source.zip 等）冲突在 locate 阶段即拒绝
     - 校验（zip 安全 + DESIGN.md 结构）失败抛 ValueError，此时不落任何文件
 
     返回 {"data": design-system.json dict, "slug": 落盘 slug, "source_slug": MD id,
@@ -460,7 +470,7 @@ def import_zip(db, content: bytes, existing_slug: Optional[str] = None) -> dict:
     dzip.validate_zip_bytes(content)
     with tempfile.TemporaryDirectory(prefix="ds-import-") as tmp:
         dzip.extract_zip(content, tmp)
-        root, skill_path = dzip.locate_root_entries(tmp)
+        root, skill_path, skill_name = dzip.locate_root_entries(tmp)
 
         data = dzip.parse_md_root(root)
         dzip.merge_assets(data, root)
@@ -473,12 +483,11 @@ def import_zip(db, content: bytes, existing_slug: Optional[str] = None) -> dict:
         with open(os.path.join(root, "DESIGN.md"), "rb") as f:
             source_md_rel = save_source_md(slug, f.read())
         source_zip_rel = save_source_zip(slug, content)
-        if skill_path:
-            skill_zip_rel = save_skill_zip(slug, skill_path)
-        else:
-            remove_skill_zip(slug)
-            skill_zip_rel = None
+        skill_zip_rel = save_skill_zip(slug, skill_path, skill_name) if skill_path else None
         replace_assets_dir(slug, os.path.join(root, "assets"))
+        # 旧附件清理放在全部新内容落盘成功之后（此前任何失败都不破坏现有文件）
+        if existing_slug and old_skill_zip_rel and old_skill_zip_rel != skill_zip_rel:
+            remove_skill_zip(old_skill_zip_rel)
 
     return {
         "data": data,
