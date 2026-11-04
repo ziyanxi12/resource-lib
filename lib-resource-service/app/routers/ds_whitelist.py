@@ -63,7 +63,7 @@ def check_ds_whitelist(
 
 @router.get("")
 def list_accounts(
-    is_active: Optional[int] = Query(None, description="1=启用 0=禁用"),
+    is_active: Optional[int] = Query(1, description="1=启用（默认） 0=禁用 空=全部"),
     search: Optional[str] = Query(None, description="按账号/昵称模糊搜索"),
     db: Session = Depends(get_db),
 ):

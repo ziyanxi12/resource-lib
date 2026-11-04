@@ -41,10 +41,20 @@ def create_account(
     if not account or not account.strip():
         raise ValueError("account 不能为空")
     account = account.strip()
-    if get_account(db, account):
-        raise ValueError(f"账号 {account} 已存在")
     if role not in ("super", "admin"):
         raise ValueError("role 仅支持 super / admin")
+    existing = get_account(db, account)
+    if existing:
+        if existing.is_active == 1:
+            raise ValueError(f"账号 {account} 已存在")
+        # 软删行复活：软删记录占用 account 唯一约束，重新添加时恢复并更新字段
+        existing.nick_name = nick_name
+        existing.remark = remark
+        existing.role = role
+        existing.is_active = 1
+        db.commit()
+        db.refresh(existing)
+        return existing
     item = DsWhitelistAccount(account=account, nick_name=nick_name, remark=remark, role=role)
     db.add(item)
     db.commit()
