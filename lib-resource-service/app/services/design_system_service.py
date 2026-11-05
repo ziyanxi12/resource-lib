@@ -214,6 +214,7 @@ def format_item(row, display_map=None) -> dict:
         "desc": row.desc or "",
         "author": parse_author_column(row.author),
         "usage": row.usage or 0,
+        "views": row.views or 0,
         "cover": resolve_cover(row.cover),
         "cover_url": cover_url(row.cover),
         "icon": row.icon or None,

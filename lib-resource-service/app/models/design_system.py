@@ -25,6 +25,7 @@ class DesignSystem(Base):
     name       = Column(String(255), nullable=False, comment="卡片名称")
     desc       = Column(Text, nullable=True, comment="卡片描述")
     usage      = Column(Integer, nullable=False, default=0, comment="调用量（不从 MD 派生：新增恒 0，仅表单修正与 /usage 自增）")
+    views      = Column(Integer, nullable=False, default=0, comment="预览量（不从 MD 派生：展示端详情页每次加载自动 +1，走 /views 自增）")
     author     = Column(Text, nullable=True, comment="作者，JSON 数组字符串 [{account, nick_name, dept}]；旧数据为纯字符串，读取时自动包装")
     cover      = Column(String(100), nullable=True, comment="内置封面名或自定义封面相对路径")
     icon       = Column(Text, nullable=True, comment="图标相对 FILE_ROOT_DIR 路径（design-systems/icons/{slug}.{ext}），无则空")

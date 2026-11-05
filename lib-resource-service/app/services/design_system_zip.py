@@ -306,7 +306,7 @@ def build_assets_blocks(root: str) -> Tuple[Optional[Dict], Optional[Dict]]:
                 ("states", OrderedDict([("default", state)])),
             ]))
         patterns = OrderedDict([
-            ("title", "布局 Pattern"),
+            ("title", "Pattern"),
             ("desc", "%d 个 Pattern · 来自 assets/patterns" % len(items)),
             ("items", items),
             ("view", OrderedDict([("cards", cards)])),

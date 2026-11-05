@@ -526,6 +526,40 @@ def increment_usage(slug: str, db: Session = Depends(get_db)):
     return {"slug": slug, "usage": row.usage}
 
 
+# ─────────────────────────── 7a. 预览量自增 ───────────────────────────
+
+@router.post("/{slug}/views")
+def increment_views(slug: str, db: Session = Depends(get_db)):
+    """展示端设计系统详情页每次加载时调用，views += 1（与 usage 的外部显式调用不同，
+    本接口由展示端详情页自动触发）。
+
+    说明：
+    - 高频调用，不写操作日志、不改动 updated_at（那是内容/管理字段的更新时间）
+    - SQL 端自增（views = views + 1），避免并发读改写丢失
+    """
+    row = (
+        db.query(DesignSystem)
+        .filter(DesignSystem.slug == slug, DesignSystem.is_deleted == 0)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="设计系统「%s」不存在" % slug)
+
+    db.query(DesignSystem).filter(
+        DesignSystem.slug == slug, DesignSystem.is_deleted == 0
+    ).update(
+        {
+            "views": DesignSystem.views + 1,
+            # 显式提供 updated_at 覆盖列级 onupdate，保持其语义不变
+            "updated_at": DesignSystem.updated_at,
+        },
+        synchronize_session=False,
+    )
+    db.commit()
+    db.refresh(row)
+    return {"slug": slug, "views": row.views}
+
+
 # ─────────────────────────── 6. 删除（软删） ───────────────────────────
 
 @router.delete("/{slug}")
