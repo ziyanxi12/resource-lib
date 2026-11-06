@@ -32,6 +32,7 @@ from app.models import user  # noqa: F401
 from app.models import whitelist_account  # noqa: F401
 from app.models import design_system  # noqa: F401
 from app.models import ds_whitelist  # noqa: F401
+from app.models import ds_usage_event  # noqa: F401
 
 from app.routers import resources, upload
 from app.routers import design_systems

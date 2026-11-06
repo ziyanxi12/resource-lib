@@ -101,6 +101,11 @@ class Settings:
     # 用户搜索 API（人员管理联想搜索），需转发 cookie 和 uiplustoken
     USER_SEARCH_API_URL:       str = os.getenv("USER_SEARCH_API_URL", "")
 
+    # ── 设计系统打点：getAccount 人员服务（事件身份完整化兜底）──
+    # 按 account 精确查询补全 nickName/dept；留空 = 兜底链直接降级（不外部查询）
+    GET_ACCOUNT_API_URL:       str = os.getenv("GET_ACCOUNT_API_URL", "")
+    GET_ACCOUNT_API_TOKEN:    str = os.getenv("GET_ACCOUNT_API_TOKEN", "uiplus-token")
+
     # ── 上传限制 ───────────────────────────────────────────────
     # 默认值可通过环境变量配置，但有硬编码最大上限
     MAX_UPLOAD_COUNT: int = int(os.getenv("MAX_UPLOAD_COUNT", "50000"))

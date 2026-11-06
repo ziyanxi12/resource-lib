@@ -495,14 +495,17 @@ async def put_design_system_json(
 
 # ─────────────────────────── 7. 调用量自增 ───────────────────────────
 
-@router.post("/{slug}/usage")
-def increment_usage(slug: str, db: Session = Depends(get_db)):
-    """展示端打开/使用该设计系统时调用，usage += 1。
+def _increment_with_event(slug: str, request: Request, db: Session, column: str, event_type: str):
+    """usage / views 自增 + 打点事件写入（同一事务，保证统计口径与累计列一致）。
 
-    说明：
+    - 身份来自 X-User-Data（AuthMiddleware 解密），写入前经 resolve_user_info 三级兜底完整化
     - 高频调用，不写操作日志、不改动 updated_at（那是内容/管理字段的更新时间）
-    - SQL 端自增（usage = usage + 1），避免并发读改写丢失
+    - SQL 端自增（避免并发读改写丢失）；事件插入与自增同 commit，失败整体回滚
     """
+    from app.models.ds_usage_event import DsUsageEvent
+    from app.services.operator import get_operator
+    from app.services.user_info_service import resolve_user_info, snapshot_fields
+
     row = (
         db.query(DesignSystem)
         .filter(DesignSystem.slug == slug, DesignSystem.is_deleted == 0)
@@ -511,11 +514,20 @@ def increment_usage(slug: str, db: Session = Depends(get_db)):
     if not row:
         raise HTTPException(status_code=404, detail="设计系统「%s」不存在" % slug)
 
+    # 身份完整化（可能含 getAccount 外部查询）放在事务性写入之前，失败降级不丢打点
+    info = resolve_user_info(db, get_operator(request))
+    account, nick_name, dept1, dept2, dept3, dept4 = snapshot_fields(info)
+
+    db.add(DsUsageEvent(
+        slug=slug, event_type=event_type,
+        account=account or None, nick_name=nick_name or None,
+        dept1=dept1, dept2=dept2, dept3=dept3, dept4=dept4,
+    ))
     db.query(DesignSystem).filter(
         DesignSystem.slug == slug, DesignSystem.is_deleted == 0
     ).update(
         {
-            "usage": DesignSystem.usage + 1,
+            column: getattr(DesignSystem, column) + 1,
             # 显式提供 updated_at 覆盖列级 onupdate，保持其语义不变
             "updated_at": DesignSystem.updated_at,
         },
@@ -523,41 +535,81 @@ def increment_usage(slug: str, db: Session = Depends(get_db)):
     )
     db.commit()
     db.refresh(row)
+    return row
+
+
+@router.post("/{slug}/usage")
+def increment_usage(slug: str, request: Request, db: Session = Depends(get_db)):
+    """使用方（如 Octo Design）显式调用，usage += 1，同时写入打点事件（建议携带 X-User-Data）。"""
+    row = _increment_with_event(slug, request, db, "usage", "usage")
     return {"slug": slug, "usage": row.usage}
 
 
 # ─────────────────────────── 7a. 预览量自增 ───────────────────────────
 
 @router.post("/{slug}/views")
-def increment_views(slug: str, db: Session = Depends(get_db)):
-    """展示端设计系统详情页每次加载时调用，views += 1（与 usage 的外部显式调用不同，
-    本接口由展示端详情页自动触发）。
-
-    说明：
-    - 高频调用，不写操作日志、不改动 updated_at（那是内容/管理字段的更新时间）
-    - SQL 端自增（views = views + 1），避免并发读改写丢失
-    """
-    row = (
-        db.query(DesignSystem)
-        .filter(DesignSystem.slug == slug, DesignSystem.is_deleted == 0)
-        .first()
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="设计系统「%s」不存在" % slug)
-
-    db.query(DesignSystem).filter(
-        DesignSystem.slug == slug, DesignSystem.is_deleted == 0
-    ).update(
-        {
-            "views": DesignSystem.views + 1,
-            # 显式提供 updated_at 覆盖列级 onupdate，保持其语义不变
-            "updated_at": DesignSystem.updated_at,
-        },
-        synchronize_session=False,
-    )
-    db.commit()
-    db.refresh(row)
+def increment_views(slug: str, request: Request, db: Session = Depends(get_db)):
+    """展示端设计系统详情页每次加载时调用，views += 1，同时写入打点事件
+    （展示端携带 X-User-Data，事件快照 account/nickName/dept 供统计页聚合）。"""
+    row = _increment_with_event(slug, request, db, "views", "view")
     return {"slug": slug, "views": row.views}
+
+
+# ─────────────────────────── 10. 打点统计（管理台数据统计页） ───────────────────────────
+
+@router.get("/stats/summary")
+def stats_summary(
+    start: str = Query("", description="起始日期 YYYY-MM-DD（缺省不限）"),
+    end: str = Query("", description="结束日期 YYYY-MM-DD（缺省不限）"),
+    search: str = Query("", description="按设计系统名称模糊搜索"),
+    db: Session = Depends(get_db),
+):
+    """左表：每系统 预览数/调用量/使用人数/最近调用时间 + 全局汇总行（无数据系统补 0）。"""
+    from app.services import ds_stats_service as stats
+    return stats.stats_summary(db, start, end, search)
+
+
+@router.get("/stats/trend")
+def stats_trend(
+    metric: str = Query("view", description="view 预览数 / usage 调用量 / users 引用人数"),
+    granularity: str = Query("day", description="day / week / month"),
+    start: str = Query(""),
+    end: str = Query(""),
+    db: Session = Depends(get_db),
+):
+    """条形图：时间桶 × 一层部门（dept1）→ 指标值（前端透视为堆叠柱状图）。"""
+    from app.services import ds_stats_service as stats
+    if metric not in stats.METRICS:
+        raise HTTPException(status_code=400, detail="metric 仅支持 %s" % "/".join(stats.METRICS))
+    if granularity not in stats.GRANULARITIES:
+        raise HTTPException(status_code=400, detail="granularity 仅支持 %s" % "/".join(stats.GRANULARITIES))
+    return stats.stats_trend(db, metric, granularity, start, end)
+
+
+@router.get("/stats/dept-share")
+def stats_dept_share(
+    metric: str = Query("view"),
+    start: str = Query(""),
+    end: str = Query(""),
+    db: Session = Depends(get_db),
+):
+    """扇形图：一层部门（dept1）指标占比。"""
+    from app.services import ds_stats_service as stats
+    if metric not in stats.METRICS:
+        raise HTTPException(status_code=400, detail="metric 仅支持 %s" % "/".join(stats.METRICS))
+    return stats.stats_dept_share(db, metric, start, end)
+
+
+@router.get("/stats/users")
+def stats_users(
+    start: str = Query(""),
+    end: str = Query(""),
+    search: str = Query("", description="按工号/名字模糊搜索"),
+    db: Session = Depends(get_db),
+):
+    """人员统计表：工号/名字/最近调用时间/预览数/调用量/一~四层部门（快照）。"""
+    from app.services import ds_stats_service as stats
+    return stats.stats_users(db, start, end, search)
 
 
 # ─────────────────────────── 6. 删除（软删） ───────────────────────────
