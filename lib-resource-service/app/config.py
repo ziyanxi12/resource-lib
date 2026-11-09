@@ -81,6 +81,11 @@ class Settings:
     # 默认 true = 设计系统管理台白名单始终生效（放行请往 ds_whitelist_accounts 加账号）
     DS_WHITELIST_ENABLED: bool = os.getenv("DS_WHITELIST_ENABLED", "true").lower() == "true"
 
+    # ── 设计系统管理台登录过期 ────────────────────────────────
+    # X-User-Data 载荷内 loginTime 距今超过该小时数 → 管理台端点 401（前端清登录态跳登录页）；
+    # 0 = 关闭校验（本地调试 / 存量测试）；展示端公开端点（GET 列表、POST views）不受影响
+    DS_LOGIN_TTL_HOURS: int = int(os.getenv("DS_LOGIN_TTL_HOURS", "24"))
+
     # ── 用户认证加密 ──────────────────────────────────────────
     # AES-256-CBC 密钥（32字节 base64），前后端必须一致
     AUTH_AES_KEY: str = os.getenv("AUTH_AES_KEY", "")
