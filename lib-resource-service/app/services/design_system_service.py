@@ -223,6 +223,7 @@ def format_item(row, display_map=None) -> dict:
         "design_md_url": _to_public_url(row.source_md_path) if row.source_md_path else None,
         "zip_url": _to_public_url(row.source_zip_path) if row.source_zip_path else None,
         "skill_zip_url": _to_public_url(row.skill_zip_path) if row.skill_zip_path else None,
+        "skill_name": row.skill_name or None,
         "default": bool(row.is_default),
         "file_size": row.file_size,
         "created_by": row.created_by or "",
@@ -466,7 +467,8 @@ def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skil
     - 校验（zip 安全 + DESIGN.md 结构）失败抛 ValueError，此时不落任何文件
 
     返回 {"data": design-system.json dict, "slug": 落盘 slug, "source_slug": MD id,
-          "source_md_rel": …, "source_zip_rel": …, "skill_zip_rel": …或 None, "zip_size": n}
+          "source_md_rel": …, "source_zip_rel": …, "skill_zip_rel": …或 None,
+          "skill_name": 附件 SKILL.md 的 name 或 None, "zip_size": n}
     """
     dzip.validate_zip_bytes(content)
     with tempfile.TemporaryDirectory(prefix="ds-import-") as tmp:
@@ -478,6 +480,9 @@ def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skil
         errors = validate_design_system_json(data)
         if errors:
             raise ValueError("；".join(errors))
+        # 附件 skill 包解析（严格：缺根级 SKILL.md / 缺 name → ZipPackageError → 400）；
+        # 放在所有落盘之前，失败时零写入（对齐既有校验约定）
+        skill_display_name = dzip.extract_skill_name(skill_path) if skill_path else None
 
         slug = existing_slug or generate_slug(db)
         save_json_file(slug, data, len(content))
@@ -497,6 +502,7 @@ def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skil
         "source_md_rel": source_md_rel,
         "source_zip_rel": source_zip_rel,
         "skill_zip_rel": skill_zip_rel,
+        "skill_name": skill_display_name,
         "zip_size": len(content),
     }
 

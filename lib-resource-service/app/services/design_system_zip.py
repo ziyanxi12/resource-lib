@@ -6,12 +6,14 @@ zip 结构（requirement/1.md）：
     │  ├─ components/     递归目录 → html 文件（html 文件名 = 组件名）
     │  └─ patterns/       递归目录 → html 文件
     ├─ DESIGN.md          设计展示页数据（复用 design_system_md 解析）
-    └─ skill-design.zip   附件（原样保留，落盘后可经 /static 下载）
+    └─ skill-design.zip   附件（skill 包：第一层须含 SKILL.md，name 入库 skill_name；原样落盘可经 /static 下载）
 
 职责：
 - 安全校验：zip slip（`..`/绝对路径/反斜杠/symlink）、zip bomb（条目数/解压总大小/压缩比）
 - 解压到临时目录（zip 字节先写临时文件再解压，对齐需求「先 zip 落盘，再解压」）
 - 定位 DESIGN.md / skill-design.zip（支持单层包裹目录：根下唯一目录时向内找一层）
+- 附件 skill 包严格校验并解析：第一层 SKILL.md 的 frontmatter name → skill_name
+  （缺 SKILL.md / 缺 name → ZipPackageError，预览与上传一致拦截）
 - 递归扫描 assets/components、assets/patterns → 目录树（层级保留在 group 字段），
   叶子 html 按 template.html 既有协议生成 components/patterns 区块（内嵌 html 源码，
   模板 sandbox iframe 直接 srcdoc 渲染；同目录 css/scss 一并内嵌）
@@ -44,6 +46,8 @@ MAX_ZIP_ENTRIES = 5000                      # zip 内条目数上限（含目录
 MAX_COMPRESS_RATIO = 100                    # 单文件压缩比上限（>100 且 >1MB 视为异常）
 MAX_EMBED_HTML_BYTES = 2 * 1024 * 1024      # 单个 html 内嵌 design-system.json 上限（超出只存路径）
 MAX_SKILL_B64_BYTES = 50 * 1024 * 1024      # 附件经 parse 接口 base64 回传的上限（超出只回元信息）
+MAX_SKILL_MD_BYTES = 1024 * 1024            # 附件内 SKILL.md 读取上限（防 zip bomb，超出拒绝）
+MAX_SKILL_NAME_LEN = 255                    # SKILL.md frontmatter name 字段长度上限（对齐 DB 列宽）
 
 CHUNK_SIZE = 5 * 1024 * 1024                # 每片 5MB（S3 multipart 同款下限）
 UPLOADS_REL_DIR = "design-systems/uploads"  # 分片临时目录（FILE_ROOT_DIR 下）
@@ -191,6 +195,41 @@ def locate_root_entries(dest_dir: str) -> Tuple[str, Optional[str], Optional[str
         raise ZipPackageError("附件文件名「%s」与系统保留文件（%s）冲突，请重命名后重新打包"
                               % (skill_name, " / ".join(sorted(RESERVED_SKILL_NAMES))))
     return root, skill_path, skill_name
+
+
+def extract_skill_name(skill_zip_path: str) -> str:
+    """解析附件 skill 包，返回根级 SKILL.md frontmatter 的 name（技能名）。
+
+    严格校验（ZipPackageError → 路由层转 400）：
+    - SKILL.md 必须在附件 zip 第一层（根级），嵌套包裹目录视为缺失
+    - 必须有 YAML frontmatter（--- ... ---）且 name 字段非空、≤255 字符
+    - 附件本身必须是合法 zip；SKILL.md 成员 ≤1MB（防嵌套 zip bomb）
+    """
+    try:
+        zf = zipfile.ZipFile(skill_zip_path)
+    except zipfile.BadZipFile:
+        raise ZipPackageError("附件不是合法的 zip 包（skill 包第一层须含 SKILL.md）")
+    with zf:
+        if "SKILL.md" not in zf.namelist():
+            raise ZipPackageError("附件 zip 内缺少 SKILL.md（须在附件 zip 第一层，不允许嵌套）")
+        info = zf.getinfo("SKILL.md")
+        if info.file_size > MAX_SKILL_MD_BYTES:
+            raise ZipPackageError("附件 zip 内 SKILL.md 超过 1MB 上限")
+        try:
+            with zf.open(info) as f:
+                text = f.read(MAX_SKILL_MD_BYTES + 1).decode("utf-8", errors="replace")
+        except (zipfile.BadZipFile, OSError, EOFError) as e:
+            raise ZipPackageError("附件 zip 内 SKILL.md 读取失败：%s" % e)
+    try:
+        fm = design_system_md.parse_frontmatter(text)
+    except ValueError:
+        raise ZipPackageError("附件 zip 内 SKILL.md 缺少 frontmatter（--- name: 技能名 --- 头部块）")
+    name = str(fm.get("name") or "").strip()
+    if not name:
+        raise ZipPackageError("附件 zip 内 SKILL.md 缺少 name 字段（技能名）")
+    if len(name) > MAX_SKILL_NAME_LEN:
+        raise ZipPackageError("附件 zip 内 SKILL.md 的 name 超过 %d 字符" % MAX_SKILL_NAME_LEN)
+    return name
 
 
 # ─────────────────────────── assets 树扫描 ───────────────────────────
@@ -379,6 +418,7 @@ def parse_zip_info(content: bytes) -> Dict:
         data = parse_md_root(root)
         merge_assets(data, root)
         skill_size = os.path.getsize(skill_path) if skill_path else 0
+        skill_display_name = extract_skill_name(skill_path) if skill_path else None
         content_b64 = None
         if skill_path and skill_size <= MAX_SKILL_B64_BYTES:
             with open(skill_path, "rb") as f:
@@ -402,6 +442,7 @@ def parse_zip_info(content: bytes) -> Dict:
         },
         "skill_zip": {
             "present": bool(skill_path),
+            "skill_name": skill_display_name,
             "filename": skill_name,
             "size": skill_size,
             "content_base64": content_b64,

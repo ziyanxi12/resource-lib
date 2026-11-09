@@ -337,6 +337,7 @@ async def _create_from_zip(
         source_md_path=result["source_md_rel"],
         source_zip_path=result["source_zip_rel"],
         skill_zip_path=result["skill_zip_rel"],
+        skill_name=result["skill_name"],
         file_size=len(content),
         created_by=account,
         updated_by=account,
@@ -380,6 +381,7 @@ def _reupload_zip(
     row.source_md_path = result["source_md_rel"]
     row.source_zip_path = result["source_zip_rel"]
     row.skill_zip_path = result["skill_zip_rel"]
+    row.skill_name = result["skill_name"]
     account, _ = get_operator(request)
     row.updated_by = account
     _log(db, request, "reupload", row, {
