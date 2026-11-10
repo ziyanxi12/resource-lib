@@ -48,8 +48,14 @@ _EXPIRED_BODY = json.dumps({"detail": "登录已过期，请重新登录"}).enco
 
 
 def _is_public_ds_endpoint(method: str, path: str) -> bool:
-    """展示端匿名可访问的公开端点：GET /api/design-systems 列表、POST /{slug}/views 打点。"""
+    """匿名可访问的公开端点：GET /api/design-systems 列表、POST /{slug}/views 打点、
+    POST /api/design-systems/usage/report 免登录态调用量上报（7b，account 即身份来源）、
+    POST /api/design-systems/events/refresh-identity 打点事件用户信息补全（7c，公开维护）。"""
     if method == "GET" and path == "/api/design-systems":
+        return True
+    if method == "POST" and path == "/api/design-systems/usage/report":
+        return True
+    if method == "POST" and path == "/api/design-systems/events/refresh-identity":
         return True
     return (
         method == "POST"

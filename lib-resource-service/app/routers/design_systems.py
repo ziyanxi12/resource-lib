@@ -16,7 +16,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -497,10 +497,11 @@ async def put_design_system_json(
 
 # ─────────────────────────── 7. 调用量自增 ───────────────────────────
 
-def _increment_with_event(slug: str, request: Request, db: Session, column: str, event_type: str):
+def _increment_with_event(slug: str, request: Request, db: Session, column: str, event_type: str, op_override=None):
     """usage / views 自增 + 打点事件写入（同一事务，保证统计口径与累计列一致）。
 
-    - 身份来自 X-User-Data（AuthMiddleware 解密），写入前经 resolve_user_info 三级兜底完整化
+    - 身份来自 X-User-Data（AuthMiddleware 解密），写入前经 resolve_user_info 三级兜底完整化；
+      op_override 非空时（POST /usage/report 的 account 上报场景）以其替代 request 解密身份
     - 高频调用，不写操作日志、不改动 updated_at（那是内容/管理字段的更新时间）
     - SQL 端自增（避免并发读改写丢失）；事件插入与自增同 commit，失败整体回滚
     """
@@ -517,7 +518,7 @@ def _increment_with_event(slug: str, request: Request, db: Session, column: str,
         raise HTTPException(status_code=404, detail="设计系统「%s」不存在" % slug)
 
     # 身份完整化（可能含 getAccount 外部查询）放在事务性写入之前，失败降级不丢打点
-    info = resolve_user_info(db, get_operator(request))
+    info = resolve_user_info(db, op_override if op_override is not None else get_operator(request))
     account, nick_name, dept1, dept2, dept3, dept4 = snapshot_fields(info)
 
     db.add(DsUsageEvent(
@@ -545,6 +546,55 @@ def increment_usage(slug: str, request: Request, db: Session = Depends(get_db)):
     """使用方（如 Octo Design）显式调用，usage += 1，同时写入打点事件（建议携带 X-User-Data）。"""
     row = _increment_with_event(slug, request, db, "usage", "usage")
     return {"slug": slug, "usage": row.usage}
+
+
+# ─────────────────────────── 7b. 调用量上报（免登录态，传 account） ───────────────────────────
+
+class UsageReportBody(BaseModel):
+    slug: str = Field(..., min_length=1, description="设计系统 slug")
+    account: str = Field("", description="用户账号（无有效 X-User-Data 时必填；后端查询补全 nickName/dept）")
+
+
+@router.post("/usage/report")
+def usage_report(body: UsageReportBody, request: Request, db: Session = Depends(get_db)):
+    """免登录态的调用量上报：slug + account 放消息体，用户信息由后端查询补全后入库。
+
+    - 逻辑与 POST /{slug}/usage（7 号）完全一致：usage+1 + 同事务打点事件
+    - 完全公开：免登录、免权限校验（在登录过期豁免清单内，路径精确匹配）
+    - 身份优先级：有效 X-User-Data > body.account；两者皆无 → 400
+    - account 经 resolve_user_info 三级兜底（users 表 → getAccount 人员服务 → 回写缓存）
+      补全昵称/部门后写事件快照；查无此人降级照写（nick_name/dept 留空，绝不丢打点）
+    """
+    from app.services.operator import OperatorInfo
+
+    op = get_operator(request)
+    has_valid_op = bool(op) and op.account not in ("", "unknown")
+    account = (body.account or "").strip()
+    if not has_valid_op and not account:
+        raise HTTPException(status_code=400, detail="缺少 account（且未携带有效 X-User-Data）")
+    if not has_valid_op:
+        op = OperatorInfo(account=account)
+    row = _increment_with_event(body.slug.strip(), request, db, "usage", "usage", op_override=op)
+    return {"slug": row.slug, "usage": row.usage}
+
+
+# ─────────────────────────── 7c. 打点事件用户信息补全（公开维护接口） ───────────────────────────
+
+class RefreshIdentityBody(BaseModel):
+    accounts: list = Field([], description="限定补全的账号列表；空 = 全表扫描身份不完整的事件")
+
+
+@router.post("/events/refresh-identity")
+def events_refresh_identity(body: RefreshIdentityBody, db: Session = Depends(get_db)):
+    """打点事件用户信息补全：只补空、不修订已有快照（完全公开，幂等）。
+
+    - 候选：account 非空且 nick_name 或 dept1 为空的事件（body.accounts 可限定范围）
+    - 逐账号走 resolve 链（users 表 → getAccount 人员服务 → 回写缓存）后逐字段补空；
+      事件内已有值的字段一律不动；查不到的账号进 unresolved，事件原样保留
+    - 匿名事件（account 为空）永不触碰；响应 {"accounts_total", "resolved", "unresolved", "events_updated"}
+    """
+    from app.services import ds_stats_service as stats
+    return stats.refresh_event_identities(db, accounts=body.accounts)
 
 
 # ─────────────────────────── 7a. 预览量自增 ───────────────────────────

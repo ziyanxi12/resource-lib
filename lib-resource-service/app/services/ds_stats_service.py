@@ -15,7 +15,7 @@ trend / users 采用「SQL 过滤 + Python 聚合」：内网规模事件量下�
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import case, func
+from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
 
 from app.models.design_system import DesignSystem
@@ -245,3 +245,71 @@ def stats_users(db: Session, start: str, end: str, search: str = "") -> dict:
         })
     items.sort(key=lambda x: x["last_at"] or "", reverse=True)
     return {"start": start or None, "end": end or None, "total": len(items), "items": items}
+
+
+# ─────────────────────────── 7c. 打点事件用户信息补全 ───────────────────────────
+
+def refresh_event_identities(db: Session, accounts=None) -> dict:
+    """打点事件用户信息补全（公开维护接口）：只补空，不修订已有快照。
+
+    - 候选：account 非空且（nick_name 或 dept1 为空）的事件 → DISTINCT account；
+      accounts 参数可限定范围（仍只处理其中身份不完整的事件）
+    - 逐账号走 resolve 链（users 表 → getAccount 人员服务 → 回写缓存），
+      查到 nick_name 或部门后**逐字段填充**——事件内已有值的字段一律不动（历史快照不修订）
+    - 查不到的账号进 unresolved 名单，事件原样保留（绝不丢打点，等下次补全）
+    - 匿名事件（account 为空）永不触碰；幂等：已补全的事件不再进候选
+    """
+    from app.services.operator import OperatorInfo
+    from app.services.user_info_service import resolve_user_info, snapshot_fields
+
+    q = (
+        db.query(DsUsageEvent.account)
+        .filter(
+            DsUsageEvent.account.isnot(None),
+            DsUsageEvent.account != "",
+            or_(
+                DsUsageEvent.nick_name.is_(None),
+                DsUsageEvent.nick_name == "",
+                DsUsageEvent.dept1.is_(None),
+                DsUsageEvent.dept1 == "",
+            ),
+        )
+        .distinct()
+    )
+    if accounts:
+        cleaned = sorted({str(a).strip() for a in accounts if str(a).strip()})
+        if not cleaned:
+            return {"accounts_total": 0, "resolved": 0, "unresolved": [], "events_updated": 0}
+        q = q.filter(DsUsageEvent.account.in_(cleaned))
+
+    candidates = [row[0] for row in q.all()]
+    resolved, events_updated, unresolved = 0, 0, []
+    for acc in candidates:
+        info = resolve_user_info(db, OperatorInfo(account=acc))
+        nick = (info.get("nick_name") or "").strip()
+        _, _, d1, d2, d3, d4 = snapshot_fields(info)
+        fills = {"nick_name": nick, "dept1": d1, "dept2": d2, "dept3": d3, "dept4": d4}
+        if not nick and not d1:
+            unresolved.append(acc)
+            continue
+        resolved += 1
+        # 只补空：逐行逐字段填充（Python 侧处理，跨库无方言问题；内网事件量级）
+        touched = 0
+        rows = db.query(DsUsageEvent).filter(DsUsageEvent.account == acc).all()
+        for ev in rows:
+            changed = False
+            for col, val in fills.items():
+                if val and not (getattr(ev, col) or "").strip():
+                    setattr(ev, col, val)
+                    changed = True
+            if changed:
+                touched += 1
+        events_updated += touched
+
+    db.commit()
+    return {
+        "accounts_total": len(candidates),
+        "resolved": resolved,
+        "unresolved": unresolved,
+        "events_updated": events_updated,
+    }
