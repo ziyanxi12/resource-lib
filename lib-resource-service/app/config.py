@@ -100,16 +100,13 @@ class Settings:
     SPLIT_API_URL:             str = os.getenv("SPLIT_API_URL", "")
     ICON_API_URL:              str = os.getenv("ICON_API_URL", "")
 
-    # 用户信息查询 API，resolve_display_names 查不到 account 时补查
+    # 用户信息查询 API：GET {USER_INFO_API_URL}?account=xxx（服务端直连，无 cookie/token 依赖）。
+    # 两个消费方：resolve_display_names（显示名兜底）+ 设计系统打点身份完整化（users 表未命中时按
+    # account 精确补全 nickName/dept 并回写缓存）；留空 = 兜底链直接降级（不外部查询）
     USER_INFO_API_URL:         str = os.getenv("USER_INFO_API_URL", "")
 
     # 用户搜索 API（人员管理联想搜索），需转发 cookie 和 uiplustoken
     USER_SEARCH_API_URL:       str = os.getenv("USER_SEARCH_API_URL", "")
-
-    # ── 设计系统打点：getAccount 人员服务（事件身份完整化兜底）──
-    # 按 account 精确查询补全 nickName/dept；留空 = 兜底链直接降级（不外部查询）
-    GET_ACCOUNT_API_URL:       str = os.getenv("GET_ACCOUNT_API_URL", "")
-    GET_ACCOUNT_API_TOKEN:    str = os.getenv("GET_ACCOUNT_API_TOKEN", "uiplus-token")
 
     # ── 上传限制 ───────────────────────────────────────────────
     # 默认值可通过环境变量配置，但有硬编码最大上限

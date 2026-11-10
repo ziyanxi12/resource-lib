@@ -3,8 +3,9 @@
 三级兜底链（保证事件快照尽量完整，同时绝不因兜底失败丢打点）：
     ① X-User-Data 解密结果（AuthMiddleware → OperatorInfo，零开销快路径）
     ② 缺 nickName / dept 时 → 查 users 表（AuthMiddleware 每次请求异步 upsert 的缓存）
-    ③ 仍缺 → 调 getAccount 人员服务按 account 精确补全，成功则回写 users 表
-              （同一账号此后永远命中本地表，外部服务最多查 1 次/人）
+    ③ 仍缺 → 调 USER_INFO_API_URL 按 account 精确补全（服务端直连，无 cookie/token 依赖——
+              打点链的调用方（外部工具/服务端）不会传浏览器登录 cookie，必须走免 cookie 协议），
+              成功则回写 users 表（含 deptCode；同一账号此后永远命中本地表，外部服务最多查 1 次/人）
     全部失败 → 用手头信息降级写事件（account 保证有），缺项留空。
 """
 
@@ -18,8 +19,8 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-# getAccount 短超时：人员服务抖动不能拖慢/拖挂打点接口
-_GETACCOUNT_TIMEOUT = 2.0
+# 人员服务短超时：服务抖动不能拖慢/拖挂打点接口（usage/report 是调用方同步等待的）
+_USERINFO_TIMEOUT = 2.0
 
 
 def _clean_dept(dept) -> list:
@@ -31,36 +32,34 @@ def _clean_dept(dept) -> list:
     return []
 
 
-def getaccount_lookup(account: str) -> Optional[dict]:
-    """按 account 精确查询 getAccount 人员服务。
+def userinfo_lookup(account: str) -> Optional[dict]:
+    """按 account 精确查询 USER_INFO_API_URL 人员服务（服务端直连，无 cookie/token 依赖）。
 
-    返回 {account, nickName, dept: [...]}；未配置 / 超时 / 查不到 / 格式异常 → None（静默降级）。
+    请求：GET {USER_INFO_API_URL}?account=xxx；响应：{"content": {account, nickName, dept, deptCode}}。
+    返回 {account, nickName, dept, deptCode}；未配置 / 超时 / 查不到 / 格式异常 → None（静默降级）。
     """
-    if not account or not settings.GET_ACCOUNT_API_URL:
+    if not account or not settings.USER_INFO_API_URL:
         return None
     try:
         resp = httpx.get(
-            "%s?keyword=%s" % (settings.GET_ACCOUNT_API_URL, account),
-            timeout=_GETACCOUNT_TIMEOUT,
+            "%s?account=%s" % (settings.USER_INFO_API_URL, account),
+            timeout=_USERINFO_TIMEOUT,
             trust_env=False,
-            headers={"uiplusToken": settings.GET_ACCOUNT_API_TOKEN},
         )
         resp.raise_for_status()
-        # 响应格式：{"content": {"<keyword>": [ {account, nickName, dept...} ... ]}, "errorCode": 0}
         content = (resp.json() or {}).get("content") or {}
-        for users in content.values():
-            if not isinstance(users, list):
-                continue
-            for u in users:
-                if isinstance(u, dict) and str(u.get("account", "")).strip() == account:
-                    return {
-                        "account": account,
-                        "nickName": str(u.get("nickName", "")).strip(),
-                        "dept": _clean_dept(u.get("dept")),
-                    }
+        if not isinstance(content, dict) or not str(content.get("account", "")).strip():
+            return None
+        dept_code = content.get("deptCode")
+        return {
+            "account": account,
+            "nickName": str(content.get("nickName", "")).strip(),
+            "dept": _clean_dept(content.get("dept")),
+            "deptCode": _clean_dept(dept_code) if isinstance(dept_code, list) else [],
+        }
     except Exception as e:  # noqa: BLE001
-        logger.warning("getaccount_lookup(%s) 失败（降级）: %s", account, e)
-    return None
+        logger.warning("userinfo_lookup(%s) 失败（降级）: %s", account, e)
+        return None
 
 
 def _is_complete(account: str, nick_name: str, dept: list) -> bool:
@@ -95,9 +94,9 @@ def resolve_user_info(db: Session, op) -> dict:
         except Exception as e:  # noqa: BLE001
             logger.warning("resolve_user_info 查 users 表失败: %s", e)
 
-    # ③ getAccount 终极兜底 + 回写 users 表（后续命中本地）
+    # ③ USER_INFO_API_URL 终极兜底 + 回写 users 表（后续命中本地）
     if not _is_complete(account, nick, dept):
-        hit = getaccount_lookup(account)
+        hit = userinfo_lookup(account)
         if hit:
             nick = nick or hit["nickName"]
             if not dept:
@@ -111,6 +110,8 @@ def resolve_user_info(db: Session, op) -> dict:
                     payload["nickName"] = hit["nickName"]
                 if hit["dept"]:
                     payload["dept"] = hit["dept"]
+                if hit.get("deptCode"):
+                    payload["deptCode"] = hit["deptCode"]
                 upsert_user(db, payload)
                 db.commit()
             except Exception as e:  # noqa: BLE001
