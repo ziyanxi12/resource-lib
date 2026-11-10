@@ -14,8 +14,9 @@ trend / users 采用「SQL 过滤 + Python 聚合」：内网规模事件量下�
 
 import logging
 from datetime import datetime, timedelta
+from typing import List
 
-from sqlalchemy import case, func, or_
+from sqlalchemy import case, false, func, or_
 from sqlalchemy.orm import Session
 
 from app.models.design_system import DesignSystem
@@ -38,9 +39,24 @@ def _parse_range(start: str, end: str):
     return lo, hi
 
 
+def _alive_slugs(db: Session) -> List[str]:
+    """未软删的 slug 列表（summary 的「补 0 行」与事件圈定共用）。"""
+    return [s for (s,) in db.query(DesignSystem.slug).filter(DesignSystem.is_deleted == 0).all()]
+
+
 def _range_query(db: Session, start: str, end: str):
+    """统计事件查询入口：时间范围 + **未软删系统**（四个 stats 接口的排除口径统一在此实现）。
+
+    软删系统的事件保留在库，但不进任何统计（summary 行与汇总、trend、dept-share、users
+    口径一致）；未删集合为空时用 false() 直接短路。
+    """
     lo, hi = _parse_range(start, end)
+    alive = _alive_slugs(db)
     q = db.query(DsUsageEvent)
+    if alive:
+        q = q.filter(DsUsageEvent.slug.in_(alive))
+    else:
+        q = q.filter(false())
     if lo:
         q = q.filter(DsUsageEvent.created_at >= lo)
     if hi:
@@ -66,15 +82,9 @@ def stats_summary(db: Session, start: str, end: str, search: str = "") -> dict:
     """每系统一行（无数据的系统也返回，补 0）+ 全局汇总行。
 
     汇总的 users 为全局 DISTINCT 账号数（同一人在多系统活动只计 1），不等于各行之和。
-    软删系统的事件保留在库，但不进任何统计（行与汇总口径一致）。
+    软删系统的事件保留在库，但不进任何统计——排除口径统一由 _range_query 实现。
     """
-    # 未软删的 slug 集合：所有聚合（含全局汇总）都以它圈定事件范围
-    all_slugs = [
-        s for (s,) in db.query(DesignSystem.slug).filter(DesignSystem.is_deleted == 0).all()
-    ]
-    slug_set = set(all_slugs)
-
-    rows_q = (
+    rows = (
         _range_query(db, start, end)
         .with_entities(
             DsUsageEvent.slug,
@@ -83,13 +93,9 @@ def stats_summary(db: Session, start: str, end: str, search: str = "") -> dict:
             func.count(func.distinct(DsUsageEvent.account)).label("users"),
             func.max(DsUsageEvent.created_at).label("last_at"),
         )
+        .group_by(DsUsageEvent.slug)
+        .all()
     )
-    if slug_set:
-        rows_q = rows_q.filter(DsUsageEvent.slug.in_(slug_set))
-    else:
-        from sqlalchemy import false
-        rows_q = rows_q.filter(false())
-    rows = rows_q.group_by(DsUsageEvent.slug).all()
     by_slug = {r.slug: r for r in rows}
 
     sys_q = db.query(DesignSystem.slug, DesignSystem.name).filter(DesignSystem.is_deleted == 0)
@@ -111,15 +117,11 @@ def stats_summary(db: Session, start: str, end: str, search: str = "") -> dict:
             "last_at": _iso(r.last_at) if r else None,
         })
 
-    total_q = _range_query(db, start, end).with_entities(
+    tv, tu, tc, tl = _range_query(db, start, end).with_entities(
         _views_expr(), _usage_expr(),
         func.count(func.distinct(DsUsageEvent.account)),
         func.max(DsUsageEvent.created_at),
-    )
-    if not slug_set:
-        tv, tu, tc, tl = (0, 0, 0, None)
-    else:
-        tv, tu, tc, tl = total_q.filter(DsUsageEvent.slug.in_(slug_set)).one()
+    ).one()
     total = {
         "views": int(tv or 0),
         "usage": int(tu or 0),
