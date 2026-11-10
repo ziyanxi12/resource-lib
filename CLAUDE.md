@@ -167,7 +167,7 @@ DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD  # MySQL（留空 DB_URL 时
 DB_URL=sqlite:///./dev.db                             # 本地 SQLite 快速启动
 FILE_ROOT_DIR=./storage                               # 文件存储根目录
 USE_MOCK=true                                         # 本地开发不调外部 API
-VECTOR_SERVICE_URL=http://localhost:8008              # 向量服务地址
+VECTOR_SERVICE_URL=http://localhost:8007              # 向量服务地址
 ```
 
 启动命令：
@@ -274,6 +274,13 @@ GET    /static/{file_path}         访问上传文件
 | 禁止重复定义 | 两文件不得定义同名接口 |
 | 时间字段 | 统一 `number`（epoch ms） |
 | 日期库 | `dayjs`（antd 传递依赖，需显式 import） |
+
+### 外部人员 API 使用约定
+
+| 规则 | 说明 |
+|------|------|
+| `USER_SEARCH_API_URL` 唯一调用点 | 只允许 `user_service.search_users()` 调用，仅服务于界面上的「搜索用户 / 搜索作者」联想框。该函数转发**当前请求自带**的浏览器 cookie + uiplusToken，外部/服务端调用方无凭据可转发，天然只能由浏览器会话触发。禁止新增其他调用方 |
+| 服务端按账号查人 | 一律走 `USER_INFO_API_URL`（免凭据直连），网关：`user_service._fetch_user_from_api`（显示名兜底/白名单）与 `user_info_service.userinfo_lookup`（打点身份完整化），不得误用 `USER_SEARCH_API_URL` |
 
 ### 不改动项
 

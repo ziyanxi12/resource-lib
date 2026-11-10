@@ -26,7 +26,13 @@ def _mock_search_users(keyword: str) -> List[dict]:
 
 
 def search_users(keyword: str, request: Request) -> List[dict]:
-    """按关键词搜索用户。USE_MOCK=true 返回模拟数据，否则调外部 API（转发 cookie + uiplusToken）。"""
+    """按关键词搜索用户。USE_MOCK=true 返回模拟数据，否则调外部 API（转发 cookie + uiplusToken）。
+
+    USER_SEARCH_API_URL 的唯一调用点：仅服务于界面上的「搜索用户 / 搜索作者」联想框
+    （如来源管理创建人搜索，前端 SourceManage）。凭据为当前请求自带 cookie + uiplusToken
+    转发，外部/服务端调用方无凭据可用，天然仅限浏览器会话；
+    禁止绕开本函数在其他链路新增对该 URL 的调用。
+    """
     if not keyword or not keyword.strip():
         return []
     keyword = keyword.strip()

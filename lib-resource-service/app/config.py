@@ -105,7 +105,10 @@ class Settings:
     # account 精确补全 nickName/dept 并回写缓存）；留空 = 兜底链直接降级（不外部查询）
     USER_INFO_API_URL:         str = os.getenv("USER_INFO_API_URL", "")
 
-    # 用户搜索 API（人员管理联想搜索），需转发 cookie 和 uiplustoken
+    # 用户搜索 API（人员管理联想搜索），需转发浏览器 cookie 和 uiplustoken
+    # ⚠ 唯一调用点：user_service.search_users()（界面上的搜索用户/搜索作者联想框）；
+    #   凭据由当前请求转发，天然要求浏览器会话，禁止在其他链路新增调用；
+    #   服务端按账号查人请改用 USER_INFO_API_URL（免凭据直连）
     USER_SEARCH_API_URL:       str = os.getenv("USER_SEARCH_API_URL", "")
 
     # ── 上传限制 ───────────────────────────────────────────────
