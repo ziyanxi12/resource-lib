@@ -45,14 +45,17 @@ def _alive_slugs(db: Session) -> List[str]:
 
 
 def _range_query(db: Session, start: str, end: str):
-    """统计事件查询入口：时间范围 + **未软删系统**（四个 stats 接口的排除口径统一在此实现）。
+    """统计事件查询入口：时间范围 + **未软删系统** + **非匿名**（四个 stats 接口的排除口径统一在此实现）。
 
     软删系统的事件保留在库，但不进任何统计（summary 行与汇总、trend、dept-share、users
-    口径一致）；未删集合为空时用 false() 直接短路。
+    口径一致）；未删集合为空时用 false() 直接短路。匿名事件（account 为空，仅 7a 历史
+    豁免可发生）同样保留在库但不进统计——新数据已不再写入匿名事件（_increment_with_event
+    拦截），本条件兜存量行。
     """
     lo, hi = _parse_range(start, end)
     alive = _alive_slugs(db)
     q = db.query(DsUsageEvent)
+    q = q.filter(DsUsageEvent.account.isnot(None), DsUsageEvent.account != "")
     if alive:
         q = q.filter(DsUsageEvent.slug.in_(alive))
     else:

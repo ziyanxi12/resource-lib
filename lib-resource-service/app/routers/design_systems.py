@@ -519,11 +519,15 @@ def _increment_with_event(slug: str, request: Request, db: Session, column: str,
     info = resolve_user_info(db, op_override if op_override is not None else get_operator(request))
     account, nick_name, dept1, dept2, dept3, dept4 = snapshot_fields(info)
 
-    db.add(DsUsageEvent(
-        slug=slug, event_type=event_type,
-        account=account or None, nick_name=nick_name or None,
-        dept1=dept1, dept2=dept2, dept3=dept3, dept4=dept4,
-    ))
+    # 匿名（account 为空，仅 7a 豁免可发生；7 须登录态、7b 缺 account 直接 400）不写打点事件：
+    # 事件表不再产生空 account 行；views/usage 累计列照常自增（曝光量语义），
+    # 统计侧由 _range_query 统一排除存量匿名行，两端口径一致
+    if account:
+        db.add(DsUsageEvent(
+            slug=slug, event_type=event_type,
+            account=account, nick_name=nick_name or None,
+            dept1=dept1, dept2=dept2, dept3=dept3, dept4=dept4,
+        ))
     db.query(DesignSystem).filter(
         DesignSystem.slug == slug, DesignSystem.is_deleted == 0
     ).update(
