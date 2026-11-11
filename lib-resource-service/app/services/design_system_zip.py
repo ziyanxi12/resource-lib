@@ -95,7 +95,7 @@ def _validate_member(name: str, info: zipfile.ZipInfo) -> None:
 
 
 def validate_zip_bytes(content: bytes) -> None:
-    """上传入口校验：zip 魔数、大小、条目数、解压总大小与压缩比。"""
+    """上传入口校验：zip 魔数、大小、条目数、解压总大小与压缩比、同名冲突条目。"""
     if len(content) > MAX_ZIP_BYTES:
         raise ZipPackageError("zip 包超过 %dMB 上限" % (MAX_ZIP_BYTES // 1024 // 1024))
     if not zipfile.is_zipfile(io.BytesIO(content)):
@@ -105,10 +105,25 @@ def validate_zip_bytes(content: bytes) -> None:
             infos = zf.infolist()
             if len(infos) > MAX_ZIP_ENTRIES:
                 raise ZipPackageError("zip 内条目数超过 %d 上限" % MAX_ZIP_ENTRIES)
+            # 同名冲突体检：归一化 + casefold 比较（跨平台一致——macOS/Windows 大小写不敏感文件系统上
+            # 「Assets/」与「assets」也是同一路径）。同名（含大小写变体）既是目录又是文件 → 拒绝；
+            # 否则解压时 open(目录路径) 会抛未捕获的 IsADirectoryError → 500。
+            # 同名重复「文件」条目放行（后解压覆盖，无崩溃、语义明确）。
+            seen = {}  # casefold(归一化名，去尾斜杠) -> (归一化名, 是否目录)
             total = 0
             for info in infos:
                 name = _normalize_name(info.filename)
                 _validate_member(name, info)
+                key = name.casefold().rstrip("/")
+                prev = seen.get(key)
+                if prev is not None and prev[1] != info.is_dir():
+                    raise ZipPackageError(
+                        "zip 内存在同名冲突条目：「%s」（%s）与「%s」（%s）——目录与文件不能同名，"
+                        "请检查打包结构后重新打包"
+                        % (prev[0], "目录" if prev[1] else "文件",
+                           name, "目录" if info.is_dir() else "文件"))
+                if prev is None:
+                    seen[key] = (name, info.is_dir())
                 if info.is_dir():
                     continue
                 total += info.file_size
@@ -136,7 +151,16 @@ def extract_zip(content: bytes, dest_dir: str) -> None:
                 if info.is_dir():
                     os.makedirs(target, exist_ok=True)
                     continue
-                os.makedirs(os.path.dirname(target), exist_ok=True)
+                # 动态兜底（防御纵深——同名冲突已在 validate 阶段拦截；此处捕获漏网的
+                # 文件系统特定冲突，转 400 而非未捕获的 IsADirectoryError/FileExistsError → 500）
+                try:
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                except FileExistsError:
+                    raise ZipPackageError(
+                        "zip 内存在同名冲突条目：「%s」既是文件又是目录，请检查打包结构后重新打包" % name)
+                if os.path.isdir(target):
+                    raise ZipPackageError(
+                        "zip 内存在同名冲突条目：「%s」（目录与文件同名），请检查打包结构后重新打包" % name)
                 with zf.open(info) as src, open(target, "wb") as out:
                     # 逐块拷贝，同时强制解压总量上限（防 info.file_size 伪造）
                     written = 0
