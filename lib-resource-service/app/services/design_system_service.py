@@ -351,7 +351,11 @@ def _slug_dir(slug: str) -> str:
 
 
 def parse_md_upload(content: bytes) -> dict:
-    """DESIGN.md 字节 → design-system.json 同构 dict（兼容保留：模板下载后的快速校验路径）。"""
+    """DESIGN.md 字节 → design-system.json 同构 dict。
+
+    兼容保留（octo-design-zip/1 时代的 MD 直传链路，现已无调用方；design_system_md.parse_md
+    容错版永不抛错）。zip 上传链路请用 dzip.build_design_data（tokens.json 为唯一数据源）。
+    """
     try:
         text = content.decode("utf-8")
     except UnicodeDecodeError as e:
@@ -435,8 +439,10 @@ def replace_assets_dir(slug: str, src_assets_dir: str) -> Optional[str]:
 def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skill_zip_rel: Optional[str] = None) -> dict:
     """zip 字节 → 解析 + 校验 + 全部文件落盘。导入主流程（create 与重传共用）。
 
-    - 三件套必须齐全（DESIGN.md / assets / 附件 .zip），缺失一次性列全 → ZipPackageError；
-      三件套之外的条目丢弃不落盘（dzip.locate_root_entries 打印丢弃清单日志）
+    - 四件套必须齐全（DESIGN.md / assets / 附件 .zip / tokens.json），缺失一次性列全 → ZipPackageError；
+      四件套之外的条目丢弃不落盘（dzip.locate_root_entries 打印丢弃清单日志）
+    - design-system.json 本体 = tokens.json 字段原样 + overview.markdown（DESIGN.md 全文，
+      概览原样展示）+ components/patterns（assets 扫描）；tokens.json 非法 JSON → 400
     - existing_slug 为空：新增（slug 后端随机生成，全新目录）
     - existing_slug 非空：重传（目录复用，design-system.json/source.zip/source.md/
       附件/assets 全量替换；封面/图标/作者/调用量等管理字段由路由层保留）
@@ -444,9 +450,9 @@ def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skil
       新内容落盘成功后按此路径清理旧文件（校验失败时零写入，旧文件不受影响）
     - 附件不强制命名：DESIGN.md 同级任意 .zip（dzip.locate_root_entries 识别），
       保留原文件名落盘；与保留文件（source.zip 等）冲突在 locate 阶段即拒绝
-    - 校验（zip 安全 + 三件套 + DESIGN.md 结构）失败抛 ValueError，此时不落任何文件
+    - 校验（zip 安全 + 四件套 + tokens.json JSON 语法 + skill 附件）失败抛 ValueError，此时不落任何文件
 
-    返回 {"data": design-system.json dict, "slug": 落盘 slug, "source_slug": MD id,
+    返回 {"data": design-system.json dict, "slug": 落盘 slug, "source_slug": tokens.json 的 id（预留）或 slug,
           "source_md_rel": …, "source_zip_rel": …, "skill_zip_rel": …或 None,
           "skill_name": 附件 SKILL.md 的 name 或 None, "zip_size": n}
     """
@@ -454,12 +460,11 @@ def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skil
     dzip.validate_zip_bytes(content)
     with tempfile.TemporaryDirectory(prefix="ds-import-") as tmp:
         dzip.extract_zip(content, tmp)
-        root, skill_path, skill_name = dzip.locate_root_entries(tmp)
+        root, skill_path, skill_name, tokens_path = dzip.locate_root_entries(tmp)
 
-        data = dzip.parse_md_root(root)
-        dzip.merge_assets(data, root)
-        # DESIGN.md 内容零校验：尽力提取（frontmatter 缺→元数据空；章节块坏→跳过），
-        # 完全不可解码 → 空 dict；展示端渲染空态，入库不拦
+        # design-system.json 本体：tokens.json 原样 + overview.markdown（DESIGN.md 全文）+ assets 合并
+        # （与 parse 预览共用 dzip.build_design_data，口径结构性一致）
+        data = dzip.build_design_data(root, tokens_path)
         # 附件 skill 包解析（严格：缺根级 SKILL.md / 缺 name → ZipPackageError → 400）；
         # 放在所有落盘之前，失败时零写入（对齐既有校验约定）
         skill_display_name = dzip.extract_skill_name(skill_path) if skill_path else None

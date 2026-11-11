@@ -1,22 +1,26 @@
-"""设计系统 zip 包解析服务（octo-design-zip/1 格式）。
+"""设计系统 zip 包解析服务（octo-design-zip/2 格式）。
 
-zip 结构（requirement/1.md）——三件套必须齐全，其余条目丢弃：
+zip 结构——四件套必须齐全，其余条目丢弃：
     xxx.zip
     ├─ assets/            必须（目录条目存在即可，内含 components/patterns 递归目录 → html）
-    ├─ DESIGN.md          必须（设计展示页数据，复用 design_system_md 解析）
-    └─ skill-design.zip   必须（附件 skill 包：第一层须含 SKILL.md，name 入库 skill_name；原样落盘）
-    （三件套之外的文件/目录：不落盘、不报错，info 日志打印丢弃清单；支持单层包裹目录布局）
+    ├─ DESIGN.md          必须（**原文原样**进概览：overview.markdown，模板 markdown 渲染，不再机器解析）
+    ├─ skill-design.zip   必须（附件 skill 包：第一层须含 SKILL.md，name 入库 skill_name；原样落盘）
+    └─ tokens.json        必须（**唯一数据源**：分组结构原样保留；非法 JSON / 顶层非对象 → 400，
+                           分组缺失 → 模板空态）
+    （四件套之外的文件/目录：不落盘、不报错，info 日志打印丢弃清单；支持单层包裹目录布局）
 
 职责：
-- 安全校验：zip slip（`..`/绝对路径/反斜杠/symlink）、zip bomb（条目数/解压总大小/压缩比）
+- 安全校验：zip slip（`..`/绝对路径/反斜杠/symlink）、zip bomb（条目数/解压总大小/压缩比）、
+  同名冲突条目（目录/文件同名及大小写变体）
 - 解压到临时目录（zip 字节先写临时文件再解压，对齐需求「先 zip 落盘，再解压」）
-- 定位 DESIGN.md / skill-design.zip（支持单层包裹目录：根下唯一目录时向内找一层）
+- 定位四件套（支持单层包裹目录：根下唯一目录时向内找一层）
+- build_design_data：tokens.json 原样 + overview.markdown（DESIGN.md 全文）+ assets 合并
+  （parse 预览与 import 入库共用，口径结构性一致）
 - 附件 skill 包严格校验并解析：第一层 SKILL.md 的 frontmatter name → skill_name
   （缺 SKILL.md / 缺 name → ZipPackageError，预览与上传一致拦截）
 - 递归扫描 assets/components、assets/patterns → 目录树（层级保留在 group 字段），
   叶子 html 按 template.html 既有协议生成 components/patterns 区块（内嵌 html 源码，
   模板 sandbox iframe 直接 srcdoc 渲染；同目录 css/scss 一并内嵌）
-- DESIGN.md 解析产物（design_system_md.parse_md）与本区块合并为最终 design-system.json dict
 
 解析失败抛 ZipPackageError(ValueError)（路由层转 400）。
 """
@@ -196,16 +200,17 @@ def _list_rel(root: str) -> List[str]:
     return sorted(out)
 
 
-def locate_root_entries(dest_dir: str) -> Tuple[str, Optional[str], Optional[str]]:
-    """定位有效根（DESIGN.md 所在层），返回 (有效根绝对路径, 附件绝对路径或 None, 附件原文件名或 None)。
+def locate_root_entries(dest_dir: str) -> Tuple[str, Optional[str], Optional[str], Optional[str]]:
+    """定位有效根（DESIGN.md 所在层），返回 (有效根绝对路径, 附件绝对路径, 附件原文件名, tokens.json 路径)。
 
     - 支持两种布局：entry 直接在 zip 根；或根下有**唯一目录**（打包工具常见包裹目录）时向内一层
-      ——根下散文件不破坏包裹判定（三件套之外的内容一律丢弃）
-    - **三件套校验**（缺任一 → ZipPackageError，一次性列全缺失项；入库与预览一致拦截）：
+      ——根下散文件不破坏包裹判定（四件套之外的内容一律丢弃）
+    - **四件套校验**（缺任一 → ZipPackageError，一次性列全缺失项；入库与预览一致拦截）：
       ① DESIGN.md；② assets/ 目录（目录条目存在即放行，可为空）；③ 附件 .zip（DESIGN.md 同级
-      **任意 .zip**，不强制命名；多个时取名称排序第一个；文件名保留原名落盘）
+      **任意 .zip**，不强制命名；多个时取名称排序第一个；文件名保留原名落盘）；④ tokens.json
+      （DESIGN.md 同级，文件名固定；**唯一数据源**——非法 JSON → 400，分组结构零校验）
     - 附件名与保留文件（source.zip 等）冲突直接拒绝（防顶掉 zip 原件）
-    - 三件套之外的文件/目录：丢弃不落盘（info 日志打印清单，便于排查）
+    - 四件套之外的文件/目录：丢弃不落盘（info 日志打印清单，便于排查）
     """
     root = dest_dir
     if "DESIGN.md" not in _list_rel(root):
@@ -218,7 +223,7 @@ def locate_root_entries(dest_dir: str) -> Tuple[str, Optional[str], Optional[str
                 root = candidate
     files = _list_rel(root)
     if "DESIGN.md" not in files:
-        raise ZipPackageError("zip 包内缺少 DESIGN.md（应在 zip 根目录或唯一包裹目录内，octo-design-md/1 格式）")
+        raise ZipPackageError("zip 包内缺少 DESIGN.md（应在 zip 根目录或唯一包裹目录内）")
     root_zips = sorted(f for f in files if "/" not in f and f.lower().endswith(".zip"))
     skill_path = os.path.join(root, root_zips[0]) if root_zips else None
     skill_name = root_zips[0] if root_zips else None
@@ -226,29 +231,74 @@ def locate_root_entries(dest_dir: str) -> Tuple[str, Optional[str], Optional[str
         raise ZipPackageError("附件文件名「%s」与系统保留文件（%s）冲突，请重命名后重新打包"
                               % (skill_name, " / ".join(sorted(RESERVED_SKILL_NAMES))))
 
-    # 三件套校验：DESIGN.md 已确认；assets 目录（isdir，空目录条目放行）与附件缺失一次性列全
+    # 四件套校验：DESIGN.md 已确认；assets / 附件 / tokens.json 缺失一次性列全
+    tokens_path = os.path.join(root, "tokens.json") if "tokens.json" in files else None
     missing = []
     if not os.path.isdir(os.path.join(root, "assets")):
         missing.append("assets/ 目录")
     if not skill_path:
         missing.append("附件 .zip（skill 包，与 DESIGN.md 同级）")
+    if not tokens_path:
+        missing.append("tokens.json（与 DESIGN.md 同级，唯一数据源）")
     if missing:
-        msg = "zip 包缺少：%s（三件套 DESIGN.md / assets / 附件 .zip 必须齐全，缺一不可入库）" % "、".join(missing)
-        logger.warning("[zip-import] 三件套校验失败：%s", msg)
+        msg = "zip 包缺少：%s（四件套 DESIGN.md / assets / 附件 .zip / tokens.json 必须齐全，缺一不可入库）" % "、".join(missing)
+        logger.warning("[zip-import] 四件套校验失败：%s", msg)
         raise ZipPackageError(msg)
 
-    # 三件套之外的条目：丢弃不落盘（记录清单，便于排查「为什么我的文件没进去」）
+    # 四件套之外的条目：丢弃不落盘（记录清单，便于排查「为什么我的文件没进去」）
     discarded = [
         f for f in files
-        if f != "DESIGN.md" and f != skill_name and not f.startswith("assets/")
+        if f != "DESIGN.md" and f != skill_name and f != "tokens.json" and not f.startswith("assets/")
     ]
     if discarded:
-        logger.info("[zip-import] 三件套命中：DESIGN.md + assets/ + 附件 %s；丢弃 %d 个三件套之外的条目：%s%s",
+        logger.info("[zip-import] 四件套命中：DESIGN.md + assets/ + 附件 %s + tokens.json；丢弃 %d 个四件套之外的条目：%s%s",
                     skill_name, len(discarded), "、".join(discarded[:20]),
                     "…（共 %d 个）" % len(discarded) if len(discarded) > 20 else "")
     else:
-        logger.info("[zip-import] 三件套命中：DESIGN.md + assets/ + 附件 %s（无多余条目）", skill_name)
-    return root, skill_path, skill_name
+        logger.info("[zip-import] 四件套命中：DESIGN.md + assets/ + 附件 %s + tokens.json（无多余条目）", skill_name)
+    return root, skill_path, skill_name, tokens_path
+
+
+def read_tokens_json(path: str) -> Dict:
+    """读 tokens.json → dict。**唯一数据源**：JSON 语法错误是硬错误 → ZipPackageError（400）。
+
+    分组结构零校验（color/typography/… 缺失 → 模板渲染空态）；顶层必须是 JSON 对象。
+    """
+    with open(path, "rb") as f:
+        raw = f.read()
+    try:
+        text = raw.decode("utf-8-sig")  # 容忍 BOM
+    except UnicodeDecodeError as e:
+        raise ZipPackageError("tokens.json 必须是 UTF-8 文本：%s" % e)
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ZipPackageError("tokens.json 不是合法 JSON：%s" % e)
+    if not isinstance(data, dict):
+        raise ZipPackageError("tokens.json 顶层必须是 JSON 对象，收到：%s" % type(data).__name__)
+    return data
+
+
+def read_design_md_raw(root: str) -> str:
+    """读 DESIGN.md 全文原文（含 frontmatter），供概览原样展示（模板 markdown 渲染）。"""
+    with open(os.path.join(root, "DESIGN.md"), "rb") as f:
+        try:
+            return f.read().decode("utf-8")
+        except UnicodeDecodeError as e:
+            logger.warning("[zip-import] DESIGN.md 非 UTF-8（概览降级为空，不影响其余数据）：%s", e)
+            return ""
+
+
+def build_design_data(root: str, tokens_path: str) -> Dict:
+    """构造 design-system.json 本体（parse 预览与 import 入库共用，口径结构性一致）：
+
+    tokens.json 字段**原样保留** + `overview.markdown`（DESIGN.md 全文原文，模板原样渲染）
+    + components/patterns（assets 树扫描合并，与 tokens.json 的 key 天然不冲突）。
+    """
+    data = read_tokens_json(tokens_path)
+    data["overview"] = {"markdown": read_design_md_raw(root)}
+    merge_assets(data, root)
+    return data
 
 
 def extract_skill_name(skill_zip_path: str) -> str:
@@ -410,21 +460,6 @@ def build_assets_blocks(root: str) -> Tuple[Optional[Dict], Optional[Dict]]:
 
 # ─────────────────────────── 组装 ───────────────────────────
 
-def parse_md_root(root: str) -> Dict:
-    """读有效根下的 DESIGN.md → design-system.json 同构 dict（无 assets 区块）。
-
-    内容不校验、尽力提取（design_system_md.parse_md 容错：frontmatter 缺失→元数据空、
-    章节 JSON 块坏→跳过该章节）；完全不可解码（非 UTF-8）→ 降级空 dict，页面渲染空态。
-    """
-    with open(os.path.join(root, "DESIGN.md"), "rb") as f:
-        md_bytes = f.read()
-    try:
-        return design_system_md.parse_md(md_bytes.decode("utf-8"))
-    except UnicodeDecodeError as e:
-        logger.warning("[zip-import] DESIGN.md 非 UTF-8，无法解码（降级为空数据，页面将渲染空）：%s", e)
-        return {}
-
-
 def merge_assets(data: Dict, root: str) -> Tuple[Optional[Dict], Optional[Dict]]:
     """扫描有效根的 assets 目录，把 components/patterns 区块合并进 data（就地修改）。
 
@@ -468,9 +503,8 @@ def parse_zip_info(content: bytes) -> Dict:
     logger.info("[zip-parse] 开始解析：zip %d bytes", len(content))
     with tempfile.TemporaryDirectory(prefix="ds-zip-") as dest:
         extract_zip(content, dest)
-        root, skill_path, skill_name = locate_root_entries(dest)
-        data = parse_md_root(root)
-        merge_assets(data, root)
+        root, skill_path, skill_name, tokens_path = locate_root_entries(dest)
+        data = build_design_data(root, tokens_path)
         skill_size = os.path.getsize(skill_path) if skill_path else 0
         skill_display_name = extract_skill_name(skill_path) if skill_path else None
         content_b64 = None
@@ -484,14 +518,14 @@ def parse_zip_info(content: bytes) -> Dict:
         for it in comp_items + pat_items
         if it.get("group")
     })
-    logger.info("[zip-parse] 解析完成：slug=%s name=%s 组件=%d Pattern=%d skill_name=%s 附件=%s(%d bytes)",
-                data.get("id") or "", data.get("name") or "", len(comp_items), len(pat_items),
+    logger.info("[zip-parse] 解析完成：name=%s 组件=%d Pattern=%d skill_name=%s 附件=%s(%d bytes)",
+                str(data.get("name") or ""), len(comp_items), len(pat_items),
                 skill_display_name, skill_name, skill_size)
     return {
         "ds": data,
         "stats": {
-            "slug": data.get("id") or "",
-            "name": data.get("name") or "",
+            "slug": str(data.get("id") or ""),  # tokens.json 无 id 概念（预留：将来加 id 字段自动支持）
+            "name": str(data.get("name") or ""),
             "components": len(comp_items),
             "patterns": len(pat_items),
             "levels": levels,
