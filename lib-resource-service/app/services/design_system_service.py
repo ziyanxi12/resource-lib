@@ -39,35 +39,10 @@ COVERS_REL_DIR = "design-systems/covers"
 MAX_ICON_BYTES = 2 * 1024 * 1024
 ALLOWED_ICON_EXTS = {"jpg", "jpeg", "png", "webp", "svg"}
 ICONS_REL_DIR = "design-systems/icons"
-SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-REQUIRED_SECTIONS = ["color", "typography", "spacing", "radius", "shadow"]
 
 # slug 随机生成（后端分配，与 MD 内容解耦）：8 位 [a-z0-9] ≈ 2.8e12 组合
 SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 SLUG_LENGTH = 8
-
-
-def validate_design_system_json(data) -> list:
-    """校验 design-system.json 结构，返回错误列表（空 = 通过）"""
-    if not isinstance(data, dict):
-        return ["文件内容不是 JSON 对象"]
-
-    errors = []
-    slug = data.get("id")
-    if not isinstance(slug, str) or not slug:
-        errors.append("缺少 id 字段（作为系统唯一标识 slug）")
-    elif not SLUG_RE.match(slug):
-        errors.append("id「%s」格式非法：仅允许小写字母、数字、连字符，且以字母或数字开头" % slug)
-
-    name = data.get("name")
-    if not isinstance(name, str) or not name.strip():
-        errors.append("缺少 name 字段或为空")
-
-    has_section = any(isinstance(data.get(k), dict) and data.get(k) is not None for k in REQUIRED_SECTIONS)
-    if not has_section:
-        errors.append("缺少可展示的 token 区块（%s 至少一项）" % " / ".join(REQUIRED_SECTIONS))
-
-    return errors
 
 
 def normalize_cover(cover) -> str:
@@ -483,9 +458,8 @@ def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skil
 
         data = dzip.parse_md_root(root)
         dzip.merge_assets(data, root)
-        errors = validate_design_system_json(data)
-        if errors:
-            raise ValueError("；".join(errors))
+        # DESIGN.md 内容零校验：尽力提取（frontmatter 缺→元数据空；章节块坏→跳过），
+        # 完全不可解码 → 空 dict；展示端渲染空态，入库不拦
         # 附件 skill 包解析（严格：缺根级 SKILL.md / 缺 name → ZipPackageError → 400）；
         # 放在所有落盘之前，失败时零写入（对齐既有校验约定）
         skill_display_name = dzip.extract_skill_name(skill_path) if skill_path else None
@@ -515,7 +489,8 @@ def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skil
     return {
         "data": data,
         "slug": slug,
-        "source_slug": str(data.get("id") or ""),
+        # MD 的 id 可缺失/任意格式（仅展示/搜索/多版本追溯用，不参与 URL）→ 缺失回落 slug（对齐存量）
+        "source_slug": str(data.get("id") or "").strip() or slug,
         "source_md_rel": source_md_rel,
         "source_zip_rel": source_zip_rel,
         "skill_zip_rel": skill_zip_rel,

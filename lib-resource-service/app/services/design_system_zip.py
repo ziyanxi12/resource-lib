@@ -413,17 +413,16 @@ def build_assets_blocks(root: str) -> Tuple[Optional[Dict], Optional[Dict]]:
 def parse_md_root(root: str) -> Dict:
     """读有效根下的 DESIGN.md → design-system.json 同构 dict（无 assets 区块）。
 
-    解析失败抛 ZipPackageError；结构合法性（id/name/token 区块）由
-    design_system_service.validate_design_system_json 校验（解析与校验分离）。
+    内容不校验、尽力提取（design_system_md.parse_md 容错：frontmatter 缺失→元数据空、
+    章节 JSON 块坏→跳过该章节）；完全不可解码（非 UTF-8）→ 降级空 dict，页面渲染空态。
     """
     with open(os.path.join(root, "DESIGN.md"), "rb") as f:
         md_bytes = f.read()
     try:
         return design_system_md.parse_md(md_bytes.decode("utf-8"))
     except UnicodeDecodeError as e:
-        raise ZipPackageError("DESIGN.md 必须是 UTF-8 文本：%s" % e)
-    except ValueError as e:
-        raise ZipPackageError(str(e))
+        logger.warning("[zip-import] DESIGN.md 非 UTF-8，无法解码（降级为空数据，页面将渲染空）：%s", e)
+        return {}
 
 
 def merge_assets(data: Dict, root: str) -> Tuple[Optional[Dict], Optional[Dict]]:

@@ -140,8 +140,8 @@ async def parse_design_system_zip(
 ):
     """管理台「Zip 解析」预览页数据源：上传 zip → md 转 json + assets 树扫描结果。
 
-    校验同正式上传（zip 安全 + MD 解析 + design-system.json 结构）：
-    预览阶段即拦截不可入库的包（缺 token 区块等），对齐 api.md 契约。
+    校验同正式上传（zip 安全 + 三件套 + skill 附件）；DESIGN.md 内容零校验——
+    尽力提取（frontmatter 缺→元数据空、章节块坏→跳过、不可解码→空 dict），预览始终可返回。
     """
     _check_zip_ext(file.filename)
     content = await file.read()
@@ -149,9 +149,6 @@ async def parse_design_system_zip(
         result = dzip.parse_zip_info(content)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    errors = svc.validate_design_system_json(result["ds"])
-    if errors:
-        raise HTTPException(status_code=400, detail="；".join(errors))
     return result
 
 
@@ -285,9 +282,10 @@ async def _create_from_zip(
         raise HTTPException(status_code=400, detail=str(e))
 
     meta = svc.extract_meta(result["data"])
-    # 表单覆盖派生值
+    # 表单覆盖派生值；name 最终兜底 source_slug（= MD id 或 slug，必非空——DB 列 NOT NULL 且列表展示）
     if name and name.strip():
         meta["name"] = name.strip()
+    meta["name"] = (meta["name"] or "").strip() or result["source_slug"]
     if desc is not None and desc != "":
         meta["desc"] = desc
     if cover:

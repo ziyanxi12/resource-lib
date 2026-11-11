@@ -3,16 +3,24 @@
 移植自 design-system-demo/script/extract_design_md.py，输入输出契约不变：
 - 输入：MD 文本（YAML frontmatter + `## 章节 {#anchor}` 正文 + ```json design 代码块）
 - 输出：design-system.json 同构 dict（id/name/cover/overview/
-  color/typography/spacing/radius/shadow/coverage/meta），结构校验仍由
-  design_system_service.validate_design_system_json 完成（解析与校验分离）。
+  color/typography/spacing/radius/shadow/coverage/meta）。
 
-解析失败抛 ValueError（路由层转 400，detail 为错误说明）。
+**尽力提取，永不抛错**（DESIGN.md 内容不做任何校验）：
+- frontmatter 缺失/损坏 → 元数据降级为空 dict，章节数据照常提取
+- 某章节 json design 代码块 JSON 非法 → 跳过该章节（warning 日志），其余章节保留
+- 完全不可解码（非 UTF-8）由调用方（design_system_zip.parse_md_root）降级为空 dict
+
+注意：parse_frontmatter 本身仍抛 ValueError——skill 附件（SKILL.md）的严格校验
+（design_system_zip.extract_skill_name）依赖它，勿改。
 """
 
 import json
+import logging
 import re
 from collections import OrderedDict
 from typing import Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 # 展示端第一期支持的 token 区块（组件 / 资产 / 布局 Pattern 不在解析范围）
 SECTION_ANCHORS = ["color", "typography", "spacing", "radius", "shadow"]
@@ -113,12 +121,16 @@ def doc_note(text: str) -> str:
 
 
 def parse_md(md_text: str) -> Dict:
-    """DESIGN.md（octo-design-md/1）→ design-system.json 同构 dict。
+    """DESIGN.md（octo-design-md/1）→ design-system.json 同构 dict（尽力提取，永不抛错）。
 
-    抛 ValueError：缺 frontmatter / json design 代码块 JSON 非法。
-    结构合法性（id/name/token 区块）由 validate_design_system_json 校验。
+    - frontmatter 缺失/损坏 → 元数据全空（id/name/cover/…），章节数据照常提取
+    - 章节 json design 代码块 JSON 非法 → 跳过该章节（warning），其余章节保留
     """
-    fm = parse_frontmatter(md_text)
+    try:
+        fm = parse_frontmatter(md_text)
+    except ValueError as e:
+        logger.warning("[zip-import] DESIGN.md frontmatter 缺失/损坏（元数据降级为空）：%s", e)
+        fm = OrderedDict()
     sections = split_sections(md_text)
 
     def sec_with_meta(anchor: str) -> Optional[dict]:
@@ -149,7 +161,11 @@ def parse_md(md_text: str) -> Dict:
     # ── 五个 token 区块（组件 / 资产 / 布局 Pattern 不解析）──
     for anchor in SECTION_ANCHORS:
         if anchor in sections:
-            sec = sec_with_meta(anchor)
+            try:
+                sec = sec_with_meta(anchor)
+            except ValueError as e:
+                logger.warning("[zip-import] DESIGN.md 章节「%s」JSON 块非法（跳过该章节）：%s", anchor, e)
+                continue
             if sec is not None:
                 out[anchor] = sec
 
