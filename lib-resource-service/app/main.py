@@ -7,9 +7,10 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
@@ -205,6 +206,14 @@ app.add_middleware(SearchLogMiddleware)
 app.add_middleware(AuthMiddleware)
 # 访问日志放最后注册 = 最外层，耗时统计含认证全链路
 app.add_middleware(AccessLogMiddleware)
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_to_log(request: Request, exc: Exception):
+    """未捕获异常（500）：traceback 记入 logs/app.txt（与业务过程日志同文件，便于定位），
+    响应体保持默认的 Internal Server Error（不泄漏内部信息）；uvicorn 控制台仍会照常输出。"""
+    logger.error("[500] 未捕获异常：%s %s — %r", request.method, request.url.path, exc, exc_info=exc)
+    return JSONResponse(status_code=500, content={"detail": "Internal Server Error"})
 
 
 # svg 静态文件加 CSP 响应头（禁脚本执行），与保存时的 sanitize_svg 双保险防 XSS

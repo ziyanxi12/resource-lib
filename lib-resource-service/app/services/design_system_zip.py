@@ -1,12 +1,11 @@
 """设计系统 zip 包解析服务（octo-design-zip/1 格式）。
 
-zip 结构（requirement/1.md）：
+zip 结构（requirement/1.md）——三件套必须齐全，其余条目丢弃：
     xxx.zip
-    ├─ assets/
-    │  ├─ components/     递归目录 → html 文件（html 文件名 = 组件名）
-    │  └─ patterns/       递归目录 → html 文件
-    ├─ DESIGN.md          设计展示页数据（复用 design_system_md 解析）
-    └─ skill-design.zip   附件（skill 包：第一层须含 SKILL.md，name 入库 skill_name；原样落盘可经 /static 下载）
+    ├─ assets/            必须（目录条目存在即可，内含 components/patterns 递归目录 → html）
+    ├─ DESIGN.md          必须（设计展示页数据，复用 design_system_md 解析）
+    └─ skill-design.zip   必须（附件 skill 包：第一层须含 SKILL.md，name 入库 skill_name；原样落盘）
+    （三件套之外的文件/目录：不落盘、不报错，info 日志打印丢弃清单；支持单层包裹目录布局）
 
 职责：
 - 安全校验：zip slip（`..`/绝对路径/反斜杠/symlink）、zip bomb（条目数/解压总大小/压缩比）
@@ -25,6 +24,7 @@ zip 结构（requirement/1.md）：
 import base64
 import io
 import json
+import logging
 import os
 import re
 import shutil
@@ -37,6 +37,8 @@ from typing import Dict, List, Optional, Tuple
 
 from app.config import settings
 from app.services import design_system_md
+
+logger = logging.getLogger(__name__)
 
 # ─────────────────────────── 限额与常量 ───────────────────────────
 
@@ -173,27 +175,55 @@ def _list_rel(root: str) -> List[str]:
 def locate_root_entries(dest_dir: str) -> Tuple[str, Optional[str], Optional[str]]:
     """定位有效根（DESIGN.md 所在层），返回 (有效根绝对路径, 附件绝对路径或 None, 附件原文件名或 None)。
 
-    - 支持两种布局：entry 直接在 zip 根；或根下只有一个目录（打包工具常见包裹目录）时向内一层
-    - 附件不强制命名（v2 需求）：DESIGN.md 同级（有效根第一层）**任意 .zip 文件**即视为
-      skill 附件；多个时取名称排序第一个；文件名保留原名落盘
+    - 支持两种布局：entry 直接在 zip 根；或根下有**唯一目录**（打包工具常见包裹目录）时向内一层
+      ——根下散文件不破坏包裹判定（三件套之外的内容一律丢弃）
+    - **三件套校验**（缺任一 → ZipPackageError，一次性列全缺失项；入库与预览一致拦截）：
+      ① DESIGN.md；② assets/ 目录（目录条目存在即放行，可为空）；③ 附件 .zip（DESIGN.md 同级
+      **任意 .zip**，不强制命名；多个时取名称排序第一个；文件名保留原名落盘）
     - 附件名与保留文件（source.zip 等）冲突直接拒绝（防顶掉 zip 原件）
+    - 三件套之外的文件/目录：丢弃不落盘（info 日志打印清单，便于排查）
     """
     root = dest_dir
     if "DESIGN.md" not in _list_rel(root):
+        # 包裹目录判定：只看根下的目录（散文件属丢弃项，不参与判定）；多目录不向内（歧义）
         tops = {f.split("/")[0] for f in _list_rel(root)}
-        if len(tops) == 1:
-            candidate = os.path.join(dest_dir, next(iter(tops)))
-            if os.path.isdir(candidate) and "DESIGN.md" in _list_rel(candidate):
+        top_dirs = [t for t in sorted(tops) if os.path.isdir(os.path.join(root, t))]
+        if len(top_dirs) == 1:
+            candidate = os.path.join(dest_dir, top_dirs[0])
+            if "DESIGN.md" in _list_rel(candidate):
                 root = candidate
     files = _list_rel(root)
     if "DESIGN.md" not in files:
-        raise ZipPackageError("zip 包内缺少 DESIGN.md（应在 zip 根目录，octo-design-md/1 格式）")
+        raise ZipPackageError("zip 包内缺少 DESIGN.md（应在 zip 根目录或唯一包裹目录内，octo-design-md/1 格式）")
     root_zips = sorted(f for f in files if "/" not in f and f.lower().endswith(".zip"))
     skill_path = os.path.join(root, root_zips[0]) if root_zips else None
     skill_name = root_zips[0] if root_zips else None
     if skill_name and skill_name.lower() in RESERVED_SKILL_NAMES:
         raise ZipPackageError("附件文件名「%s」与系统保留文件（%s）冲突，请重命名后重新打包"
                               % (skill_name, " / ".join(sorted(RESERVED_SKILL_NAMES))))
+
+    # 三件套校验：DESIGN.md 已确认；assets 目录（isdir，空目录条目放行）与附件缺失一次性列全
+    missing = []
+    if not os.path.isdir(os.path.join(root, "assets")):
+        missing.append("assets/ 目录")
+    if not skill_path:
+        missing.append("附件 .zip（skill 包，与 DESIGN.md 同级）")
+    if missing:
+        msg = "zip 包缺少：%s（三件套 DESIGN.md / assets / 附件 .zip 必须齐全，缺一不可入库）" % "、".join(missing)
+        logger.warning("[zip-import] 三件套校验失败：%s", msg)
+        raise ZipPackageError(msg)
+
+    # 三件套之外的条目：丢弃不落盘（记录清单，便于排查「为什么我的文件没进去」）
+    discarded = [
+        f for f in files
+        if f != "DESIGN.md" and f != skill_name and not f.startswith("assets/")
+    ]
+    if discarded:
+        logger.info("[zip-import] 三件套命中：DESIGN.md + assets/ + 附件 %s；丢弃 %d 个三件套之外的条目：%s%s",
+                    skill_name, len(discarded), "、".join(discarded[:20]),
+                    "…（共 %d 个）" % len(discarded) if len(discarded) > 20 else "")
+    else:
+        logger.info("[zip-import] 三件套命中：DESIGN.md + assets/ + 附件 %s（无多余条目）", skill_name)
     return root, skill_path, skill_name
 
 
@@ -412,6 +442,7 @@ def parse_zip_info(content: bytes) -> Dict:
     超限省略（前端提示入库后经 skill_zip_url 下载）。filename 为附件原文件名（不强制命名）。
     """
     validate_zip_bytes(content)
+    logger.info("[zip-parse] 开始解析：zip %d bytes", len(content))
     with tempfile.TemporaryDirectory(prefix="ds-zip-") as dest:
         extract_zip(content, dest)
         root, skill_path, skill_name = locate_root_entries(dest)
@@ -430,6 +461,9 @@ def parse_zip_info(content: bytes) -> Dict:
         for it in comp_items + pat_items
         if it.get("group")
     })
+    logger.info("[zip-parse] 解析完成：slug=%s name=%s 组件=%d Pattern=%d skill_name=%s 附件=%s(%d bytes)",
+                data.get("id") or "", data.get("name") or "", len(comp_items), len(pat_items),
+                skill_display_name, skill_name, skill_size)
     return {
         "ds": data,
         "stats": {

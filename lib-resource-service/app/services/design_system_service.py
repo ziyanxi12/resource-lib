@@ -15,6 +15,7 @@
 """
 
 import json
+import logging
 import os
 import re
 import secrets
@@ -25,6 +26,8 @@ from typing import Dict, List, Optional, Tuple
 from app.config import settings
 from app.services import design_system_md
 from app.services import design_system_zip as dzip
+
+logger = logging.getLogger(__name__)
 
 BUILTIN_COVERS = ["cover-blue.jpg", "cover-cyan.jpg", "cover-purple.jpg", "cover-violet.jpg"]
 DEFAULT_COVER = "cover-cyan.jpg"
@@ -457,19 +460,22 @@ def replace_assets_dir(slug: str, src_assets_dir: str) -> Optional[str]:
 def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skill_zip_rel: Optional[str] = None) -> dict:
     """zip 字节 → 解析 + 校验 + 全部文件落盘。导入主流程（create 与重传共用）。
 
+    - 三件套必须齐全（DESIGN.md / assets / 附件 .zip），缺失一次性列全 → ZipPackageError；
+      三件套之外的条目丢弃不落盘（dzip.locate_root_entries 打印丢弃清单日志）
     - existing_slug 为空：新增（slug 后端随机生成，全新目录）
     - existing_slug 非空：重传（目录复用，design-system.json/source.zip/source.md/
       附件/assets 全量替换；封面/图标/作者/调用量等管理字段由路由层保留）
-    - old_skill_zip_rel：重传时 DB 列记录的旧附件路径；新附件名不同或新包无附件时，
+    - old_skill_zip_rel：重传时 DB 列记录的旧附件路径；新附件名不同时，
       新内容落盘成功后按此路径清理旧文件（校验失败时零写入，旧文件不受影响）
     - 附件不强制命名：DESIGN.md 同级任意 .zip（dzip.locate_root_entries 识别），
       保留原文件名落盘；与保留文件（source.zip 等）冲突在 locate 阶段即拒绝
-    - 校验（zip 安全 + DESIGN.md 结构）失败抛 ValueError，此时不落任何文件
+    - 校验（zip 安全 + 三件套 + DESIGN.md 结构）失败抛 ValueError，此时不落任何文件
 
     返回 {"data": design-system.json dict, "slug": 落盘 slug, "source_slug": MD id,
           "source_md_rel": …, "source_zip_rel": …, "skill_zip_rel": …或 None,
           "skill_name": 附件 SKILL.md 的 name 或 None, "zip_size": n}
     """
+    logger.info("[zip-import] 开始导入：%s，zip %d bytes", "重传 slug=%s" % existing_slug if existing_slug else "新增", len(content))
     dzip.validate_zip_bytes(content)
     with tempfile.TemporaryDirectory(prefix="ds-import-") as tmp:
         dzip.extract_zip(content, tmp)
@@ -495,6 +501,17 @@ def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skil
         if existing_slug and old_skill_zip_rel and old_skill_zip_rel != skill_zip_rel:
             remove_skill_zip(old_skill_zip_rel)
 
+    # 落盘概览（500 排查：即使后续 DB 步骤失败，也能从这里还原文件落到了哪）
+    assets_dir = os.path.join(settings.FILE_ROOT_DIR, assets_rel_path(slug))
+    assets_count = sum(len(fs) for _, _, fs in os.walk(assets_dir)) if os.path.isdir(assets_dir) else 0
+    logger.info(
+        "[zip-import] 落盘完成：slug=%s source_slug=%s skill_name=%s；"
+        "json=%dB source.md=%dB source.zip=%dB 附件=%s assets=%d 个文件",
+        slug, str(data.get("id") or ""), skill_display_name,
+        os.path.getsize(os.path.join(settings.FILE_ROOT_DIR, rel_path(slug))),
+        os.path.getsize(os.path.join(settings.FILE_ROOT_DIR, source_md_rel)),
+        len(content), skill_zip_rel, assets_count,
+    )
     return {
         "data": data,
         "slug": slug,
