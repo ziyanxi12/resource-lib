@@ -411,6 +411,7 @@ async def patch_design_system(
     desc: Optional[str] = Form(None),
     author: Optional[str] = Form(None, description="作者，JSON 数组字符串 [{account, nick_name, dept}]；空数组清空作者"),
     usage: Optional[str] = Form(None),
+    views: Optional[str] = Form(None, description="预览量修正通道（仅 API 层，界面无编辑入口）；非负整数、整字段覆盖"),
     default: Optional[str] = Form(None),
     cover_file: Optional[UploadFile] = File(None, description="可选新封面（jpg/png/webp ≤2MB）；不上传则保留现有封面"),
     icon_file: Optional[UploadFile] = File(None, description="可选新图标（jpg/png/webp/svg ≤2MB）；不上传则保留现有图标"),
@@ -433,6 +434,14 @@ async def patch_design_system(
         try:
             row.usage = svc.parse_form_int(usage)
             detail["usage"] = row.usage
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+    if views is not None and views.strip() != "":
+        try:
+            row.views = svc.parse_form_int(views, "预览量")
+            if row.views < 0:
+                raise ValueError("预览量必须为非负整数")
+            detail["views"] = row.views
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
     if cover_file is not None:
@@ -597,6 +606,40 @@ def events_refresh_identity(body: RefreshIdentityBody, db: Session = Depends(get
     """
     from app.services import ds_stats_service as stats
     return stats.refresh_event_identities(db, accounts=body.accounts)
+
+
+# ─────────────────────────── 7d. 预览量纠正（公开维护） ───────────────────────────
+
+class CorrectViewsBody(BaseModel):
+    slug: str = Field(..., min_length=1, description="设计系统 slug")
+    views: int = Field(..., ge=0, description="纠正后的预览量（非负整数，绝对值覆盖）")
+
+
+@router.post("/views/correct")
+def correct_views(body: CorrectViewsBody, request: Request, db: Session = Depends(get_db)):
+    """预览量纠正（公开维护接口，免登录态）：手动修正历史错误数据的运维通道。
+
+    - 与 PATCH 的 `views` 修正字段同语义：非负整数、**整字段覆盖**（绝对值，非增量）
+    - **完全公开**（在登录过期豁免清单内）——只开放「纠正预览量」这一个动作；PATCH 等
+      管理写操作仍需登录态。无 X-User-Data 时操作日志记 unknown、updated_by 不动；
+      携带则记实际操作人
+    - 软删/不存在的 slug → 404
+    """
+    row = (
+        db.query(DesignSystem)
+        .filter(DesignSystem.slug == body.slug.strip(), DesignSystem.is_deleted == 0)
+        .first()
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="设计系统「%s」不存在" % body.slug)
+    row.views = body.views
+    account, _ = get_operator(request)
+    if account and account != "unknown":
+        row.updated_by = account
+    db.commit()
+    db.refresh(row)
+    _log(db, request, "update_meta", row, {"views": body.views, "channel": "views/correct"})
+    return {"slug": row.slug, "views": row.views}
 
 
 # ─────────────────────────── 7a. 预览量自增 ───────────────────────────
