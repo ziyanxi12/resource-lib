@@ -5,8 +5,9 @@ zip 结构——四件套必须齐全，其余条目丢弃：
     ├─ assets/            必须（目录条目存在即可，内含 components/patterns 递归目录 → html）
     ├─ DESIGN.md          必须（**原文原样**进概览：overview.markdown，模板 markdown 渲染，不再机器解析）
     ├─ skill-design.zip   必须（附件 skill 包：第一层须含 SKILL.md，name 入库 skill_name；原样落盘）
-    └─ tokens.json        必须（**唯一数据源**：分组结构原样保留；非法 JSON / 顶层非对象 → 400，
-                           分组缺失 → 模板空态）
+    └─ tokens.json        必须（**唯一数据源**：转换为老 design-system.json 区块结构——模板与
+                           存量零改动；非法 JSON / 顶层非对象 → 400；fontScale 等装不进的分组
+                           顶层原样保留、暂不渲染）
     （四件套之外的文件/目录：不落盘、不报错，info 日志打印丢弃清单；支持单层包裹目录布局）
 
 职责：
@@ -14,8 +15,8 @@ zip 结构——四件套必须齐全，其余条目丢弃：
   同名冲突条目（目录/文件同名及大小写变体）
 - 解压到临时目录（zip 字节先写临时文件再解压，对齐需求「先 zip 落盘，再解压」）
 - 定位四件套（支持单层包裹目录：根下唯一目录时向内找一层）
-- build_design_data：tokens.json 原样 + overview.markdown（DESIGN.md 全文）+ assets 合并
-  （parse 预览与 import 入库共用，口径结构性一致）
+- build_design_data：tokens.json → 老 design-system.json 区块结构（convert_tokens_to_legacy）
+  + overview.markdown（DESIGN.md 全文）+ assets 合并（parse 预览与 import 入库共用，口径结构性一致）
 - 附件 skill 包严格校验并解析：第一层 SKILL.md 的 frontmatter name → skill_name
   （缺 SKILL.md / 缺 name → ZipPackageError，预览与上传一致拦截）
 - 递归扫描 assets/components、assets/patterns → 目录树（层级保留在 group 字段），
@@ -279,6 +280,181 @@ def read_tokens_json(path: str) -> Dict:
     return data
 
 
+def _first_theme_id(color: dict) -> str:
+    """颜色主题感知：取 themes[0].id（缺省 'light'）。多主题扩展点：将来出现 dark 等主题时，
+    token 形态扩展为 values 全量保留 + 模板主题切换器，改此入口即可。"""
+    themes = color.get("themes")
+    if isinstance(themes, list) and themes and isinstance(themes[0], dict) and themes[0].get("id"):
+        return str(themes[0]["id"])
+    return "light"
+
+
+def _theme_value(value, theme_id: str):
+    """value 是主题映射（{light: ...}）时取指定主题（缺则取首个）；普通单值原样返回。"""
+    if isinstance(value, dict):
+        if theme_id in value:
+            return value[theme_id]
+        for v in value.values():
+            return v
+        return ""
+    return value
+
+
+def _px_num(value):
+    """'8px' / '0' / '16' → float；解析失败返回 None。"""
+    s = str(value).strip()
+    if s.endswith("px"):
+        s = s[:-2]
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def convert_tokens_to_legacy(tokens: dict) -> dict:
+    """tokens.json（octo-design-zip/2 数据源）→ 老 design-system.json 区块结构。
+
+    模板与存量系统零改动：转换产物即模板原生渲染的老结构。
+    - color：tokens[].value 按主题映射 → 主题感知取首主题；themes 原样保留；
+      groups = [{title, tokens: [{name, token: usage, value, label: name}]}]
+    - type（families 映射 + groups[].styles）→ typography（families/weights/scale：
+      style → {name, size, lineHeight, weight, family: families[group.family], desc: group.name}）
+    - size → spacing、radius → radius（value 数值化）；shadow → shadow（value 原样 css 串）
+    - 装不进老结构的分组（fontScale/fontScaleRegular/opacity/other）：**顶层原样保留，暂不渲染**
+    - name/id（预留）/cover/version/meta：顶层原样
+    - 源分组缺 tokens / 空列表 → 对应区块不生成（模板渲染空态）
+    """
+    out = dict(tokens)  # 浅拷贝：多余分组与元数据原样保留
+
+    # ── 颜色 ──
+    color = tokens.get("color")
+    if isinstance(color, dict):
+        theme_id = _first_theme_id(color)
+        mapped = []
+        for t in color.get("tokens") or []:
+            if not isinstance(t, dict):
+                continue
+            mapped.append({
+                "name": str(t.get("name") or ""),
+                "token": str(t.get("usage") or ""),
+                "value": _theme_value(t.get("value"), theme_id),
+                "label": str(t.get("name") or ""),
+            })
+        if mapped:
+            out["color"] = {
+                "title": str(color.get("title") or "颜色"),
+                "desc": color.get("desc") or "",
+                "themes": color.get("themes") or [],
+                "groups": [{"title": "全部颜色", "desc": "", "tokens": mapped}],
+                "rules": color.get("rules") or [],
+            }
+        else:
+            out.pop("color", None)
+
+    # ── 字体：type → typography ──
+    if not isinstance(tokens.get("typography"), dict):
+        ty = tokens.get("type") if isinstance(tokens.get("type"), dict) else {}
+        families_map = ty.get("families") if isinstance(ty.get("families"), dict) else {}
+        families = [str(v) for v in families_map.values()]
+        scale, weights = [], []
+        for g in ty.get("groups") or []:
+            if not isinstance(g, dict):
+                continue
+            fam_key = str(g.get("family") or "")
+            for st in g.get("styles") or []:
+                if not isinstance(st, dict):
+                    continue
+                scale.append({
+                    "name": str(st.get("name") or ""),
+                    "size": _px_num(st.get("fontSize")) or 0,
+                    "lineHeight": _px_num(st.get("lineHeight")) or 0,
+                    "weight": st.get("fontWeight") or 400,
+                    "family": families_map.get(fam_key, fam_key) or "",
+                    "token": str(st.get("name") or ""),
+                    "desc": str(g.get("name") or ""),
+                })
+                w = str(st.get("fontWeight") or "")
+                if w and w not in weights:
+                    weights.append(w)
+        if families or scale:
+            out["typography"] = {
+                "title": str(ty.get("title") or "字体"),
+                "desc": ty.get("desc") or "",
+                "families": families,
+                "weights": weights,
+                "scale": scale,
+                "rules": ty.get("rules") or [],
+            }
+        else:
+            out.pop("typography", None)
+
+    # ── 间距：size → spacing（value 数值化）──
+    if not isinstance(tokens.get("spacing"), dict):
+        sz = tokens.get("size") if isinstance(tokens.get("size"), dict) else {}
+        mapped = []
+        for t in sz.get("tokens") or []:
+            if isinstance(t, dict):
+                mapped.append({
+                    "name": str(t.get("name") or ""),
+                    "value": _px_num(t.get("value")),
+                    "desc": t.get("usage") or "",
+                })
+        mapped = [t for t in mapped if t["value"] is not None]
+        if mapped:
+            out["spacing"] = {
+                "title": str(sz.get("title") or "间距"),
+                "desc": sz.get("desc") or "",
+                "tokens": mapped,
+                "rules": sz.get("rules") or [],
+            }
+        else:
+            out.pop("spacing", None)
+
+    # ── 圆角：radius（value 数值化）──
+    rad = tokens.get("radius")
+    if isinstance(rad, dict):
+        mapped = []
+        for t in rad.get("tokens") or []:
+            if not isinstance(t, dict):
+                continue
+            num = _px_num(t.get("value"))
+            if num is None:
+                continue
+            mapped.append({"name": str(t.get("name") or ""), "value": num, "desc": t.get("usage") or ""})
+        if mapped:
+            out["radius"] = {
+                "title": str(rad.get("title") or "圆角"),
+                "desc": rad.get("desc") or "",
+                "tokens": mapped,
+                "rules": rad.get("rules") or [],
+            }
+        else:
+            out.pop("radius", None)
+
+    # ── 阴影：shadow（value 原样 css 串）──
+    sh = tokens.get("shadow")
+    if isinstance(sh, dict):
+        mapped = []
+        for t in sh.get("tokens") or []:
+            if isinstance(t, dict):
+                mapped.append({
+                    "name": str(t.get("name") or ""),
+                    "value": str(t.get("value") or ""),
+                    "desc": t.get("usage") or "",
+                })
+        if mapped:
+            out["shadow"] = {
+                "title": str(sh.get("title") or "阴影"),
+                "desc": sh.get("desc") or "",
+                "tokens": mapped,
+                "rules": sh.get("rules") or [],
+            }
+        else:
+            out.pop("shadow", None)
+
+    return out
+
+
 def read_design_md_raw(root: str) -> str:
     """读 DESIGN.md 全文原文（含 frontmatter），供概览原样展示（模板 markdown 渲染）。"""
     with open(os.path.join(root, "DESIGN.md"), "rb") as f:
@@ -292,10 +468,11 @@ def read_design_md_raw(root: str) -> str:
 def build_design_data(root: str, tokens_path: str) -> Dict:
     """构造 design-system.json 本体（parse 预览与 import 入库共用，口径结构性一致）：
 
-    tokens.json 字段**原样保留** + `overview.markdown`（DESIGN.md 全文原文，模板原样渲染）
-    + components/patterns（assets 树扫描合并，与 tokens.json 的 key 天然不冲突）。
+    tokens.json → 老 design-system.json 区块结构（convert_tokens_to_legacy，模板原生渲染，
+    存量零影响）+ `overview.markdown`（DESIGN.md 全文原文，模板 markdown 渲染）
+    + components/patterns（assets 树扫描合并）。
     """
-    data = read_tokens_json(tokens_path)
+    data = convert_tokens_to_legacy(read_tokens_json(tokens_path))
     data["overview"] = {"markdown": read_design_md_raw(root)}
     merge_assets(data, root)
     return data
