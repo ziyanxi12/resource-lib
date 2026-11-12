@@ -463,8 +463,11 @@ def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skil
         root, skill_path, skill_name, tokens_path = dzip.locate_root_entries(tmp)
 
         # design-system.json 本体：tokens.json 原样 + overview.markdown（DESIGN.md 全文）+ assets 合并
-        # （与 parse 预览共用 dzip.build_design_data，口径结构性一致）
+        # （与 parse 预览共用 dzip.build_design_data，口径结构性一致；
+        #   落盘前 slim_for_storage 瘦身：展示端 iframe src 直连 /static，存储版只留路径不内嵌源码，
+        #   parse 预览响应保持全量——管理台解析页落盘前无 URL，只能靠内嵌 code 渲染）
         data = dzip.build_design_data(root, tokens_path)
+        dzip.slim_for_storage(data)
         # 附件 skill 包解析（严格：缺根级 SKILL.md / 缺 name → ZipPackageError → 400）；
         # 放在所有落盘之前，失败时零写入（对齐既有校验约定）
         skill_display_name = dzip.extract_skill_name(skill_path) if skill_path else None

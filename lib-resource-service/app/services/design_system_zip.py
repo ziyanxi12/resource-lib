@@ -52,6 +52,7 @@ MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024  # 解压后总大小上限（zip bom
 MAX_ZIP_ENTRIES = 5000                      # zip 内条目数上限（含目录）
 MAX_COMPRESS_RATIO = 100                    # 单文件压缩比上限（>100 且 >1MB 视为异常）
 MAX_EMBED_HTML_BYTES = 2 * 1024 * 1024      # 单个 html 内嵌 design-system.json 上限（超出只存路径）
+DEFAULT_ROW_HEIGHT = 160                    # items[].height 默认行高（展示端表格行预览高度，预留修正通道）
 MAX_SKILL_B64_BYTES = 50 * 1024 * 1024      # 附件经 parse 接口 base64 回传的上限（超出只回元信息）
 MAX_SKILL_MD_BYTES = 1024 * 1024            # 附件内 SKILL.md 读取上限（防 zip bomb，超出拒绝）
 MAX_SKILL_NAME_LEN = 255                    # SKILL.md frontmatter name 字段长度上限（对齐 DB 列宽）
@@ -592,6 +593,7 @@ def build_assets_blocks(root: str) -> Tuple[Optional[Dict], Optional[Dict]]:
                 ("name", " / ".join(it["group"] + [it["name"]]) if it["group"] else it["name"]),
                 ("desc", it["path"]),
                 ("group", it["group"]),
+                ("height", DEFAULT_ROW_HEIGHT),
                 ("source", OrderedDict([
                     ("status", "found"),
                     ("files", files),
@@ -615,6 +617,7 @@ def build_assets_blocks(root: str) -> Tuple[Optional[Dict], Optional[Dict]]:
                 ("name", display_name),
                 ("label", it["path"]),
                 ("group", it["group"]),
+                ("height", DEFAULT_ROW_HEIGHT),
             ]))
             html_file = _embed_file(it["html"], "html", it["path"])
             code = html_file.get("code")
@@ -653,6 +656,36 @@ def merge_assets(data: Dict, root: str) -> Tuple[Optional[Dict], Optional[Dict]]
     data["meta"] = data.get("meta") or OrderedDict()
     data["meta"]["source_file"] = "zip（DESIGN.md + assets）"
     return components, patterns
+
+
+def slim_for_storage(data: Dict) -> None:
+    """存储版 design-system.json 瘦身（只影响入库落盘；parse 预览响应保持全量不调用）。
+
+    展示端模板已改为 iframe src 直连 /static 资产（不再 srcdoc/内嵌源码渲染），
+    存储版只保留路径字段即可；管理台「Zip 解析」预览发生在落盘之前（无 URL 可直连），
+    仍依赖 parse 响应内嵌的 code/html 渲染：
+    - components：items[].source.files 只留 html 条目并去掉内嵌 code（css 条目随沙箱渲染一并废弃）
+    - patterns：view.cards[].states[*] 去掉内嵌 html（meta 已是 zip 内路径，展示端据此推 URL）
+    - overview：去掉内嵌 markdown（展示端概览 fetch source.md=design_md_url 落盘件）
+    - 其余字段（title/desc/items[].desc/items[].label/height 等）全部保留
+    """
+    overview = data.get("overview")
+    if isinstance(overview, dict):
+        overview.pop("markdown", None)
+    components = data.get("components") or {}
+    for it in components.get("items") or []:
+        source = it.get("source") or {}
+        files = source.get("files") or []
+        source["files"] = [
+            OrderedDict([("lang", f.get("lang")), ("path", f.get("path"))])
+            for f in files
+            if f.get("lang") == "html"
+        ]
+    patterns = data.get("patterns") or {}
+    for card in (patterns.get("view") or {}).get("cards") or []:
+        for state in (card.get("states") or {}).values():
+            if isinstance(state, dict):
+                state.pop("html", None)
 
 
 def parse_zip(content: bytes) -> Dict:
