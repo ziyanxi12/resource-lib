@@ -1,32 +1,36 @@
-"""设计系统 zip 包解析服务（octo-design-zip/2 格式）。
+"""设计系统五部件解析服务（octo-design-parts/1 格式）。
 
-zip 结构——四件套必须齐全，其余条目丢弃：
-    xxx.zip
-    ├─ assets/            必须（目录条目存在即可，内含 components/patterns 递归目录 → html）
-    ├─ DESIGN.md          必须（**原文原样**进概览：overview.markdown，模板 markdown 渲染，不再机器解析）
-    ├─ skill-design.zip   必须（附件 skill 包：第一层须含 SKILL.md，name 入库 skill_name；原样落盘）
-    └─ tokens.json        必须（**唯一数据源**：转换为老 design-system.json 区块结构——模板与
-                           存量零改动；非法 JSON / 顶层非对象 → 400；fontScale 等装不进的分组
-                           顶层原样保留、暂不渲染）
-    （四件套之外的文件/目录：不落盘、不报错，info 日志打印丢弃清单；支持单层包裹目录布局）
+五部件（multipart 各自独立上传、独立成败，失败部件忽略并回报错误）：
+    design_md    DESIGN.md 原文：UTF-8 校验后原样存 {slug}/source.md
+                 （展示端概览 fetch 后 markdown 渲染，不再机器解析）
+    tokens       tokens.json（唯一数据源）：UTF-8 + JSON 校验 → convert_tokens_to_legacy
+                 转 老 design-system.json 区块结构 + 原件存 {slug}/tokens.json
+    components   组件 zip：根须含 components/ 目录；扫描子目录层级 = group、
+                 html 文件名 = 组件名，落盘 {slug}/assets/components/**
+    patterns     Pattern zip：根须含 patterns/ 目录，同组件包规则，
+                 落盘 {slug}/assets/patterns/**
+    skill        skill 包 zip：第一层须含 SKILL.md（frontmatter name 入 skill_name），
+                 原样落盘 {slug}/{原文件名}
+
+components/patterns zip 兼容同名双层嵌套（components/components/按钮/Button.html）：
+locate_group_base 循环剥离同名子层后以最内层为扫描基目录（group/path 归一化，
+不含重复层）。
 
 职责：
-- 安全校验：zip slip（`..`/绝对路径/反斜杠/symlink）、zip bomb（条目数/解压总大小/压缩比）、
-  同名冲突条目（目录/文件同名及大小写变体）
-- 解压到临时目录（zip 字节先写临时文件再解压，对齐需求「先 zip 落盘，再解压」）
-- 定位四件套（支持单层包裹目录：根下唯一目录时向内找一层）
-- build_design_data：tokens.json → 老 design-system.json 区块结构（convert_tokens_to_legacy）
-  + overview.markdown（DESIGN.md 全文）+ assets 合并（parse 预览与 import 入库共用，口径结构性一致）
-- 附件 skill 包严格校验并解析：第一层 SKILL.md 的 frontmatter name → skill_name
-  （缺 SKILL.md / 缺 name → ZipPackageError，预览与上传一致拦截）
-- 递归扫描 assets/components、assets/patterns → 目录树（层级保留在 group 字段），
-  叶子 html 按 template.html 既有协议生成 components/patterns 区块（内嵌 html 源码，
-  模板 sandbox iframe 直接 srcdoc 渲染；同目录 css/scss 一并内嵌）
+- 安全校验：zip slip（`..`/绝对路径/反斜杠/symlink）、zip bomb（条目数/解压总大小/
+  压缩比）、同名冲突条目（目录/文件同名及大小写变体）
+- 打包垃圾静默丢弃：macOS/Windows 压缩工具产物（__MACOSX/、._* AppleDouble、
+  .DS_Store、Thumbs.db，含嵌套路径）不报错、不落盘、不参与解析——用户本机
+  「右键压缩」产生的 zip 必然携带，属正常现象而非非法内容
+- 解压到临时目录（zip 字节先写临时文件再解压，对齐需求「先落盘，再解压」）
+- 各部件独立校验 / 解析原语（本模块不落盘到 {slug}/，正式入库走
+  design_system_service.import_parts 编排）
+- components/patterns 区块按 template.html 既有协议生成（items[].height 固定 160）
+- skill 包严格校验：第一层 SKILL.md + frontmatter name 非空 ≤255 字符
 
-解析失败抛 ZipPackageError(ValueError)（路由层转 400）。
+解析失败抛 ZipPackageError(ValueError)（路由层转 400 / 部件级错误回报）。
 """
 
-import base64
 import io
 import json
 import logging
@@ -34,52 +38,68 @@ import os
 import re
 import shutil
 import tempfile
-import time
-import uuid
 import zipfile
 from collections import OrderedDict
 from typing import Dict, List, Optional, Tuple
 
-from app.config import settings
 from app.services import design_system_md
 
 logger = logging.getLogger(__name__)
 
 # ─────────────────────────── 限额与常量 ───────────────────────────
 
-MAX_ZIP_BYTES = 200 * 1024 * 1024           # 上传 zip 上限（与分片阈值配套，api.md 契约）
+MAX_ZIP_BYTES = 200 * 1024 * 1024           # 单部件上传上限（zip 部件；api.md 契约）
 MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024  # 解压后总大小上限（zip bomb 防护）
 MAX_ZIP_ENTRIES = 5000                      # zip 内条目数上限（含目录）
 MAX_COMPRESS_RATIO = 100                    # 单文件压缩比上限（>100 且 >1MB 视为异常）
 MAX_EMBED_HTML_BYTES = 2 * 1024 * 1024      # 单个 html 内嵌 design-system.json 上限（超出只存路径）
 DEFAULT_ROW_HEIGHT = 160                    # items[].height 默认行高（展示端表格行预览高度，预留修正通道）
-MAX_SKILL_B64_BYTES = 50 * 1024 * 1024      # 附件经 parse 接口 base64 回传的上限（超出只回元信息）
-MAX_SKILL_MD_BYTES = 1024 * 1024            # 附件内 SKILL.md 读取上限（防 zip bomb，超出拒绝）
+MAX_SKILL_MD_BYTES = 1024 * 1024            # skill 包内 SKILL.md 读取上限（防 zip bomb，超出拒绝）
 MAX_SKILL_NAME_LEN = 255                    # SKILL.md frontmatter name 字段长度上限（对齐 DB 列宽）
 
-CHUNK_SIZE = 5 * 1024 * 1024                # 每片 5MB（S3 multipart 同款下限）
-UPLOADS_REL_DIR = "design-systems/uploads"  # 分片临时目录（FILE_ROOT_DIR 下）
-UPLOAD_TTL_SECONDS = 24 * 3600              # 孤儿分片清理阈值
+# skill 包落盘时不得与 design-systems/{slug}/ 下的系统保留文件重名（大小写不敏感）
+RESERVED_SKILL_NAMES = {"source.zip", "source.md", "design-system.json", "tokens.json"}
 
-# 附件（DESIGN.md 同级任意 .zip）落盘时不得与 design-systems/{slug}/ 下
-# 的系统保留文件重名（source.zip 会被顶掉原件；其余防御性保留），大小写不敏感
-RESERVED_SKILL_NAMES = {"source.zip", "source.md", "design-system.json"}
-
-# macOS 打包垃圾与隐藏文件，直接跳过
-_JUNK_RE = re.compile(r"^(__MACOSX/|Thumbs\.db|\._|\.DS_Store)")
+# 部件 → 展示名（错误信息用）
+GROUP_LABEL = {"components": "组件", "patterns": "Pattern"}
 
 # Unix 文件类型位（external_attr 高 16 位）：拒绝 symlink/设备/管道/socket
 _FORBIDDEN_MODES = {0o120000, 0o140000, 0o060000, 0o020000, 0o010000}
 
 
+def _is_junk_entry(name: str) -> bool:
+    """macOS / Windows 打包垃圾条目：任一路径段为 `__MACOSX` / `.DS_Store` / `Thumbs.db`
+    / 以 `._` 开头（AppleDouble 资源叉伴随文件）。
+
+    用户本机「右键压缩」产生的 zip 必然携带（`__MACOSX/._components` 等），属正常现象
+    而非非法内容——一律**静默丢弃**：不报错、不落盘、不参与条目统计与扫描。
+    按路径段判断，覆盖顶层（`__MACOSX/…`）与嵌套（`components/.DS_Store`、
+    `components/按钮/._Button.html`）两种位置。
+    """
+    return any(
+        p == "__MACOSX" or p == ".DS_Store" or p == "Thumbs.db" or p.startswith("._")
+        for p in name.split("/")
+        if p
+    )
+
+
 class ZipPackageError(ValueError):
-    """zip 包结构/安全校验失败（路由层转 400，detail 为错误说明）"""
+    """zip 包结构/安全校验失败（路由层转 400 / 部件级错误回报）"""
 
 
 # ─────────────────────────── 安全校验与解压 ───────────────────────────
 
 def _normalize_name(raw: str) -> str:
-    """zip entry 名归一化：反斜杠转 /、去头部 ./、折叠连续 /。"""
+    """zip entry 名归一化：cp437→UTF-8 名字修正、反斜杠转 /、去头部 ./、折叠连续 /。"""
+    # Python zipfile 对未置 EFS 位（UTF-8 flag）的条目名按 cp437 解码——ditto（mac
+    # 命令行打包）及部分 Windows 工具产出「UTF-8 字节但未标记」的名字，中文名会变乱码
+    # （如「表单」→ 'Φí¿σìò'）→ 尝试还原为 UTF-8。正常 EFS 名（中文字符不在 cp437 里，
+    # encode 报错回落原样）、纯 ASCII（恒等）、真 cp437 西文名（通常非法 UTF-8，解码
+    # 报错回落原样）均不受影响。
+    try:
+        raw = raw.encode("cp437").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
     name = raw.replace("\\", "/")
     while name.startswith("./"):
         name = name[2:]
@@ -88,9 +108,11 @@ def _normalize_name(raw: str) -> str:
 
 
 def _validate_member(name: str, info: zipfile.ZipInfo) -> None:
-    """单个 entry 校验：路径注入与危险文件类型。失败抛 ZipPackageError。"""
-    if _JUNK_RE.match(name):
-        raise ZipPackageError("包含不支持的系统文件：%s" % name)
+    """单个 entry 校验：路径注入与危险文件类型。失败抛 ZipPackageError。
+
+    打包垃圾（__MACOSX/._* 等）不在此拦截——由 validate_zip_bytes / extract_zip
+    在调用前经 _is_junk_entry 静默过滤。
+    """
     if not name or name.startswith("/") or (len(name) > 1 and name[1] == ":"):
         raise ZipPackageError("zip 内不允许绝对路径：%s" % name)
     if ".." in name.split("/"):
@@ -115,10 +137,16 @@ def validate_zip_bytes(content: bytes) -> None:
             # 「Assets/」与「assets」也是同一路径）。同名（含大小写变体）既是目录又是文件 → 拒绝；
             # 否则解压时 open(目录路径) 会抛未捕获的 IsADirectoryError → 500。
             # 同名重复「文件」条目放行（后解压覆盖，无崩溃、语义明确）。
+            # 打包垃圾条目（__MACOSX/._* 等）静默跳过：不计数、不落盘、不参与冲突判定
+            # （垃圾永不落盘，与真实条目不可能产生文件系统冲突）。
             seen = {}  # casefold(归一化名，去尾斜杠) -> (归一化名, 是否目录)
             total = 0
+            junk = 0
             for info in infos:
                 name = _normalize_name(info.filename)
+                if _is_junk_entry(name):
+                    junk += 1
+                    continue
                 _validate_member(name, info)
                 key = name.casefold().rstrip("/")
                 prev = seen.get(key)
@@ -139,6 +167,8 @@ def validate_zip_bytes(content: bytes) -> None:
                         and info.compress_size > 0
                         and info.file_size > info.compress_size * MAX_COMPRESS_RATIO):
                     raise ZipPackageError("压缩比异常（疑似 zip bomb）：%s" % info.filename)
+            if junk:
+                logger.info("[zip-validate] 静默丢弃 %d 个打包垃圾条目（__MACOSX/ ._* / .DS_Store / Thumbs.db）", junk)
     except zipfile.BadZipFile as e:
         raise ZipPackageError("zip 包损坏：%s" % e)
 
@@ -152,6 +182,8 @@ def extract_zip(content: bytes, dest_dir: str) -> None:
         with zipfile.ZipFile(tmp_path) as zf:
             for info in zf.infolist():
                 name = _normalize_name(info.filename)
+                if _is_junk_entry(name):
+                    continue  # 打包垃圾静默跳过，不落盘
                 _validate_member(name, info)
                 target = os.path.join(dest_dir, *name.split("/"))
                 if info.is_dir():
@@ -185,100 +217,44 @@ def extract_zip(content: bytes, dest_dir: str) -> None:
             os.remove(tmp_path)
 
 
-# ─────────────────────────── zip 内容定位 ───────────────────────────
+# ─────────────────────────── 部件 1：DESIGN.md ───────────────────────────
 
-def _list_rel(root: str) -> List[str]:
-    """目录下所有文件相对路径（排除垃圾文件），排序保证稳定。"""
-    out = []
-    for dirpath, _dirnames, filenames in os.walk(root):
-        rel_dir = os.path.relpath(dirpath, root).replace(os.sep, "/")
-        if rel_dir == ".":
-            rel_dir = ""
-        for fn in filenames:
-            rel = "%s/%s" % (rel_dir, fn) if rel_dir else fn
-            if _JUNK_RE.match(rel):
-                continue
-            out.append(rel)
-    return sorted(out)
+def parse_design_md_bytes(content: bytes) -> None:
+    """DESIGN.md 部件校验：必须是 UTF-8 文本（原文原样存 source.md，不机器解析）。
 
-
-def locate_root_entries(dest_dir: str) -> Tuple[str, Optional[str], Optional[str], Optional[str]]:
-    """定位有效根（DESIGN.md 所在层），返回 (有效根绝对路径, 附件绝对路径, 附件原文件名, tokens.json 路径)。
-
-    - 支持两种布局：entry 直接在 zip 根；或根下有**唯一目录**（打包工具常见包裹目录）时向内一层
-      ——根下散文件不破坏包裹判定（四件套之外的内容一律丢弃）
-    - **四件套校验**（缺任一 → ZipPackageError，一次性列全缺失项；入库与预览一致拦截）：
-      ① DESIGN.md；② assets/ 目录（目录条目存在即放行，可为空）；③ 附件 .zip（DESIGN.md 同级
-      **任意 .zip**，不强制命名；多个时取名称排序第一个；文件名保留原名落盘）；④ tokens.json
-      （DESIGN.md 同级，文件名固定；**唯一数据源**——非法 JSON → 400，分组结构零校验）
-    - 附件名与保留文件（source.zip 等）冲突直接拒绝（防顶掉 zip 原件）
-    - 四件套之外的文件/目录：丢弃不落盘（info 日志打印清单，便于排查）
+    失败抛 ZipPackageError（该部件失败，其余部件不受影响）。
     """
-    root = dest_dir
-    if "DESIGN.md" not in _list_rel(root):
-        # 包裹目录判定：只看根下的目录（散文件属丢弃项，不参与判定）；多目录不向内（歧义）
-        tops = {f.split("/")[0] for f in _list_rel(root)}
-        top_dirs = [t for t in sorted(tops) if os.path.isdir(os.path.join(root, t))]
-        if len(top_dirs) == 1:
-            candidate = os.path.join(dest_dir, top_dirs[0])
-            if "DESIGN.md" in _list_rel(candidate):
-                root = candidate
-    files = _list_rel(root)
-    if "DESIGN.md" not in files:
-        raise ZipPackageError("zip 包内缺少 DESIGN.md（应在 zip 根目录或唯一包裹目录内）")
-    root_zips = sorted(f for f in files if "/" not in f and f.lower().endswith(".zip"))
-    skill_path = os.path.join(root, root_zips[0]) if root_zips else None
-    skill_name = root_zips[0] if root_zips else None
-    if skill_name and skill_name.lower() in RESERVED_SKILL_NAMES:
-        raise ZipPackageError("附件文件名「%s」与系统保留文件（%s）冲突，请重命名后重新打包"
-                              % (skill_name, " / ".join(sorted(RESERVED_SKILL_NAMES))))
-
-    # 四件套校验：DESIGN.md 已确认；assets / 附件 / tokens.json 缺失一次性列全
-    tokens_path = os.path.join(root, "tokens.json") if "tokens.json" in files else None
-    missing = []
-    if not os.path.isdir(os.path.join(root, "assets")):
-        missing.append("assets/ 目录")
-    if not skill_path:
-        missing.append("附件 .zip（skill 包，与 DESIGN.md 同级）")
-    if not tokens_path:
-        missing.append("tokens.json（与 DESIGN.md 同级，唯一数据源）")
-    if missing:
-        msg = "zip 包缺少：%s（四件套 DESIGN.md / assets / 附件 .zip / tokens.json 必须齐全，缺一不可入库）" % "、".join(missing)
-        logger.warning("[zip-import] 四件套校验失败：%s", msg)
-        raise ZipPackageError(msg)
-
-    # 四件套之外的条目：丢弃不落盘（记录清单，便于排查「为什么我的文件没进去」）
-    discarded = [
-        f for f in files
-        if f != "DESIGN.md" and f != skill_name and f != "tokens.json" and not f.startswith("assets/")
-    ]
-    if discarded:
-        logger.info("[zip-import] 四件套命中：DESIGN.md + assets/ + 附件 %s + tokens.json；丢弃 %d 个四件套之外的条目：%s%s",
-                    skill_name, len(discarded), "、".join(discarded[:20]),
-                    "…（共 %d 个）" % len(discarded) if len(discarded) > 20 else "")
-    else:
-        logger.info("[zip-import] 四件套命中：DESIGN.md + assets/ + 附件 %s + tokens.json（无多余条目）", skill_name)
-    return root, skill_path, skill_name, tokens_path
-
-
-def read_tokens_json(path: str) -> Dict:
-    """读 tokens.json → dict。**唯一数据源**：JSON 语法错误是硬错误 → ZipPackageError（400）。
-
-    分组结构零校验（color/typography/… 缺失 → 模板渲染空态）；顶层必须是 JSON 对象。
-    """
-    with open(path, "rb") as f:
-        raw = f.read()
+    if len(content) > MAX_ZIP_BYTES:
+        raise ZipPackageError("DESIGN.md 超过 %dMB 上限" % (MAX_ZIP_BYTES // 1024 // 1024))
     try:
-        text = raw.decode("utf-8-sig")  # 容忍 BOM
+        content.decode("utf-8")
+    except UnicodeDecodeError as e:
+        raise ZipPackageError("DESIGN.md 必须是 UTF-8 文本：%s" % e)
+
+
+# ─────────────────────────── 部件 2：tokens.json ───────────────────────────
+
+def parse_tokens_bytes(content: bytes) -> Tuple[Dict, Dict]:
+    """tokens.json 部件校验 + 转换：返回 (原件 dict, legacy 转换 dict)。
+
+    - **唯一数据源**：UTF-8（容忍 BOM）+ JSON 语法错误是硬错误 → ZipPackageError；
+      顶层必须是 JSON 对象；分组结构零校验（color/… 缺失 → 模板渲染空态）
+    - legacy 转换（convert_tokens_to_legacy）：tokens.json → 老 design-system.json
+      区块结构（模板与存量零改动）；多余分组（fontScale 等）顶层原样保留、暂不渲染
+    """
+    if len(content) > MAX_ZIP_BYTES:
+        raise ZipPackageError("tokens.json 超过 %dMB 上限" % (MAX_ZIP_BYTES // 1024 // 1024))
+    try:
+        text = content.decode("utf-8-sig")  # 容忍 BOM
     except UnicodeDecodeError as e:
         raise ZipPackageError("tokens.json 必须是 UTF-8 文本：%s" % e)
     try:
-        data = json.loads(text)
+        raw = json.loads(text)
     except json.JSONDecodeError as e:
         raise ZipPackageError("tokens.json 不是合法 JSON：%s" % e)
-    if not isinstance(data, dict):
-        raise ZipPackageError("tokens.json 顶层必须是 JSON 对象，收到：%s" % type(data).__name__)
-    return data
+    if not isinstance(raw, dict):
+        raise ZipPackageError("tokens.json 顶层必须是 JSON 对象，收到：%s" % type(raw).__name__)
+    return raw, convert_tokens_to_legacy(raw)
 
 
 def _first_theme_id(color: dict) -> str:
@@ -313,7 +289,7 @@ def _px_num(value):
 
 
 def convert_tokens_to_legacy(tokens: dict) -> dict:
-    """tokens.json（octo-design-zip/2 数据源）→ 老 design-system.json 区块结构。
+    """tokens.json（octo-design-parts 数据源）→ 老 design-system.json 区块结构。
 
     模板与存量系统零改动：转换产物即模板原生渲染的老结构。
     - color：tokens[].value 按主题映射 → 主题感知取首主题；themes 原样保留；
@@ -456,73 +432,37 @@ def convert_tokens_to_legacy(tokens: dict) -> dict:
     return out
 
 
-def read_design_md_raw(root: str) -> str:
-    """读 DESIGN.md 全文原文（含 frontmatter），供概览原样展示（模板 markdown 渲染）。"""
-    with open(os.path.join(root, "DESIGN.md"), "rb") as f:
-        try:
-            return f.read().decode("utf-8")
-        except UnicodeDecodeError as e:
-            logger.warning("[zip-import] DESIGN.md 非 UTF-8（概览降级为空，不影响其余数据）：%s", e)
-            return ""
+# ─────────────────────────── 部件 3/4：组件包 / Pattern 包 ───────────────────────────
 
+def locate_group_base(extract_root: str, group: str) -> Tuple[str, bool]:
+    """定位 {group} 扫描基目录，返回 (基目录绝对路径, 是否发生同名嵌套剥离)。
 
-def build_design_data(root: str, tokens_path: str) -> Dict:
-    """构造 design-system.json 本体（parse 预览与 import 入库共用，口径结构性一致）：
-
-    tokens.json → 老 design-system.json 区块结构（convert_tokens_to_legacy，模板原生渲染，
-    存量零影响）+ `overview.markdown`（DESIGN.md 全文原文，模板 markdown 渲染）
-    + components/patterns（assets 树扫描合并）。
+    - zip 根必须有 {group}/ 目录（否则该部件失败——ZipPackageError）
+    - 兼容同名多层嵌套（components/components/按钮/Button.html）：循环剥离同名子层，
+      以最内层为扫描基目录（group 层级与存储 path 均按剥离后的相对路径归一化）
     """
-    data = convert_tokens_to_legacy(read_tokens_json(tokens_path))
-    data["overview"] = {"markdown": read_design_md_raw(root)}
-    merge_assets(data, root)
-    return data
+    label = GROUP_LABEL.get(group, group)
+    base = os.path.join(extract_root, group)
+    if not os.path.isdir(base):
+        raise ZipPackageError("%s包 zip 根目录缺少 %s/ 目录（%s 包内条目应组织在该目录下）"
+                              % (label, group, label))
+    nested = False
+    while os.path.isdir(os.path.join(base, group)):
+        nested = True
+        base = os.path.join(base, group)
+        logger.warning("[parts-import] %s包内检测到同名嵌套目录 %s/，向内剥离一层（当前基目录：%s）",
+                       label, group, base)
+    return base, nested
 
 
-def extract_skill_name(skill_zip_path: str) -> str:
-    """解析附件 skill 包，返回根级 SKILL.md frontmatter 的 name（技能名）。
+def _scan_group(base: str, group: str) -> List[Dict]:
+    """扫描基目录递归结构，返回叶子条目（已按路径排序）。
 
-    严格校验（ZipPackageError → 路由层转 400）：
-    - SKILL.md 必须在附件 zip 第一层（根级），嵌套包裹目录视为缺失
-    - 必须有 YAML frontmatter（--- ... ---）且 name 字段非空、≤255 字符
-    - 附件本身必须是合法 zip；SKILL.md 成员 ≤1MB（防嵌套 zip bomb）
+    name  html 文件名去扩展（= 组件名）；group 目录层级数组（基目录之下）；
+    path  归一化存储路径 assets/{group}/…（不含同名嵌套剥离层）；
+    html/css 为绝对路径（css = 同目录 css/scss，一并内嵌）。
+    打包垃圾文件名（._* / .DS_Store / Thumbs.db）防御性过滤（正常在解压阶段已丢弃）。
     """
-    try:
-        zf = zipfile.ZipFile(skill_zip_path)
-    except zipfile.BadZipFile:
-        raise ZipPackageError("附件不是合法的 zip 包（skill 包第一层须含 SKILL.md）")
-    with zf:
-        if "SKILL.md" not in zf.namelist():
-            raise ZipPackageError("附件 zip 内缺少 SKILL.md（须在附件 zip 第一层，不允许嵌套）")
-        info = zf.getinfo("SKILL.md")
-        if info.file_size > MAX_SKILL_MD_BYTES:
-            raise ZipPackageError("附件 zip 内 SKILL.md 超过 1MB 上限")
-        try:
-            with zf.open(info) as f:
-                text = f.read(MAX_SKILL_MD_BYTES + 1).decode("utf-8", errors="replace")
-        except (zipfile.BadZipFile, OSError, EOFError) as e:
-            raise ZipPackageError("附件 zip 内 SKILL.md 读取失败：%s" % e)
-    try:
-        fm = design_system_md.parse_frontmatter(text)
-    except ValueError:
-        raise ZipPackageError("附件 zip 内 SKILL.md 缺少 frontmatter（--- name: 技能名 --- 头部块）")
-    name = str(fm.get("name") or "").strip()
-    if not name:
-        raise ZipPackageError("附件 zip 内 SKILL.md 缺少 name 字段（技能名）")
-    if len(name) > MAX_SKILL_NAME_LEN:
-        raise ZipPackageError("附件 zip 内 SKILL.md 的 name 超过 %d 字符" % MAX_SKILL_NAME_LEN)
-    return name
-
-
-# ─────────────────────────── assets 树扫描 ───────────────────────────
-
-def _scan_group(root: str, group: str) -> List[Dict]:
-    """扫描 assets/{group} 递归目录，返回叶子条目（已按路径排序）。
-
-    name  html 文件名去扩展（= 组件名）；group 目录层级数组；
-    path  相对有效根的路径；html/css 为绝对路径（css = 同目录 css/scss，一并内嵌）。
-    """
-    base = os.path.join(root, "assets", group)
     items = []
     if not os.path.isdir(base):
         return items
@@ -530,6 +470,8 @@ def _scan_group(root: str, group: str) -> List[Dict]:
         rel_dir = os.path.relpath(dirpath, base).replace(os.sep, "/")
         levels = [p for p in rel_dir.split("/") if p not in (".", "")]
         for fn in sorted(filenames):
+            if _is_junk_entry(fn):
+                continue
             ext = fn.rsplit(".", 1)[-1].lower() if "." in fn else ""
             if ext != "html":
                 continue
@@ -568,104 +510,163 @@ def _uniquify_ids(items: List[Dict]) -> None:
         it["id"] = base_id if seen[base_id] == 1 else "%s-%d" % (base_id, seen[base_id])
 
 
-def build_assets_blocks(root: str) -> Tuple[Optional[Dict], Optional[Dict]]:
-    """assets 目录 → (components 区块, patterns 区块)（template.html 既有协议）。
+def _build_components_block(items: List[Dict]) -> Optional[Dict]:
+    """扫描条目 → components 区块（template.html 既有协议）。
 
-    - components：items[].source.files[{lang: html/css, code}] —— 模板 sandbox srcdoc 渲染
-    - patterns：items[] 元信息 + view.cards[].states.html 内嵌源码 —— 模板 iframe srcdoc 渲染
-    - 层级：目录层级保留在 group 数组，同时拼进 name（模板组件导航为平铺，层级进 name 可读）
-    无 assets 或无 html 时返回 (None, None)。
+    items[].source.files[{lang: html/css, code}] —— 模板 sandbox srcdoc 渲染；
+    层级：目录层级保留在 group 数组，同时拼进 name（模板组件导航为平铺，层级进 name 可读）。
     """
-    comp_items = _scan_group(root, "components")
-    pat_items = _scan_group(root, "patterns")
-
-    components = None
-    if comp_items:
-        _uniquify_ids(comp_items)
-        items = []
-        for it in comp_items:
-            files = [_embed_file(it["html"], "html", it["path"])]
-            for css in it["css"]:
-                rel = it["path"][: -len(os.path.basename(it["html"]))] + os.path.basename(css)
-                files.append(_embed_file(css, "css", rel))
-            items.append(OrderedDict([
-                ("id", it["id"]),
-                ("name", " / ".join(it["group"] + [it["name"]]) if it["group"] else it["name"]),
-                ("desc", it["path"]),
-                ("group", it["group"]),
-                ("height", DEFAULT_ROW_HEIGHT),
-                ("source", OrderedDict([
-                    ("status", "found"),
-                    ("files", files),
-                ])),
-            ]))
-        components = OrderedDict([
-            ("title", "组件"),
-            ("desc", "%d 个组件 · 来自 assets/components" % len(items)),
-            ("items", items),
-        ])
-
-    patterns = None
-    if pat_items:
-        _uniquify_ids(pat_items)
-        items = []
-        cards = []
-        for it in pat_items:
-            display_name = " / ".join(it["group"] + [it["name"]]) if it["group"] else it["name"]
-            items.append(OrderedDict([
-                ("id", it["id"]),
-                ("name", display_name),
-                ("label", it["path"]),
-                ("group", it["group"]),
-                ("height", DEFAULT_ROW_HEIGHT),
-            ]))
-            html_file = _embed_file(it["html"], "html", it["path"])
-            code = html_file.get("code")
-            state = OrderedDict([("meta", it["path"])])
-            if code is not None:
-                state["html"] = code
-            cards.append(OrderedDict([
-                ("id", it["id"]),
-                ("states", OrderedDict([("default", state)])),
-            ]))
-        patterns = OrderedDict([
-            ("title", "Pattern"),
-            ("desc", "%d 个 Pattern · 来自 assets/patterns" % len(items)),
-            ("items", items),
-            ("view", OrderedDict([("cards", cards)])),
-        ])
-
-    return components, patterns
+    if not items:
+        return None
+    _uniquify_ids(items)
+    out_items = []
+    for it in items:
+        files = [_embed_file(it["html"], "html", it["path"])]
+        for css in it["css"]:
+            rel = it["path"][: -len(os.path.basename(it["html"]))] + os.path.basename(css)
+            files.append(_embed_file(css, "css", rel))
+        out_items.append(OrderedDict([
+            ("id", it["id"]),
+            ("name", " / ".join(it["group"] + [it["name"]]) if it["group"] else it["name"]),
+            ("desc", it["path"]),
+            ("group", it["group"]),
+            ("height", DEFAULT_ROW_HEIGHT),
+            ("source", OrderedDict([
+                ("status", "found"),
+                ("files", files),
+            ])),
+        ]))
+    return OrderedDict([
+        ("title", "组件"),
+        ("desc", "%d 个组件 · 来自 assets/components" % len(out_items)),
+        ("items", out_items),
+    ])
 
 
-# ─────────────────────────── 组装 ───────────────────────────
+def _build_patterns_block(items: List[Dict]) -> Optional[Dict]:
+    """扫描条目 → patterns 区块（template.html 既有协议）。
 
-def merge_assets(data: Dict, root: str) -> Tuple[Optional[Dict], Optional[Dict]]:
-    """扫描有效根的 assets 目录，把 components/patterns 区块合并进 data（就地修改）。
-
-    返回 (components 区块, patterns 区块)（无则均为 None，便于调用方记 coverage）。
+    items[] 元信息 + view.cards[].states.html 内嵌源码 —— 模板 iframe srcdoc 渲染。
     """
-    components, patterns = build_assets_blocks(root)
-    if components is not None:
-        data["components"] = components
-    if patterns is not None:
-        data["patterns"] = patterns
-    coverage = data.setdefault("coverage", OrderedDict())
-    coverage["components"] = components is not None
-    coverage["patterns"] = patterns is not None
-    data["meta"] = data.get("meta") or OrderedDict()
-    data["meta"]["source_file"] = "zip（DESIGN.md + assets）"
-    return components, patterns
+    if not items:
+        return None
+    _uniquify_ids(items)
+    out_items = []
+    cards = []
+    for it in items:
+        display_name = " / ".join(it["group"] + [it["name"]]) if it["group"] else it["name"]
+        out_items.append(OrderedDict([
+            ("id", it["id"]),
+            ("name", display_name),
+            ("label", it["path"]),
+            ("group", it["group"]),
+            ("height", DEFAULT_ROW_HEIGHT),
+        ]))
+        html_file = _embed_file(it["html"], "html", it["path"])
+        code = html_file.get("code")
+        state = OrderedDict([("meta", it["path"])])
+        if code is not None:
+            state["html"] = code
+        cards.append(OrderedDict([
+            ("id", it["id"]),
+            ("states", OrderedDict([("default", state)])),
+        ]))
+    return OrderedDict([
+        ("title", "Pattern"),
+        ("desc", "%d 个 Pattern · 来自 assets/patterns" % len(out_items)),
+        ("items", out_items),
+        ("view", OrderedDict([("cards", cards)])),
+    ])
 
+
+def ingest_group_zip(content: bytes, group: str, dst_group_dir: str) -> Dict:
+    """组件包 / Pattern 包部件导入：校验 + 解压 + 定位（含同名嵌套剥离）+ 扫描 + 落盘。
+
+    - 安全校验同上传入口（validate_zip_bytes：slip/bomb/条目数/同名冲突）
+    - zip 根须含 {group}/ 目录（否则该部件失败）；同名嵌套层（components/components/）
+      循环剥离后以最内层为扫描基目录
+    - 落盘：dst_group_dir（= design-systems/{slug}/assets/{group}）整体替换——
+      先清空旧子树再拷入新内容；本函数任何一步抛错时目标子树不受影响
+    - 返回 {"block": 区块 dict 或 None（无 html）, "count": 叶子 html 数, "nested": 是否剥离}
+    """
+    label = GROUP_LABEL.get(group, group)
+    validate_zip_bytes(content)
+    with tempfile.TemporaryDirectory(prefix="ds-group-") as tmp:
+        extract_zip(content, tmp)
+        base, nested = locate_group_base(tmp, group)
+        items = _scan_group(base, group)
+        block = _build_components_block(items) if group == "components" else _build_patterns_block(items)
+        # 落盘：先验证后拷贝（copytree 失败属于系统级异常，不属于部件校验失败）
+        if os.path.isdir(dst_group_dir):
+            shutil.rmtree(dst_group_dir)
+        os.makedirs(os.path.dirname(dst_group_dir), exist_ok=True)
+        shutil.copytree(base, dst_group_dir)
+        logger.info("[parts-import] %s包导入完成：%d 个 html，%s",
+                    label, len(items), "检测到同名嵌套目录并已剥离" if nested else "标准结构")
+        return {"block": block, "count": len(items), "nested": nested}
+
+
+# ─────────────────────────── 部件 5：skill 包 ───────────────────────────
+
+def extract_skill_name(skill_zip_path: str) -> str:
+    """解析 skill 包，返回根级 SKILL.md frontmatter 的 name（技能名）。
+
+    严格校验（ZipPackageError → 路由层转部件级错误回报）：
+    - SKILL.md 必须在附件 zip 第一层（根级），嵌套包裹目录视为缺失
+    - 必须有 YAML frontmatter（--- ... ---）且 name 字段非空、≤255 字符
+    - 附件本身必须是合法 zip；SKILL.md 成员 ≤1MB（防嵌套 zip bomb）
+    """
+    try:
+        zf = zipfile.ZipFile(skill_zip_path)
+    except zipfile.BadZipFile:
+        raise ZipPackageError("skill 包不是合法的 zip 包（第一层须含 SKILL.md）")
+    with zf:
+        if "SKILL.md" not in zf.namelist():
+            raise ZipPackageError("skill 包内缺少 SKILL.md（须在 zip 第一层，不允许嵌套）")
+        info = zf.getinfo("SKILL.md")
+        if info.file_size > MAX_SKILL_MD_BYTES:
+            raise ZipPackageError("skill 包内 SKILL.md 超过 1MB 上限")
+        try:
+            with zf.open(info) as f:
+                text = f.read(MAX_SKILL_MD_BYTES + 1).decode("utf-8", errors="replace")
+        except (zipfile.BadZipFile, OSError, EOFError) as e:
+            raise ZipPackageError("skill 包内 SKILL.md 读取失败：%s" % e)
+    try:
+        fm = design_system_md.parse_frontmatter(text)
+    except ValueError:
+        raise ZipPackageError("skill 包内 SKILL.md 缺少 frontmatter（--- name: 技能名 --- 头部块）")
+    name = str(fm.get("name") or "").strip()
+    if not name:
+        raise ZipPackageError("skill 包内 SKILL.md 缺少 name 字段（技能名）")
+    if len(name) > MAX_SKILL_NAME_LEN:
+        raise ZipPackageError("skill 包内 SKILL.md 的 name 超过 %d 字符" % MAX_SKILL_NAME_LEN)
+    return name
+
+
+def parse_skill_zip_bytes(content: bytes) -> str:
+    """skill 包部件校验（zip 字节 → 技能名）。失败抛 ZipPackageError（该部件失败）。"""
+    if len(content) > MAX_ZIP_BYTES:
+        raise ZipPackageError("skill 包超过 %dMB 上限" % (MAX_ZIP_BYTES // 1024 // 1024))
+    validate_zip_bytes(content)
+    fd, tmp_path = tempfile.mkstemp(suffix=".zip")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(content)
+        return extract_skill_name(tmp_path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+# ─────────────────────────── 存储版瘦身 ───────────────────────────
 
 def slim_for_storage(data: Dict) -> None:
-    """存储版 design-system.json 瘦身（只影响入库落盘；parse 预览响应保持全量不调用）。
+    """存储版 design-system.json 瘦身（只影响入库落盘）。
 
-    展示端模板已改为 iframe src 直连 /static 资产（不再 srcdoc/内嵌源码渲染），
-    存储版只保留路径字段即可；管理台「Zip 解析」预览发生在落盘之前（无 URL 可直连），
-    仍依赖 parse 响应内嵌的 code/html 渲染：
+    展示端模板 iframe src 直连 /static 资产（不再 srcdoc/内嵌源码渲染），
+    存储版只保留路径字段即可：
     - components：items[].source.files 只留 html 条目并去掉内嵌 code（css 条目随沙箱渲染一并废弃）
-    - patterns：view.cards[].states[*] 去掉内嵌 html（meta 已是 zip 内路径，展示端据此推 URL）
+    - patterns：view.cards[].states[*] 去掉内嵌 html（meta 已是部件内路径，展示端据此推 URL）
     - overview：去掉内嵌 markdown（展示端概览 fetch source.md=design_md_url 落盘件）
     - 其余字段（title/desc/items[].desc/items[].label/height 等）全部保留
     """
@@ -686,176 +687,3 @@ def slim_for_storage(data: Dict) -> None:
         for state in (card.get("states") or {}).values():
             if isinstance(state, dict):
                 state.pop("html", None)
-
-
-def parse_zip(content: bytes) -> Dict:
-    """zip 字节 → design-system.json 同构 dict（MD 解析 + assets 区块合并）。
-
-    便捷入口（测试与预览用）；正式入库走 design_system_service.import_zip
-    （需要保留解压临时目录以持久化 assets 文件，本函数临时目录随返回即清理）。
-    """
-    validate_zip_bytes(content)
-    with tempfile.TemporaryDirectory(prefix="ds-zip-") as dest:
-        extract_zip(content, dest)
-        root, _skill_path, _skill_name = locate_root_entries(dest)
-        data = parse_md_root(root)
-        merge_assets(data, root)
-        return data
-
-
-def parse_zip_info(content: bytes) -> Dict:
-    """parse 预览接口用：解析结果 + 统计 + 附件元信息与内容（不落库）。
-
-    skill_zip.content_base64：附件 ≤50MB 时 base64 回传（管理台解析页直接提供下载链接），
-    超限省略（前端提示入库后经 skill_zip_url 下载）。filename 为附件原文件名（不强制命名）。
-    """
-    validate_zip_bytes(content)
-    logger.info("[zip-parse] 开始解析：zip %d bytes", len(content))
-    with tempfile.TemporaryDirectory(prefix="ds-zip-") as dest:
-        extract_zip(content, dest)
-        root, skill_path, skill_name, tokens_path = locate_root_entries(dest)
-        data = build_design_data(root, tokens_path)
-        skill_size = os.path.getsize(skill_path) if skill_path else 0
-        skill_display_name = extract_skill_name(skill_path) if skill_path else None
-        content_b64 = None
-        if skill_path and skill_size <= MAX_SKILL_B64_BYTES:
-            with open(skill_path, "rb") as f:
-                content_b64 = base64.b64encode(f.read()).decode("ascii")
-    comp_items = ((data.get("components") or {}).get("items")) or []
-    pat_items = ((data.get("patterns") or {}).get("items")) or []
-    levels = sorted({
-        " / ".join(it.get("group") or [])
-        for it in comp_items + pat_items
-        if it.get("group")
-    })
-    logger.info("[zip-parse] 解析完成：name=%s 组件=%d Pattern=%d skill_name=%s 附件=%s(%d bytes)",
-                str(data.get("name") or ""), len(comp_items), len(pat_items),
-                skill_display_name, skill_name, skill_size)
-    return {
-        "ds": data,
-        "stats": {
-            "slug": str(data.get("id") or ""),  # tokens.json 无 id 概念（预留：将来加 id 字段自动支持）
-            "name": str(data.get("name") or ""),
-            "components": len(comp_items),
-            "patterns": len(pat_items),
-            "levels": levels,
-            "zip_size": len(content),
-        },
-        "skill_zip": {
-            "present": bool(skill_path),
-            "skill_name": skill_display_name,
-            "filename": skill_name,
-            "size": skill_size,
-            "content_base64": content_b64,
-        },
-    }
-
-
-# ─────────────────────────── 分片上传 ───────────────────────────
-
-_UPLOAD_ID_RE = re.compile(r"^[0-9a-f]{32}$")
-
-
-def uploads_root() -> str:
-    return os.path.join(settings.FILE_ROOT_DIR, UPLOADS_REL_DIR)
-
-
-def _upload_dir(upload_id: str) -> str:
-    if not _UPLOAD_ID_RE.match(upload_id):
-        raise ZipPackageError("upload_id 非法")
-    return os.path.join(uploads_root(), upload_id)
-
-
-def cleanup_stale_uploads() -> int:
-    """清理超过 TTL 的分片目录（init 时顺带执行，无需后台任务）。返回清理个数。"""
-    root = uploads_root()
-    if not os.path.isdir(root):
-        return 0
-    removed = 0
-    now = time.time()
-    for name in os.listdir(root):
-        if not _UPLOAD_ID_RE.match(name):
-            continue
-        path = os.path.join(root, name)
-        try:
-            if now - os.path.getmtime(path) > UPLOAD_TTL_SECONDS:
-                shutil.rmtree(path, ignore_errors=True)
-                removed += 1
-        except OSError:
-            continue
-    return removed
-
-
-def upload_init(filename: str, size: int) -> Dict:
-    """创建分片上传会话：{upload_id, chunk_size, chunk_count}。"""
-    cleanup_stale_uploads()
-    if not size or size <= 0:
-        raise ZipPackageError("文件大小非法")
-    if size > MAX_ZIP_BYTES:
-        raise ZipPackageError("zip 包超过 %dMB 上限" % (MAX_ZIP_BYTES // 1024 // 1024))
-    upload_id = uuid.uuid4().hex
-    os.makedirs(_upload_dir(upload_id), exist_ok=True)
-    meta = {
-        "filename": os.path.basename(filename or "upload.zip"),
-        "size": size,
-        "chunk_size": CHUNK_SIZE,
-        "chunk_count": (size + CHUNK_SIZE - 1) // CHUNK_SIZE,
-        "created_at": time.time(),
-        "status": "uploading",
-    }
-    with open(os.path.join(_upload_dir(upload_id), "meta.json"), "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False)
-    return {"upload_id": upload_id, "chunk_size": CHUNK_SIZE, "chunk_count": meta["chunk_count"]}
-
-
-def _load_upload_meta(upload_id: str) -> Dict:
-    path = _upload_dir(upload_id)
-    meta_file = os.path.join(path, "meta.json")
-    if not os.path.isfile(meta_file):
-        raise ZipPackageError("上传会话不存在或已过期：%s" % upload_id)
-    with open(meta_file, encoding="utf-8") as f:
-        meta = json.load(f)
-    if meta.get("status") != "uploading":
-        raise ZipPackageError("上传会话已结束：%s" % upload_id)
-    return meta
-
-
-def upload_chunk(upload_id: str, index: int, body: bytes) -> Dict:
-    """写入第 index 片（raw binary body），返回 {received, size}。"""
-    meta = _load_upload_meta(upload_id)
-    if not isinstance(index, int) or index < 0 or index >= meta["chunk_count"]:
-        raise ZipPackageError("分片序号越界：%s（共 %d 片）" % (index, meta["chunk_count"]))
-    expected = meta["chunk_size"] if index < meta["chunk_count"] - 1 else meta["size"] - meta["chunk_size"] * (meta["chunk_count"] - 1)
-    if len(body) != expected:
-        raise ZipPackageError("分片大小不符：期望 %d 字节，收到 %d" % (expected, len(body)))
-    with open(os.path.join(_upload_dir(upload_id), "%06d.part" % index), "wb") as f:
-        f.write(body)
-    return {"received": index, "size": len(body)}
-
-
-def upload_merge(upload_id: str) -> Tuple[bytes, str]:
-    """合并分片 → (zip 字节, 原文件名)；校验完整性后标记会话完成。"""
-    path = _upload_dir(upload_id)
-    meta = _load_upload_meta(upload_id)
-    total = 0
-    for index in range(meta["chunk_count"]):
-        part = os.path.join(path, "%06d.part" % index)
-        if not os.path.isfile(part):
-            raise ZipPackageError("分片缺失：第 %d/%d 片" % (index + 1, meta["chunk_count"]))
-        total += os.path.getsize(part)
-    if total != meta["size"]:
-        raise ZipPackageError("分片合并后大小不符：期望 %d，实际 %d" % (meta["size"], total))
-    buf = bytearray()
-    for index in range(meta["chunk_count"]):
-        with open(os.path.join(path, "%06d.part" % index), "rb") as f:
-            buf.extend(f.read())
-    meta["status"] = "merged"
-    with open(os.path.join(path, "meta.json"), "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False)
-    return bytes(buf), meta.get("filename") or "upload.zip"
-
-
-def upload_discard(upload_id: str) -> None:
-    """异常路径兜底：清理分片会话目录（幂等）。"""
-    if _UPLOAD_ID_RE.match(upload_id):
-        shutil.rmtree(_upload_dir(upload_id), ignore_errors=True)

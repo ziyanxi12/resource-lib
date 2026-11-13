@@ -1,17 +1,20 @@
-"""设计系统业务逻辑：zip 包导入、卡片 meta 派生、作者/封面/图标、文件存储、分片上传。
+"""设计系统业务逻辑：五部件导入、卡片 meta 派生、作者/封面/图标、文件存储。
 
-校验与语义严格对齐 requirement/api.md 契约：
-- 上传只收 zip 包（DESIGN.md + assets + skill-design.zip，octo-design-zip/1 格式），
-  服务端解压解析为 design-system.json（app/services/design_system_zip.py）
+校验与语义严格对齐 requirement/api.md 契约（octo-design-parts/1 五部件格式）：
+- 上传物为五个独立部件（multipart 各自可选、独立成败，失败部件忽略并回报错误）：
+  DESIGN.md（UTF-8 → source.md）/ tokens.json（唯一数据源 → token 区块 + 原件落盘）/
+  组件包 zip（components/ 目录）/ Pattern 包 zip（patterns/ 目录）/ skill 包 zip
+  （第一层 SKILL.md）；组件/Pattern 包兼容同名多层嵌套（components/components/…）
 - slug 由后端生成（8 位随机 [a-z0-9]）：API 路径 / 落盘目录 / 静态 URL；
-  MD frontmatter 的 id 原样保留在 source_slug（不唯一，允许重复）
-- name 非空；color/typography/spacing/radius/shadow 至少一个区块
-- usage 不从 MD frontmatter 派生（需求明确：md 里的 usage 不允许直接使用）：
-  新增恒 0，修正通道仅表单 usage 字段；重传保留现值
+  tokens.json 的 id 原样保留在 source_slug（不唯一，允许重复）
+- name 必填（表单；tokens.name 为历史兼容回落）；usage 不从任何文件派生：
+  新增恒 0，修正通道仅表单 usage 字段；部件替换保留现值
 - author 为对象数组 [{account, nick_name, dept}]，写入时经 users 表补全昵称/部门（固化存储）；
   旧字符串数据读取时自动包装为单元素数组（无需迁移）
 - cover 不在内置封面集时回落默认（不报错）；icon 支持自定义上传（jpg/png/webp/svg）
-- 重传覆盖：name 跟随新 MD，作者/封面/图标/调用量/描述/默认标记保留
+- 部件替换（PUT /{slug}/parts）：只换提供部件的内容（token 区块 / assets 子树 / 附件），
+  name/source_slug 等管理字段不跟随（meta 走 PATCH）；老系统无 tokens 原件时
+  按 json 存量 token 区块保留（未提供 tokens 部件则完全不动）
 """
 
 import json
@@ -20,19 +23,16 @@ import os
 import re
 import secrets
 import shutil
-import tempfile
+from collections import OrderedDict
 from typing import Dict, List, Optional, Tuple
 
 from app.config import settings
-from app.services import design_system_md
 from app.services import design_system_zip as dzip
 
 logger = logging.getLogger(__name__)
 
 BUILTIN_COVERS = ["cover-blue.jpg", "cover-cyan.jpg", "cover-purple.jpg", "cover-violet.jpg"]
 DEFAULT_COVER = "cover-cyan.jpg"
-MAX_JSON_BYTES = 10 * 1024 * 1024  # 兼容保留（旧 MD 上传时代限额；zip 上限见 design_system_zip.MAX_ZIP_BYTES）
-MAX_ZIP_BYTES = dzip.MAX_ZIP_BYTES
 MAX_COVER_BYTES = 2 * 1024 * 1024
 ALLOWED_COVER_EXTS = {"jpg", "jpeg", "png", "webp"}
 COVERS_REL_DIR = "design-systems/covers"
@@ -40,9 +40,17 @@ MAX_ICON_BYTES = 2 * 1024 * 1024
 ALLOWED_ICON_EXTS = {"jpg", "jpeg", "png", "webp", "svg"}
 ICONS_REL_DIR = "design-systems/icons"
 
-# slug 随机生成（后端分配，与 MD 内容解耦）：8 位 [a-z0-9] ≈ 2.8e12 组合
+# slug 随机生成（后端分配，与文件内容解耦）：8 位 [a-z0-9] ≈ 2.8e12 组合
 SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 SLUG_LENGTH = 8
+
+# ─────────────────────────── 五部件 ───────────────────────────
+
+# 部件名（multipart 字段去 _file 后缀）
+PART_FIELDS = ("design_md", "tokens", "components", "patterns", "skill")
+
+# token 区块标准键（legacy 转换产物；老系统无 tokens 原件时按此剔除旧区块）
+TOKEN_SECTION_KEYS = ("color", "typography", "spacing", "radius", "shadow")
 
 
 def normalize_cover(cover) -> str:
@@ -70,7 +78,7 @@ def resolve_cover(cover) -> str:
 def extract_meta(data: dict) -> dict:
     """从 JSON 派生卡片 meta（管理字段默认值，可被表单覆盖）。
 
-    注意：usage 不再从 MD frontmatter 派生（需求明确：md 里的 usage 不允许直接使用）。
+    注意：usage 不从 tokens.json 派生（需求明确：md 里的 usage 不允许直接使用）。
     新增系统恒 0 起步；修正通道仅表单 usage 字段（手动）与 /usage 自增接口。
     """
     meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
@@ -93,13 +101,43 @@ def abs_path(slug: str) -> str:
     return os.path.join(settings.FILE_ROOT_DIR, rel_path(slug))
 
 
-def save_json_file(slug: str, data: dict, file_size: int) -> None:
+def save_json_file(slug: str, data: dict, file_size: int = 0) -> None:
     """写入 JSON 文件到 FILE_ROOT_DIR/design-systems/{slug}/design-system.json"""
     path = abs_path(slug)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
-    _ = file_size  # 尺寸由调用方记录到 DB
+    _ = file_size  # 尺寸由调用方记录到 DB（现按 {slug} 目录落盘内容合计重算）
+
+
+def _read_json_file(slug: str) -> dict:
+    """读取存量 design-system.json（替换模式合并基线）；缺失/损坏回落空 dict。"""
+    path = abs_path(slug)
+    if not os.path.isfile(path):
+        return {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (ValueError, OSError) as e:
+        logger.warning("[parts-import] 存量 design-system.json 读取失败（按空基线合并）：%s", e)
+        return {}
+
+
+def _dir_size(slug: str) -> int:
+    """{slug} 目录落盘内容合计（design-system.json / source.md / tokens.json /
+    assets/** / skill 包——file_size 列的取值口径）。"""
+    root = os.path.join(settings.FILE_ROOT_DIR, "design-systems", slug)
+    total = 0
+    if not os.path.isdir(root):
+        return total
+    for _dirpath, _dirnames, filenames in os.walk(root):
+        for fn in filenames:
+            try:
+                total += os.path.getsize(os.path.join(root, fn))
+            except OSError:
+                continue
+    return total
 
 
 def delete_json_file(slug: str) -> None:
@@ -163,13 +201,289 @@ def parse_form_bool(val) -> Optional[bool]:
     return None
 
 
-def parse_form_int(val) -> Optional[int]:
+def parse_form_int(val, label="调用量") -> Optional[int]:
     if val is None or str(val).strip() == "":
         return None
     try:
         return int(str(val).strip())
     except ValueError:
-        raise ValueError("调用量必须为整数，收到：%s" % val)
+        raise ValueError("%s必须为整数，收到：%s" % (label, val))
+
+
+# ─────────────────────────── 部件落盘路径 ───────────────────────────
+
+def _slug_dir(slug: str) -> str:
+    return os.path.join(settings.FILE_ROOT_DIR, "design-systems", slug)
+
+
+def source_md_rel_path(slug: str) -> str:
+    """DESIGN.md 原件相对 FILE_ROOT_DIR 的路径（固定命名；design_md 部件落盘件）"""
+    return "design-systems/%s/source.md" % slug
+
+
+def tokens_rel_path(slug: str) -> str:
+    """tokens.json 原件相对 FILE_ROOT_DIR 的路径（tokens 部件落盘件）"""
+    return "design-systems/%s/tokens.json" % slug
+
+
+def skill_zip_rel_path(slug: str, orig_name: str) -> str:
+    """skill 包相对路径（驱动 skill_zip_url 下载）：保留上传原文件名"""
+    return "design-systems/%s/%s" % (slug, os.path.basename(orig_name))
+
+
+def group_dir(slug: str, group: str) -> str:
+    """组件/Pattern 包落盘目录（{slug}/assets/{group}；html 等经 /static 可直接访问）"""
+    return os.path.join(_slug_dir(slug), "assets", group)
+
+
+def save_source_md(slug: str, content: bytes) -> str:
+    """保存 DESIGN.md 原件到 design-systems/{slug}/source.md，返回相对路径（存 DB source_md_path 列）。"""
+    path = os.path.join(settings.FILE_ROOT_DIR, source_md_rel_path(slug))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(content)
+    return source_md_rel_path(slug)
+
+
+def save_tokens_file(slug: str, content: bytes) -> str:
+    """保存 tokens.json 原件到 design-systems/{slug}/tokens.json，返回相对路径。"""
+    rel = tokens_rel_path(slug)
+    path = os.path.join(settings.FILE_ROOT_DIR, rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(content)
+    return rel
+
+
+def save_part_file(slug: str, orig_name: str, content: bytes) -> str:
+    """skill 包原样落盘到 design-systems/{slug}/{原文件名}（不解析，保留原名）。"""
+    rel = skill_zip_rel_path(slug, orig_name)
+    path = os.path.join(settings.FILE_ROOT_DIR, rel)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(content)
+    return rel
+
+
+def remove_skill_zip(rel_path: Optional[str]) -> None:
+    """按 DB 列记录的相对路径删除旧 skill 包。
+
+    部件替换时新包名可能与旧的不同（保留原文件名），固定路径「覆盖」不到旧文件，
+    故按 skill_zip_path 列的路径清理；同名时无需调用（write 已覆盖）。
+    """
+    if not rel_path:
+        return
+    path = os.path.join(settings.FILE_ROOT_DIR, rel_path)
+    if os.path.isfile(path):
+        os.remove(path)
+
+
+# ─────────────────────────── 五部件导入（新增 / 替换共用编排） ───────────────────────────
+
+def import_parts(
+    db,
+    part_files: Dict[str, Tuple[str, bytes]],
+    existing=None,
+    name_override: Optional[str] = None,
+) -> dict:
+    """五部件导入主流程（POST 新增与 PUT /{slug}/parts 替换共用）。
+
+    - 逐部件独立成败：任一部件校验/解析失败 → 该部件忽略并记入 ingest 报告
+      （{"provided", "ok", "error"/"count"/"skill_name"}），其余部件正常入库
+    - part_files：{部件名: (文件名, 字节)}，仅包含请求里实际提供了的部件
+    - existing=None（新增）：slug 后端随机生成；json 从 tokens 部件起建
+      （data.name = 表单 name → tokens.name → slug 兜底）
+    - existing=row（替换）：slug 复用；json 从存量起合并——
+      * tokens 部件：剔除集 = TOKEN_SECTION_KEYS ∪ 旧 tokens 原件顶层键（老系统无原件
+        → 仅标准五键），剔除后合入新转换结果（name/id/cover/meta 不跟随）；
+        未提供部件 → 存量区块原样保留（老系统兼容）
+      * components/patterns 部件：assets/{group} 子树整体替换 + json 区块重建
+      * skill 部件：原文件名落盘；新名与旧附件不同时按 DB 列清理旧文件
+    - 返回 {"data": json dict, "slug", "source_md_rel"/"tokens_rel"/"skill_zip_rel"/
+      "skill_name"（仅部件成功提供时非 None）, "ingest": 报告, "file_size": 目录合计}
+    """
+    is_create = existing is None
+    slug = existing.slug if existing is not None else generate_slug(db)
+    logger.info("[parts-import] 开始导入：%s，部件：%s",
+                "重传 slug=%s" % slug if not is_create else "新增",
+                "、".join(k for k in PART_FIELDS if k in part_files) or "（空）")
+
+    report = {f: {"provided": f in part_files} for f in PART_FIELDS}
+    data = {} if is_create else _read_json_file(slug)
+
+    # 旧 tokens 原件顶层键集（替换模式：确定旧 token 区块剔除范围；无原件 → 空集。
+    # 剔除集恒并上 TOKEN_SECTION_KEYS——转换产物派生键（typography/spacing 等）不在原件键集里）
+    old_tokens_keys = set()
+    if not is_create:
+        old_path = os.path.join(settings.FILE_ROOT_DIR, tokens_rel_path(slug))
+        if os.path.isfile(old_path):
+            try:
+                with open(old_path, "rb") as f:
+                    old_raw = json.loads(f.read().decode("utf-8-sig"))
+                if isinstance(old_raw, dict):
+                    old_tokens_keys = set(old_raw.keys())
+            except (ValueError, UnicodeDecodeError, OSError):
+                old_tokens_keys = set()
+
+    source_md_rel = None
+    tokens_rel = None
+    skill_zip_rel = None
+    skill_name = None
+
+    # ① DESIGN.md：UTF-8 校验 → source.md 落盘
+    if "design_md" in part_files:
+        _fname, content = part_files["design_md"]
+        try:
+            dzip.parse_design_md_bytes(content)
+            source_md_rel = save_source_md(slug, content)
+            report["design_md"] = {"provided": True, "ok": True, "size": len(content)}
+        except (dzip.ZipPackageError, ValueError) as e:
+            report["design_md"] = {"provided": True, "ok": False, "error": str(e)}
+
+    # ② tokens.json：JSON 校验 → legacy 转换 → 原件落盘
+    if "tokens" in part_files:
+        _fname, content = part_files["tokens"]
+        try:
+            _raw, converted = dzip.parse_tokens_bytes(content)
+            if is_create:
+                data = converted
+            else:
+                # 剔除集 = 标准五键 ∪ 旧 tokens 原件顶层键（老系统无原件 → 仅五键）；
+                # name/id/cover/meta 属管理性顶层键，不随 tokens 替换剔除（meta 归 create 标注 / PATCH）
+                remove_keys = (set(TOKEN_SECTION_KEYS) | old_tokens_keys) - {"name", "id", "cover", "meta"}
+                for k in remove_keys:
+                    data.pop(k, None)
+                # name/id/cover/meta 不跟随 tokens 部件（管理字段归 PATCH / 新增表单）
+                for k in ("name", "id", "cover", "meta"):
+                    converted.pop(k, None)
+                data.update(converted)
+            tokens_rel = save_tokens_file(slug, content)
+            report["tokens"] = {"provided": True, "ok": True, "size": len(content)}
+        except (dzip.ZipPackageError, ValueError) as e:
+            report["tokens"] = {"provided": True, "ok": False, "error": str(e)}
+
+    # ③④ 组件包 / Pattern 包：安全解压 → 定位（同名嵌套剥离）→ 扫描 → assets/{group} 子树替换
+    for part in ("components", "patterns"):
+        if part not in part_files:
+            continue
+        _fname, content = part_files[part]
+        try:
+            ingested = dzip.ingest_group_zip(content, part, group_dir(slug, part))
+            if ingested["block"] is not None:
+                data[part] = ingested["block"]
+            else:
+                # zip 合规但无 html：区块移除（展示端空态），子树也已替换为实际内容
+                data.pop(part, None)
+            entry = {"provided": True, "ok": True, "count": ingested["count"]}
+            if ingested["nested"]:
+                entry["nested"] = True
+            report[part] = entry
+        except (dzip.ZipPackageError, ValueError) as e:
+            report[part] = {"provided": True, "ok": False, "error": str(e)}
+
+    # ⑤ skill 包：保留名校验 + SKILL.md/frontmatter name 校验 → 原样落盘
+    if "skill" in part_files:
+        fname, content = part_files["skill"]
+        try:
+            orig = os.path.basename(fname or "skill.zip")
+            if orig.lower() in dzip.RESERVED_SKILL_NAMES:
+                raise dzip.ZipPackageError(
+                    "skill 包文件名「%s」与系统保留文件（%s）冲突，请重命名后重新上传"
+                    % (orig, " / ".join(sorted(dzip.RESERVED_SKILL_NAMES))))
+            skill_name = dzip.parse_skill_zip_bytes(content)
+            skill_zip_rel = save_part_file(slug, orig, content)
+            # 旧附件清理放在新包落盘成功之后（此前任何失败都不破坏现有文件）
+            if existing is not None and existing.skill_zip_path and existing.skill_zip_path != skill_zip_rel:
+                remove_skill_zip(existing.skill_zip_path)
+            report["skill"] = {"provided": True, "ok": True, "skill_name": skill_name, "size": len(content)}
+        except (dzip.ZipPackageError, ValueError) as e:
+            report["skill"] = {"provided": True, "ok": False, "error": str(e)}
+
+    # 组装收尾：name（新增模式）/ coverage / meta 标注（替换模式不动存量 meta）
+    if is_create:
+        data["name"] = (name_override or "").strip() or str(data.get("name") or "").strip() or slug
+        meta = data.get("meta") if isinstance(data.get("meta"), dict) else OrderedDict()
+        meta["source_file"] = "parts（DESIGN.md + tokens + 组件包 + Pattern 包 + skill 包）"
+        data["meta"] = meta
+    coverage = data.setdefault("coverage", OrderedDict())
+    coverage["components"] = isinstance(data.get("components"), dict) and bool(data.get("components", {}).get("items"))
+    coverage["patterns"] = isinstance(data.get("patterns"), dict) and bool(data.get("patterns", {}).get("items"))
+
+    dzip.slim_for_storage(data)
+    save_json_file(slug, data)
+    file_size = _dir_size(slug)
+
+    failed = [f for f in PART_FIELDS if report[f].get("provided") and not report[f].get("ok")]
+    logger.info(
+        "[parts-import] 落盘完成：slug=%s source_slug=%s skill_name=%s；json=%dB 目录合计=%dB；"
+        "部件成败：%s%s",
+        slug, str(data.get("id") or ""), skill_name,
+        os.path.getsize(abs_path(slug)), file_size,
+        "、".join("%s=%s" % (f, "ok" if report[f].get("ok") or not report[f].get("provided") else "失败")
+                  for f in PART_FIELDS),
+        "（失败：%s）" % "、".join(failed) if failed else "",
+    )
+    return {
+        "data": data,
+        "slug": slug,
+        # MD 的 id 可缺失/任意格式（仅展示/搜索/多版本追溯用，不参与 URL）→ 缺失回落 slug（对齐存量）
+        "source_slug": str(data.get("id") or "").strip() or slug,
+        "source_md_rel": source_md_rel,
+        "tokens_rel": tokens_rel,
+        "skill_zip_rel": skill_zip_rel,
+        "skill_name": skill_name,
+        "ingest": report,
+        "file_size": file_size,
+    }
+
+
+# ─────────────────────────── 列表条目 / parts 存在性 ───────────────────────────
+
+def _tokens_url(row) -> Optional[str]:
+    """tokens.json 原件下载 URL（部件落盘件存在才返回；老系统无原件为 None）。"""
+    rel = tokens_rel_path(row.slug)
+    if os.path.isfile(os.path.join(settings.FILE_ROOT_DIR, rel)):
+        return _to_public_url(rel)
+    return None
+
+
+def compute_parts(row) -> dict:
+    """item.parts 存在性（管理台编辑/查看用；展示端忽略）。
+
+    - design_md：source.md 落盘件存在（老系统同样有 source.md）
+    - tokens：tokens.json 原件存在，或 json 含 token 区块（老系统按数据判断）
+    - components/patterns：json 区块存在且有 items（含计数）
+    - skill：skill_zip_path 列非空且落盘件存在
+    """
+    parts = {
+        "design_md": False,
+        "tokens": False,
+        "components": False,
+        "patterns": False,
+        "skill": False,
+        "components_count": 0,
+        "patterns_count": 0,
+    }
+    try:
+        if row.source_md_path and os.path.isfile(os.path.join(settings.FILE_ROOT_DIR, row.source_md_path)):
+            parts["design_md"] = True
+        if row.skill_zip_path and os.path.isfile(os.path.join(settings.FILE_ROOT_DIR, row.skill_zip_path)):
+            parts["skill"] = True
+        if os.path.isfile(os.path.join(settings.FILE_ROOT_DIR, tokens_rel_path(row.slug))):
+            parts["tokens"] = True
+        data = _read_json_file(row.slug)
+        if data:
+            comp_items = (data.get("components") or {}).get("items") or []
+            pat_items = (data.get("patterns") or {}).get("items") or []
+            parts["components"] = bool(comp_items)
+            parts["patterns"] = bool(pat_items)
+            parts["components_count"] = len(comp_items)
+            parts["patterns_count"] = len(pat_items)
+            if not parts["tokens"]:
+                parts["tokens"] = any(isinstance(data.get(k), dict) for k in TOKEN_SECTION_KEYS)
+    except Exception:  # noqa: BLE001
+        pass
+    return parts
 
 
 def format_item(row, display_map=None) -> dict:
@@ -199,9 +513,10 @@ def format_item(row, display_map=None) -> dict:
         "icon_url": icon_url(row.icon),
         "json_url": json_url(row.file_path),
         "design_md_url": _to_public_url(row.source_md_path) if row.source_md_path else None,
-        "zip_url": _to_public_url(row.source_zip_path) if row.source_zip_path else None,
+        "tokens_url": _tokens_url(row),
         "skill_zip_url": _to_public_url(row.skill_zip_path) if row.skill_zip_path else None,
         "skill_name": row.skill_name or None,
+        "parts": compute_parts(row),
         "default": bool(row.is_default),
         "file_size": row.file_size,
         "created_by": row.created_by or "",
@@ -327,13 +642,13 @@ def resolve_authors(db, form_author: Optional[str], md_author) -> str:
     return json.dumps(authors, ensure_ascii=False)
 
 
-# ─────────────────────────── slug 生成（后端分配，与 MD 解耦） ───────────────────────────
+# ─────────────────────────── slug 生成（后端分配，与文件内容解耦） ───────────────────────────
 
 def generate_slug(db) -> str:
     """8 位随机 [a-z0-9]，DB 唯一约束兜底 + 冲突重试。
 
     slug 只由后端分配（API 路径 / 落盘目录 / 静态 URL），彻底隔离用户输入；
-    MD 的 id 原样保留在 source_slug 列（允许重复，仅展示/搜索/追溯）。
+    tokens.json 的 id 原样保留在 source_slug 列（允许重复，仅展示/搜索/追溯）。
     """
     from app.models.design_system import DesignSystem
 
@@ -344,168 +659,7 @@ def generate_slug(db) -> str:
     raise RuntimeError("slug 生成失败：随机空间冲突（理论不可达，请检查数据库）")
 
 
-# ─────────────────────────── zip 导入与存储 ───────────────────────────
-
-def _slug_dir(slug: str) -> str:
-    return os.path.join(settings.FILE_ROOT_DIR, "design-systems", slug)
-
-
-def parse_md_upload(content: bytes) -> dict:
-    """DESIGN.md 字节 → design-system.json 同构 dict。
-
-    兼容保留（octo-design-zip/1 时代的 MD 直传链路，现已无调用方；design_system_md.parse_md
-    容错版永不抛错）。zip 上传链路请用 dzip.build_design_data（tokens.json 为唯一数据源）。
-    """
-    try:
-        text = content.decode("utf-8")
-    except UnicodeDecodeError as e:
-        raise ValueError("DESIGN.md 必须是 UTF-8 文本：%s" % e)
-    return design_system_md.parse_md(text)
-
-
-def source_md_rel_path(slug: str) -> str:
-    """DESIGN.md 原件相对 FILE_ROOT_DIR 的路径（固定命名；zip 上传时为包内提取件）"""
-    return "design-systems/%s/source.md" % slug
-
-
-def source_zip_rel_path(slug: str) -> str:
-    """zip 原件相对 FILE_ROOT_DIR 的路径（驱动 zip_url 下载）"""
-    return "design-systems/%s/source.zip" % slug
-
-
-def skill_zip_rel_path(slug: str, orig_name: str) -> str:
-    """附件相对路径（驱动 skill_zip_url 下载）：保留 zip 内原文件名（不强制 skill-design.zip）"""
-    return "design-systems/%s/%s" % (slug, os.path.basename(orig_name))
-
-
-def assets_rel_path(slug: str) -> str:
-    """解压后 assets 目录相对路径（html 等文件经 /static 可直接访问）"""
-    return "design-systems/%s/assets" % slug
-
-
-def save_source_md(slug: str, content: bytes) -> str:
-    """保存 DESIGN.md 原件到 design-systems/{slug}/source.md，返回相对路径（存 DB source_md_path 列）。"""
-    path = os.path.join(settings.FILE_ROOT_DIR, source_md_rel_path(slug))
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as f:
-        f.write(content)
-    return source_md_rel_path(slug)
-
-
-def save_source_zip(slug: str, content: bytes) -> str:
-    """保存 zip 原件（先落盘，可追溯/下载），返回相对路径（存 DB source_zip_path 列）。"""
-    rel = source_zip_rel_path(slug)
-    path = os.path.join(settings.FILE_ROOT_DIR, rel)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as f:
-        f.write(content)
-    return rel
-
-
-def save_skill_zip(slug: str, abs_path: str, orig_name: str) -> str:
-    """把解压出的附件原样拷到 design-systems/{slug}/{原文件名}（附件不需要解析，保留原名）。"""
-    rel = skill_zip_rel_path(slug, orig_name)
-    path = os.path.join(settings.FILE_ROOT_DIR, rel)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    shutil.copyfile(abs_path, path)
-    return rel
-
-
-def remove_skill_zip(rel_path: Optional[str]) -> None:
-    """按 DB 列记录的相对路径删除旧附件。
-
-    重传时新附件名可能与旧的不同（保留原文件名），固定路径「覆盖」不到旧文件，
-    故按 skill_zip_path 列的路径清理；同名时无需调用（copyfile 已覆盖）。
-    """
-    if not rel_path:
-        return
-    path = os.path.join(settings.FILE_ROOT_DIR, rel_path)
-    if os.path.isfile(path):
-        os.remove(path)
-
-
-def replace_assets_dir(slug: str, src_assets_dir: str) -> Optional[str]:
-    """整体替换 design-systems/{slug}/assets：旧目录删除、解压目录拷入（重传/新增通用）。"""
-    dst = os.path.join(settings.FILE_ROOT_DIR, assets_rel_path(slug))
-    if os.path.isdir(dst):
-        shutil.rmtree(dst)
-    if not os.path.isdir(src_assets_dir):
-        return None
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    shutil.copytree(src_assets_dir, dst)
-    return assets_rel_path(slug)
-
-
-def import_zip(db, content: bytes, existing_slug: Optional[str] = None, old_skill_zip_rel: Optional[str] = None) -> dict:
-    """zip 字节 → 解析 + 校验 + 全部文件落盘。导入主流程（create 与重传共用）。
-
-    - 四件套必须齐全（DESIGN.md / assets / 附件 .zip / tokens.json），缺失一次性列全 → ZipPackageError；
-      四件套之外的条目丢弃不落盘（dzip.locate_root_entries 打印丢弃清单日志）
-    - design-system.json 本体 = tokens.json 字段原样 + overview.markdown（DESIGN.md 全文，
-      概览原样展示）+ components/patterns（assets 扫描）；tokens.json 非法 JSON → 400
-    - existing_slug 为空：新增（slug 后端随机生成，全新目录）
-    - existing_slug 非空：重传（目录复用，design-system.json/source.zip/source.md/
-      附件/assets 全量替换；封面/图标/作者/调用量等管理字段由路由层保留）
-    - old_skill_zip_rel：重传时 DB 列记录的旧附件路径；新附件名不同时，
-      新内容落盘成功后按此路径清理旧文件（校验失败时零写入，旧文件不受影响）
-    - 附件不强制命名：DESIGN.md 同级任意 .zip（dzip.locate_root_entries 识别），
-      保留原文件名落盘；与保留文件（source.zip 等）冲突在 locate 阶段即拒绝
-    - 校验（zip 安全 + 四件套 + tokens.json JSON 语法 + skill 附件）失败抛 ValueError，此时不落任何文件
-
-    返回 {"data": design-system.json dict, "slug": 落盘 slug, "source_slug": tokens.json 的 id（预留）或 slug,
-          "source_md_rel": …, "source_zip_rel": …, "skill_zip_rel": …或 None,
-          "skill_name": 附件 SKILL.md 的 name 或 None, "zip_size": n}
-    """
-    logger.info("[zip-import] 开始导入：%s，zip %d bytes", "重传 slug=%s" % existing_slug if existing_slug else "新增", len(content))
-    dzip.validate_zip_bytes(content)
-    with tempfile.TemporaryDirectory(prefix="ds-import-") as tmp:
-        dzip.extract_zip(content, tmp)
-        root, skill_path, skill_name, tokens_path = dzip.locate_root_entries(tmp)
-
-        # design-system.json 本体：tokens.json 原样 + overview.markdown（DESIGN.md 全文）+ assets 合并
-        # （与 parse 预览共用 dzip.build_design_data，口径结构性一致；
-        #   落盘前 slim_for_storage 瘦身：展示端 iframe src 直连 /static，存储版只留路径不内嵌源码，
-        #   parse 预览响应保持全量——管理台解析页落盘前无 URL，只能靠内嵌 code 渲染）
-        data = dzip.build_design_data(root, tokens_path)
-        dzip.slim_for_storage(data)
-        # 附件 skill 包解析（严格：缺根级 SKILL.md / 缺 name → ZipPackageError → 400）；
-        # 放在所有落盘之前，失败时零写入（对齐既有校验约定）
-        skill_display_name = dzip.extract_skill_name(skill_path) if skill_path else None
-
-        slug = existing_slug or generate_slug(db)
-        save_json_file(slug, data, len(content))
-        with open(os.path.join(root, "DESIGN.md"), "rb") as f:
-            source_md_rel = save_source_md(slug, f.read())
-        source_zip_rel = save_source_zip(slug, content)
-        skill_zip_rel = save_skill_zip(slug, skill_path, skill_name) if skill_path else None
-        replace_assets_dir(slug, os.path.join(root, "assets"))
-        # 旧附件清理放在全部新内容落盘成功之后（此前任何失败都不破坏现有文件）
-        if existing_slug and old_skill_zip_rel and old_skill_zip_rel != skill_zip_rel:
-            remove_skill_zip(old_skill_zip_rel)
-
-    # 落盘概览（500 排查：即使后续 DB 步骤失败，也能从这里还原文件落到了哪）
-    assets_dir = os.path.join(settings.FILE_ROOT_DIR, assets_rel_path(slug))
-    assets_count = sum(len(fs) for _, _, fs in os.walk(assets_dir)) if os.path.isdir(assets_dir) else 0
-    logger.info(
-        "[zip-import] 落盘完成：slug=%s source_slug=%s skill_name=%s；"
-        "json=%dB source.md=%dB source.zip=%dB 附件=%s assets=%d 个文件",
-        slug, str(data.get("id") or ""), skill_display_name,
-        os.path.getsize(os.path.join(settings.FILE_ROOT_DIR, rel_path(slug))),
-        os.path.getsize(os.path.join(settings.FILE_ROOT_DIR, source_md_rel)),
-        len(content), skill_zip_rel, assets_count,
-    )
-    return {
-        "data": data,
-        "slug": slug,
-        # MD 的 id 可缺失/任意格式（仅展示/搜索/多版本追溯用，不参与 URL）→ 缺失回落 slug（对齐存量）
-        "source_slug": str(data.get("id") or "").strip() or slug,
-        "source_md_rel": source_md_rel,
-        "source_zip_rel": source_zip_rel,
-        "skill_zip_rel": skill_zip_rel,
-        "skill_name": skill_display_name,
-        "zip_size": len(content),
-    }
-
+# ─────────────────────────── 封面 ───────────────────────────
 
 def cover_rel_path(slug: str, ext: str) -> str:
     """封面相对 FILE_ROOT_DIR 路径（文件名固定用 slug 拼扩展名，无路径注入风险）。"""
