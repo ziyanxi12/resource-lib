@@ -637,3 +637,23 @@ def delete_design_system(slug: str, request: Request, db: Session = Depends(get_
     db.commit()
     _log(db, request, "delete", row, {"slug": slug})
     return {"detail": "ok"}
+
+
+# ─────────────────────────── 1a. 单条详情（api1 item 同构） ───────────────────────────
+
+@router.get("/{slug}")
+def get_design_system(slug: str, db: Session = Depends(get_db)):
+    """单条详情：与列表 item 完全同构（format_item 同一产物——name/usage/views/author/
+    parts/各下载 URL/file_size 等全字段），展示端详情页数据源。
+
+    - 建议消费顺序：进页先 POST /{slug}/views 打点、再 GET 本接口——返回的 views
+      已含本次浏览，头部一次渲染无「快照→自增」跳变
+    - 匿名可访问（登录过期豁免清单内，与列表接口同等待遇——展示端匿名浏览详情依赖）
+    - slug 不存在/软删 → 404
+
+    路由注册位置：本路由为单段路径参数，必须注册在 GET /operation-logs（本文件内）
+    之后；main.py 中 ds_whitelist.router（GET /api/design-systems/whitelist 单段）
+    必须 include 在本 router 之前，否则会被 /{slug} 劫持。
+    """
+    row = _get_by_slug(db, slug)
+    return svc.format_item(row, svc.resolve_display_map(db, [row.created_by, row.updated_by]))

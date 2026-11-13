@@ -243,8 +243,10 @@ app.include_router(operation_log.router)
 app.include_router(whitelist.router)
 app.include_router(users.router)
 app.include_router(export.router)
-app.include_router(design_systems.router)
+# ds_whitelist 必须先于 design_systems：其 GET /api/design-systems/whitelist 为单段路径，
+# 若注册在后会被 design_systems 的 GET /{slug}（1a 单条详情）劫持
 app.include_router(ds_whitelist.router)
+app.include_router(design_systems.router)
 
 # 静态文件服务：前端可通过 /static/{file_path} 直接访问上传文件
 if os.path.exists(settings.FILE_ROOT_DIR):
