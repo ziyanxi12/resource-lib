@@ -522,11 +522,13 @@ def _increment_with_event(slug: str, request: Request, db: Session, column: str,
         .first()
     )
     if not row:
+        logger.info("[ds-track] 打点丢弃：slug=%s 不存在/已软删（event=%s）", slug, event_type)
         raise HTTPException(status_code=404, detail="设计系统「%s」不存在" % slug)
 
     # 身份完整化（可能含 getAccount 外部查询）放在事务性写入之前，失败降级不丢打点
     info = resolve_user_info(db, op_override if op_override is not None else get_operator(request))
     account, nick_name, dept1, dept2, dept3, dept4 = snapshot_fields(info)
+    logger.info("[ds-track] event=%s slug=%s account=%s", event_type, slug, account or "（匿名）")
 
     # 匿名（account 为空，仅 7a 豁免可发生；7 须登录态、7b 缺 account 直接 400）不写打点事件：
     # 事件表不再产生空 account 行；views/usage 累计列照常自增（曝光量语义），
@@ -547,8 +549,15 @@ def _increment_with_event(slug: str, request: Request, db: Session, column: str,
         },
         synchronize_session=False,
     )
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error("[ds-track] ✗ 提交失败：slug=%s event=%s", slug, event_type, exc_info=True)
+        raise
     db.refresh(row)
+    logger.info("[ds-track] ✓ slug=%s %s=%s 事件行%s", slug, column, getattr(row, column),
+                "已写入" if account else "跳过（匿名）")
     return row
 
 
