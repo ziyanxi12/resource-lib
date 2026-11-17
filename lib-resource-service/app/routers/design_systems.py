@@ -184,6 +184,7 @@ async def create_design_system(
     components_file: Optional[UploadFile] = File(None, description="部件③：组件包 zip（根须含 components/ 目录；兼容 components/components/ 同名嵌套）"),
     patterns_file: Optional[UploadFile] = File(None, description="部件④：Pattern 包 zip（根须含 patterns/ 目录；兼容同名嵌套）"),
     skill_file: Optional[UploadFile] = File(None, description="部件⑤：skill 包 zip（第一层须含 SKILL.md，frontmatter name 非空）"),
+    preview_file: Optional[UploadFile] = File(None, description="部件⑥：预览页面包 zip（含 html 即可，index.html 优先；上传后展示端详情页直连该页，不走模板页）"),
     cover_file: Optional[UploadFile] = File(None, description="可选封面图片（jpg/png/webp ≤2MB）"),
     icon_file: Optional[UploadFile] = File(None, description="可选图标（jpg/png/webp/svg ≤2MB）"),
 ):
@@ -191,7 +192,7 @@ async def create_design_system(
     name_val = (name or "").strip()
     part_files = await _read_part_files(
         design_md=design_md_file, tokens=tokens_file,
-        components=components_file, patterns=patterns_file, skill=skill_file,
+        components=components_file, patterns=patterns_file, skill=skill_file, preview=preview_file,
     )
     # 名称必填：表单 name 或 tokens.json 的 name 至少提供其一（后者 tokens 解析后由
     # import_parts 写入 json.name；此处仅能预判「两者都不可能提供」的场景）
@@ -253,6 +254,7 @@ async def create_design_system(
         source_md_path=result["source_md_rel"],
         skill_zip_path=result["skill_zip_rel"],
         skill_name=result["skill_name"],
+        preview_entry_path=result["preview_entry_rel"],
         file_size=result["file_size"],
         created_by=account,
         updated_by=account,
@@ -285,6 +287,7 @@ async def put_design_system_parts(
     components_file: Optional[UploadFile] = File(None, description="替换部件③：组件包 zip（只换 assets/components 子树）"),
     patterns_file: Optional[UploadFile] = File(None, description="替换部件④：Pattern 包 zip（只换 assets/patterns 子树）"),
     skill_file: Optional[UploadFile] = File(None, description="替换部件⑤：skill 包 zip（原文件名落盘，旧附件自动清理）"),
+    preview_file: Optional[UploadFile] = File(None, description="替换部件⑥：预览页面包 zip（只换 preview/ 子树与入口）"),
 ):
     """部件替换：仅替换提供部件的内容（逐部件独立成败）；未提供部件取存量。
 
@@ -294,7 +297,7 @@ async def put_design_system_parts(
     row = _get_by_slug(db, slug)
     part_files = await _read_part_files(
         design_md=design_md_file, tokens=tokens_file,
-        components=components_file, patterns=patterns_file, skill=skill_file,
+        components=components_file, patterns=patterns_file, skill=skill_file, preview=preview_file,
     )
     if not part_files:
         raise HTTPException(status_code=400, detail="未提供任何部件文件")
@@ -306,6 +309,8 @@ async def put_design_system_parts(
     if result["skill_zip_rel"]:
         row.skill_zip_path = result["skill_zip_rel"]
         row.skill_name = result["skill_name"]
+    if result["preview_entry_rel"]:
+        row.preview_entry_path = result["preview_entry_rel"]
     row.file_size = result["file_size"]
     account, _ = get_operator(request)
     row.updated_by = account

@@ -58,7 +58,7 @@ MAX_SKILL_MD_BYTES = 1024 * 1024            # skill 包内 SKILL.md 读取上限
 MAX_SKILL_NAME_LEN = 255                    # SKILL.md frontmatter name 字段长度上限（对齐 DB 列宽）
 
 # skill 包落盘时不得与 design-systems/{slug}/ 下的系统保留文件重名（大小写不敏感）
-RESERVED_SKILL_NAMES = {"source.zip", "source.md", "design-system.json", "tokens.json"}
+RESERVED_SKILL_NAMES = {"source.zip", "source.md", "design-system.json", "tokens.json", "preview"}
 
 # 部件 → 展示名（错误信息用）
 GROUP_LABEL = {"components": "组件", "patterns": "Pattern"}
@@ -288,22 +288,39 @@ def _px_num(value):
         return None
 
 
+def _arr_dicts(v) -> bool:
+    """非空 list 且元素均为 dict（对齐 template sanitizeDs 的 arr() 语义 + 非空）。"""
+    return isinstance(v, list) and bool(v) and all(isinstance(x, dict) for x in v)
+
+
+def _legacy_token_dicts(v) -> bool:
+    """tokens 数组是否已是模板渲染态条目（带 raw/desc/token/ref 等源格式没有的键）。"""
+    return isinstance(v, list) and bool(v) and all(
+        isinstance(x, dict) and any(k in x for k in ("raw", "desc", "token", "ref")) for x in v
+    )
+
+
 def convert_tokens_to_legacy(tokens: dict) -> dict:
     """tokens.json（octo-design-parts 数据源）→ 老 design-system.json 区块结构。
 
-    模板与存量系统零改动：转换产物即模板原生渲染的老结构。
-    - color：tokens[].value 按主题映射 → 主题感知取首主题；themes 原样保留；
-      groups = [{title, tokens: [{name, token: usage, value, label: name}]}]
+    模板与存量系统零改动：转换产物即模板原生渲染的老结构。输入支持两种格式：
+    - octo-design-tokens 源格式（requirement/tokens.json 同构）：扁平 tokens 列表，按下述规则转换；
+    - 模板渲染态（DESIGN.md json design 同构）：已是 design-system.json 结构，原样直通拷贝。
+    - color：源格式 tokens[].value 按主题映射 → 主题感知取首主题；themes 原样保留；
+      groups = [{title, tokens: [{name, token: usage, value, label: name}]}]；
+      渲染态（color.groups / palettes 合法）→ 原样直通
     - type（families 映射 + groups[].styles）→ typography（families/weights/scale：
-      style → {name, size, lineHeight, weight, family: families[group.family], desc: group.name}）
-    - size → spacing、radius → radius（value 数值化）；shadow → shadow（value 原样 css 串）
+      style → {name, size, lineHeight, weight, family: families[group.family], desc: group.name}）；
+      tokens.typography / spacing 已是渲染态 → 原样直通（既有守卫）
+    - size → spacing、radius → radius（value 数值化）、shadow → shadow（value 原样 css 串）；
+      radius / shadow 已是渲染态（scenes 或 raw/desc/token/ref 条目）→ 原样直通
     - 装不进老结构的分组（fontScale/fontScaleRegular/opacity/other）：**顶层原样保留，暂不渲染**
     - name/id（预留）/cover/version/meta：顶层原样
     - 源分组缺 tokens / 空列表 → 对应区块不生成（模板渲染空态）
     """
     out = dict(tokens)  # 浅拷贝：多余分组与元数据原样保留
 
-    # ── 颜色 ──
+    # ── 颜色：源格式扁平 tokens（主题感知）→ 单组映射；已是渲染态（groups/palettes）→ 原样直通 ──
     color = tokens.get("color")
     if isinstance(color, dict):
         theme_id = _first_theme_id(color)
@@ -325,6 +342,8 @@ def convert_tokens_to_legacy(tokens: dict) -> dict:
                 "groups": [{"title": "全部颜色", "desc": "", "tokens": mapped}],
                 "rules": color.get("rules") or [],
             }
+        elif _arr_dicts(color.get("groups")) or _arr_dicts(color.get("palettes")):
+            pass  # 渲染态直通：title/themes/palettes/groups/rules 原样保留，模板原生渲染色阶 + 分组
         else:
             out.pop("color", None)
 
@@ -387,47 +406,54 @@ def convert_tokens_to_legacy(tokens: dict) -> dict:
         else:
             out.pop("spacing", None)
 
-    # ── 圆角：radius（value 数值化）──
+    # ── 圆角：radius（value 数值化）；已是渲染态（scenes / raw 条目）→ 原样直通 ──
     rad = tokens.get("radius")
     if isinstance(rad, dict):
-        mapped = []
-        for t in rad.get("tokens") or []:
-            if not isinstance(t, dict):
-                continue
-            num = _px_num(t.get("value"))
-            if num is None:
-                continue
-            mapped.append({"name": str(t.get("name") or ""), "value": num, "desc": t.get("usage") or ""})
-        if mapped:
-            out["radius"] = {
-                "title": str(rad.get("title") or "圆角"),
-                "desc": rad.get("desc") or "",
-                "tokens": mapped,
-                "rules": rad.get("rules") or [],
-            }
+        if _arr_dicts(rad.get("scenes")) or _legacy_token_dicts(rad.get("tokens")):
+            pass  # 渲染态直通：基础 tokens + scenes（组件圆角场景）原样保留，模板渲染 scenes 页签
         else:
-            out.pop("radius", None)
+            mapped = []
+            for t in rad.get("tokens") or []:
+                if not isinstance(t, dict):
+                    continue
+                num = _px_num(t.get("value"))
+                if num is None:
+                    continue
+                mapped.append({"name": str(t.get("name") or ""), "value": num,
+                               "desc": t.get("usage") or t.get("desc") or ""})
+            if mapped:
+                out["radius"] = {
+                    "title": str(rad.get("title") or "圆角"),
+                    "desc": rad.get("desc") or "",
+                    "tokens": mapped,
+                    "rules": rad.get("rules") or [],
+                }
+            else:
+                out.pop("radius", None)
 
-    # ── 阴影：shadow（value 原样 css 串）──
+    # ── 阴影：shadow（value 原样 css 串）；已是渲染态（token/desc 条目）→ 原样直通 ──
     sh = tokens.get("shadow")
     if isinstance(sh, dict):
-        mapped = []
-        for t in sh.get("tokens") or []:
-            if isinstance(t, dict):
-                mapped.append({
-                    "name": str(t.get("name") or ""),
-                    "value": str(t.get("value") or ""),
-                    "desc": t.get("usage") or "",
-                })
-        if mapped:
-            out["shadow"] = {
-                "title": str(sh.get("title") or "阴影"),
-                "desc": sh.get("desc") or "",
-                "tokens": mapped,
-                "rules": sh.get("rules") or [],
-            }
+        if _legacy_token_dicts(sh.get("tokens")):
+            pass  # 渲染态直通：token/desc 等字段原样保留
         else:
-            out.pop("shadow", None)
+            mapped = []
+            for t in sh.get("tokens") or []:
+                if isinstance(t, dict):
+                    mapped.append({
+                        "name": str(t.get("name") or ""),
+                        "value": str(t.get("value") or ""),
+                        "desc": t.get("usage") or t.get("desc") or "",
+                    })
+            if mapped:
+                out["shadow"] = {
+                    "title": str(sh.get("title") or "阴影"),
+                    "desc": sh.get("desc") or "",
+                    "tokens": mapped,
+                    "rules": sh.get("rules") or [],
+                }
+            else:
+                out.pop("shadow", None)
 
     return out
 
@@ -604,6 +630,75 @@ def ingest_group_zip(content: bytes, group: str, dst_group_dir: str) -> Dict:
         logger.info("[parts-import] %s包导入完成：%d 个 html，%s",
                     label, len(items), "检测到同名嵌套目录并已剥离" if nested else "标准结构")
         return {"block": block, "count": len(items), "nested": nested}
+
+
+# ─────────────────────────── 部件 6：预览页面包 ───────────────────────────
+
+def _locate_preview_base(extract_root: str) -> Tuple[str, bool]:
+    """定位预览页扫描基目录，返回 (基目录绝对路径, 是否发生包裹剥离)。
+
+    - zip 根直接含 html 文件 → 根即基目录（标准结构）
+    - 根无 html 且只有一个目录条目（右键压缩产物的单层包裹，目录名任意）→ 向内剥离，
+      循环最多 3 层防多层套娃；剥离后仍无 html → ZipPackageError
+    """
+    base = extract_root
+    nested = False
+    for _ in range(3):
+        entries = [e for e in os.listdir(base) if not _is_junk_entry(e)]
+        has_html = any(e.lower().endswith(".html") and os.path.isfile(os.path.join(base, e)) for e in entries)
+        if has_html:
+            return base, nested
+        dirs = [e for e in entries if os.path.isdir(os.path.join(base, e))]
+        if len(dirs) == 1:
+            nested = True
+            base = os.path.join(base, dirs[0])
+            logger.warning("[parts-import] 预览页面包检测到单层包裹目录，向内剥离一层（当前基目录：%s）", base)
+            continue
+        raise ZipPackageError("预览页面包 zip 里没有 html 文件（入口按根下 index.html 识别）")
+    raise ZipPackageError("预览页面包 zip 包裹目录层级过深（超过 3 层）或内层没有 html 文件")
+
+
+def _resolve_preview_entry(base: str) -> str:
+    """解析预览页入口 html 文件名：index.html 优先；否则根下唯一 .html 兜底；无/多个 → 部件失败。"""
+    htmls = sorted(
+        e for e in os.listdir(base)
+        if e.lower().endswith(".html") and os.path.isfile(os.path.join(base, e)) and not _is_junk_entry(e)
+    )
+    if not htmls:
+        raise ZipPackageError("预览页面包 zip 里没有 html 文件（入口按根下 index.html 识别）")
+    if "index.html" in htmls or "index.HTML" in htmls or "Index.html" in htmls:
+        for h in htmls:
+            if h.lower() == "index.html":
+                return h
+    if len(htmls) == 1:
+        logger.warning("[parts-import] 预览页面包根下无 index.html，使用唯一 html 作为入口：%s", htmls[0])
+        return htmls[0]
+    raise ZipPackageError(
+        "预览页面包根下有多个 html（%s）且没有 index.html，无法确定入口" % " / ".join(htmls[:5]))
+
+
+def ingest_preview_zip(content: bytes, dst_preview_dir: str) -> Dict:
+    """预览页面包部件导入：校验 + 解压 + 包裹剥离 + 入口解析 + 整包落盘。
+
+    - 安全校验同上传入口（validate_zip_bytes：slip/bomb/条目数/同名冲突）
+    - 基目录定位（_locate_preview_base）：根含 html 即标准；单层任意名包裹自动剥离
+    - 入口解析（_resolve_preview_entry）：index.html 优先 → 根下唯一 .html 兜底
+    - 落盘：dst_preview_dir（= design-systems/{slug}/preview）整体替换——
+      先清空旧子树再拷入新内容；本函数任何一步抛错时目标子树不受影响
+    - 返回 {"entry": 入口 html 文件名（preview_url 指向它）, "nested": 是否剥离}
+    """
+    validate_zip_bytes(content)
+    with tempfile.TemporaryDirectory(prefix="ds-preview-") as tmp:
+        extract_zip(content, tmp)
+        base, nested = _locate_preview_base(tmp)
+        entry = _resolve_preview_entry(base)
+        if os.path.isdir(dst_preview_dir):
+            shutil.rmtree(dst_preview_dir)
+        os.makedirs(os.path.dirname(dst_preview_dir), exist_ok=True)
+        shutil.copytree(base, dst_preview_dir)
+        logger.info("[parts-import] 预览页面包导入完成：入口 %s，%s",
+                    entry, "检测到包裹目录并已剥离" if nested else "标准结构")
+        return {"entry": entry, "nested": nested}
 
 
 # ─────────────────────────── 部件 5：skill 包 ───────────────────────────

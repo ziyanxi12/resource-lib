@@ -47,7 +47,7 @@ SLUG_LENGTH = 8
 # ─────────────────────────── 五部件 ───────────────────────────
 
 # 部件名（multipart 字段去 _file 后缀）
-PART_FIELDS = ("design_md", "tokens", "components", "patterns", "skill")
+PART_FIELDS = ("design_md", "tokens", "components", "patterns", "skill", "preview")
 
 # token 区块标准键（legacy 转换产物；老系统无 tokens 原件时按此剔除旧区块）
 TOKEN_SECTION_KEYS = ("color", "typography", "spacing", "radius", "shadow")
@@ -236,6 +236,16 @@ def group_dir(slug: str, group: str) -> str:
     return os.path.join(_slug_dir(slug), "assets", group)
 
 
+def preview_dir(slug: str) -> str:
+    """预览页面包落盘目录（{slug}/preview；整站经 /static 可直接访问）"""
+    return os.path.join(_slug_dir(slug), "preview")
+
+
+def preview_entry_rel_path(slug: str, entry: str) -> str:
+    """预览页入口 html 相对 FILE_ROOT_DIR 的路径（驱动 preview_url；存 DB preview_entry_path 列）"""
+    return "design-systems/%s/preview/%s" % (slug, os.path.basename(entry))
+
+
 def save_source_md(slug: str, content: bytes) -> str:
     """保存 DESIGN.md 原件到 design-systems/{slug}/source.md，返回相对路径（存 DB source_md_path 列）。"""
     path = os.path.join(settings.FILE_ROOT_DIR, source_md_rel_path(slug))
@@ -329,6 +339,7 @@ def import_parts(
     tokens_rel = None
     skill_zip_rel = None
     skill_name = None
+    preview_entry_rel = None
 
     # ① DESIGN.md：UTF-8 校验 → source.md 落盘
     if "design_md" in part_files:
@@ -399,6 +410,19 @@ def import_parts(
         except (dzip.ZipPackageError, ValueError) as e:
             report["skill"] = {"provided": True, "ok": False, "error": str(e)}
 
+    # ⑥ 预览页面包：安全解压 + 单层包裹剥离 + 入口解析 → preview/ 子树整体替换
+    if "preview" in part_files:
+        _fname, content = part_files["preview"]
+        try:
+            ingested = dzip.ingest_preview_zip(content, preview_dir(slug))
+            preview_entry_rel = preview_entry_rel_path(slug, ingested["entry"])
+            entry = {"provided": True, "ok": True, "entry": ingested["entry"], "size": len(content)}
+            if ingested["nested"]:
+                entry["nested"] = True
+            report["preview"] = entry
+        except (dzip.ZipPackageError, ValueError) as e:
+            report["preview"] = {"provided": True, "ok": False, "error": str(e)}
+
     # 组装收尾：name（新增模式）/ coverage / meta 标注（替换模式不动存量 meta）
     if is_create:
         data["name"] = (name_override or "").strip() or str(data.get("name") or "").strip() or slug
@@ -432,6 +456,7 @@ def import_parts(
         "tokens_rel": tokens_rel,
         "skill_zip_rel": skill_zip_rel,
         "skill_name": skill_name,
+        "preview_entry_rel": preview_entry_rel,
         "ingest": report,
         "file_size": file_size,
     }
@@ -454,6 +479,7 @@ def compute_parts(row) -> dict:
     - tokens：tokens.json 原件存在，或 json 含 token 区块（老系统按数据判断）
     - components/patterns：json 区块存在且有 items（含计数）
     - skill：skill_zip_path 列非空且落盘件存在
+    - preview：preview_entry_path 列非空且落盘件存在
     """
     parts = {
         "design_md": False,
@@ -461,6 +487,7 @@ def compute_parts(row) -> dict:
         "components": False,
         "patterns": False,
         "skill": False,
+        "preview": False,
         "components_count": 0,
         "patterns_count": 0,
     }
@@ -469,6 +496,8 @@ def compute_parts(row) -> dict:
             parts["design_md"] = True
         if row.skill_zip_path and os.path.isfile(os.path.join(settings.FILE_ROOT_DIR, row.skill_zip_path)):
             parts["skill"] = True
+        if row.preview_entry_path and os.path.isfile(os.path.join(settings.FILE_ROOT_DIR, row.preview_entry_path)):
+            parts["preview"] = True
         if os.path.isfile(os.path.join(settings.FILE_ROOT_DIR, tokens_rel_path(row.slug))):
             parts["tokens"] = True
         data = _read_json_file(row.slug)
@@ -516,6 +545,7 @@ def format_item(row, display_map=None) -> dict:
         "tokens_url": _tokens_url(row),
         "skill_zip_url": _to_public_url(row.skill_zip_path) if row.skill_zip_path else None,
         "skill_name": row.skill_name or None,
+        "preview_url": _to_public_url(row.preview_entry_path) if row.preview_entry_path else None,
         "parts": compute_parts(row),
         "default": bool(row.is_default),
         "file_size": row.file_size,

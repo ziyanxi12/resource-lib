@@ -35,6 +35,7 @@ class DesignSystem(Base):
     source_zip_path = Column(String(500), nullable=True, comment="zip 原件相对路径（zip_url 数据源；旧 MD 数据为 NULL）")
     skill_zip_path = Column(String(500), nullable=True, comment="skill-design.zip 附件相对路径（skill_zip_url 数据源）")
     skill_name = Column(String(255), nullable=True, comment="附件 zip 第一层 SKILL.md frontmatter 的 name（技能名；无附件为 NULL）")
+    preview_entry_path = Column(String(500), nullable=True, comment="预览页面包入口 html 相对 FILE_ROOT_DIR 的路径（design-systems/{slug}/preview/**；preview_url 数据源，无部件为 NULL）")
     file_size  = Column(Integer, nullable=True, comment="上传 zip 原件大小（bytes；旧数据为 MD 大小）")
     created_by = Column(String(100), nullable=True)
     updated_by = Column(String(100), nullable=True)
