@@ -392,7 +392,7 @@ def import_parts(
         except (dzip.ZipPackageError, ValueError) as e:
             report[part] = {"provided": True, "ok": False, "error": str(e)}
 
-    # ⑤ skill 包：保留名校验 + SKILL.md/frontmatter name 校验 → 原样落盘
+    # ⑤ skill 包：保留名校验 + SKILL.md/frontmatter name 校验 + v4.3 前缀改写 → 落盘（改写后版本）
     if "skill" in part_files:
         fname, content = part_files["skill"]
         try:
@@ -401,12 +401,13 @@ def import_parts(
                 raise dzip.ZipPackageError(
                     "skill 包文件名「%s」与系统保留文件（%s）冲突，请重命名后重新上传"
                     % (orig, " / ".join(sorted(dzip.RESERVED_SKILL_NAMES))))
-            skill_name = dzip.parse_skill_zip_bytes(content)
-            skill_zip_rel = save_part_file(slug, orig, content)
+            # v4.3：name 非 design-system- 开头 → 改写（幂等）；落盘 zip 内 SKILL.md 为改写后版本
+            skill_name, skill_content = dzip.ingest_skill_zip_bytes(content)
+            skill_zip_rel = save_part_file(slug, orig, skill_content)
             # 旧附件清理放在新包落盘成功之后（此前任何失败都不破坏现有文件）
             if existing is not None and existing.skill_zip_path and existing.skill_zip_path != skill_zip_rel:
                 remove_skill_zip(existing.skill_zip_path)
-            report["skill"] = {"provided": True, "ok": True, "skill_name": skill_name, "size": len(content)}
+            report["skill"] = {"provided": True, "ok": True, "skill_name": skill_name, "size": len(skill_content)}
         except (dzip.ZipPackageError, ValueError) as e:
             report["skill"] = {"provided": True, "ok": False, "error": str(e)}
 

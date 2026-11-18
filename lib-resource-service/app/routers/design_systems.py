@@ -15,6 +15,8 @@
 
 import logging
 import os
+import shutil
+from datetime import datetime
 from typing import Dict, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -324,6 +326,42 @@ async def put_design_system_parts(
         **svc.format_item(row, svc.resolve_display_map(db, [row.created_by, row.updated_by])),
         "ingest": result["ingest"],
     }
+
+
+# ─────────────────────────── 5a. 删除预览页面部件（v4.2） ───────────────────────────
+
+@router.delete("/{slug}/parts/preview")
+def delete_design_system_preview_part(
+    slug: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """删除预览页面部件：{slug}/preview/ 整子树清理 + preview_entry_path 置空。
+
+    展示端详情页随之回落模板页渲染（preview_url=null → template.html + ds-data 注入）。
+    - 幂等：preview 部件本就不存在时照常返回当前 item（不报错，多标签页/重复操作安全）
+    - file_size 重算（{slug} 目录落盘合计）；updated_at 刷新（内容更新语义）
+    - 操作日志 action 沿用 update_parts，detail 注明「删除 preview 部件」
+    - 仅 preview 部件开放删除；管理写操作（登录态校验由全局中间件承担）
+    """
+    row = _get_by_slug(db, slug)
+    had = bool(row.preview_entry_path)
+    pdir = svc.preview_dir(row.slug)
+    if os.path.isdir(pdir):
+        shutil.rmtree(pdir, ignore_errors=True)
+    row.preview_entry_path = None
+    row.file_size = svc._dir_size(row.slug)
+    account, _ = get_operator(request)
+    row.updated_by = account
+    row.updated_at = datetime.now()
+    db.commit()
+    db.refresh(row)
+    _log(db, request, "update_parts", row, {
+        "slug": slug,
+        "action_detail": "删除 preview 部件",
+        "had_preview": had,
+    })
+    return svc.format_item(row, svc.resolve_display_map(db, [row.created_by, row.updated_by]))
 
 
 # ─────────────────────────── 3. 详情 JSON ───────────────────────────

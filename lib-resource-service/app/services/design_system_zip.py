@@ -55,7 +55,8 @@ MAX_COMPRESS_RATIO = 100                    # 单文件压缩比上限（>100 �
 MAX_EMBED_HTML_BYTES = 2 * 1024 * 1024      # 单个 html 内嵌 design-system.json 上限（超出只存路径）
 DEFAULT_ROW_HEIGHT = 160                    # items[].height 默认行高（展示端表格行预览高度，预留修正通道）
 MAX_SKILL_MD_BYTES = 1024 * 1024            # skill 包内 SKILL.md 读取上限（防 zip bomb，超出拒绝）
-MAX_SKILL_NAME_LEN = 255                    # SKILL.md frontmatter name 字段长度上限（对齐 DB 列宽）
+MAX_SKILL_NAME_LEN = 255                    # SKILL.md frontmatter name 最终长度上限（含前缀，对齐 DB 列宽）
+SKILL_NAME_PREFIX = "design-system-"        # v4.3：skill 名统一前缀（ingest 时改写 SKILL.md 的 name）
 
 # skill 包落盘时不得与 design-systems/{slug}/ 下的系统保留文件重名（大小写不敏感）
 RESERVED_SKILL_NAMES = {"source.zip", "source.md", "design-system.json", "tokens.json", "preview"}
@@ -751,6 +752,62 @@ def parse_skill_zip_bytes(content: bytes) -> str:
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+
+def ingest_skill_zip_bytes(content: bytes) -> Tuple[str, bytes]:
+    """skill 包部件 ingest（v4.3：name 加 design-system- 前缀改写）。
+
+    zip 字节 → (改写后技能名, 改写后 zip 字节)。失败抛 ZipPackageError（该部件失败）。
+
+    - 校验同 parse_skill_zip_bytes（zip 合法 / 第一层 SKILL.md / frontmatter name 非空）
+    - name 改写：非 ``design-system-`` 开头 → ``design-system-{name}``；已带前缀原样（幂等，
+      重复上传已处理包不会双重前缀）；最终名（含前缀）> MAX_SKILL_NAME_LEN → 该部件失败
+    - zip 重建：SKILL.md 条目替换为改写后内容（仅 frontmatter 块内首个 ``name:`` 行，
+      frontmatter 外的正文不动），其余条目原字节保留、条目顺序不变
+    """
+    raw_name = parse_skill_zip_bytes(content)
+    final_name = raw_name if raw_name.startswith(SKILL_NAME_PREFIX) else SKILL_NAME_PREFIX + raw_name
+    if len(final_name) > MAX_SKILL_NAME_LEN:
+        raise ZipPackageError(
+            "skill 名加前缀后超过 %d 字符（原名 %d 字符）" % (MAX_SKILL_NAME_LEN, len(raw_name)))
+    if final_name == raw_name:
+        # 已带前缀（幂等命中）：无需重建 zip，原字节落盘
+        return final_name, content
+    return final_name, _rewrite_skill_md_name(content, final_name)
+
+
+def _rewrite_skill_md_name(content: bytes, new_name: str) -> bytes:
+    """重建 skill zip：SKILL.md 的 frontmatter name 行替换为 new_name，其余条目原样。
+
+    只改 frontmatter（--- ... ---）块内第一个 ``name:`` 行；正文里的 name: 行不动。
+    输出条目顺序与原包一致，压缩统一 deflate。
+    """
+    src = zipfile.ZipFile(io.BytesIO(content))
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as out:
+        for info in src.infolist():
+            data = src.read(info)
+            if info.filename == "SKILL.md":
+                text = data.decode("utf-8")
+                text = _replace_frontmatter_name(text, new_name)
+                data = text.encode("utf-8")
+            out.writestr(info, data)
+    src.close()
+    return out_buf.getvalue()
+
+
+def _replace_frontmatter_name(text: str, new_name: str) -> str:
+    """SKILL.md 文本 frontmatter 块内首个 name: 行替换（无 frontmatter/无 name 行时原样返回——
+    上游 ingest_skill_zip_bytes 已校验存在，此处仅防御）。"""
+    m = re.match(r"^---\s*\n", text)
+    if not m:
+        return text
+    end = text.find("\n---", m.end())
+    if end == -1:
+        return text
+    head, body = text[:end], text[end:]
+    replaced = re.sub(r"(?m)^(\s*)name:\s*.*$", lambda mo: "%sname: %s" % (mo.group(1), new_name), head, count=1)
+    return replaced + body
 
 
 # ─────────────────────────── 存储版瘦身 ───────────────────────────
