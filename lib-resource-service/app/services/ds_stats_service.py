@@ -197,11 +197,13 @@ def stats_dept_share(db: Session, metric: str, start: str, end: str) -> dict:
 
 # ─────────────────────────── 人员统计：users ───────────────────────────
 
-def stats_users(db: Session, start: str, end: str, search: str = "") -> dict:
+def stats_users(db: Session, start: str, end: str, search: str = "", page: int = 1, limit: int = 20) -> dict:
     """人员统计表：按 account 分组。
 
     名字/部门取该账号**最新一条事件**的快照；预览数/调用量为范围内合计；
     最近调用时间 = 范围内最后一次事件时间。search 匹配 工号/名字（模糊）。
+    v4.6 服务端分页：聚合按全量计算（每人合计不受分页影响），last_at 倒序排序后
+    切片返回当前页；total = 全量人数（对齐 operation-logs 分页口径）。
     """
     q = _range_query(db, start, end).with_entities(
         DsUsageEvent.account, DsUsageEvent.nick_name,
@@ -249,7 +251,13 @@ def stats_users(db: Session, start: str, end: str, search: str = "") -> dict:
             "dept3": st["dept"][2], "dept4": st["dept"][3],
         })
     items.sort(key=lambda x: x["last_at"] or "", reverse=True)
-    return {"start": start or None, "end": end or None, "total": len(items), "items": items}
+    total = len(items)
+    begin = (page - 1) * limit
+    return {
+        "start": start or None, "end": end or None,
+        "total": total, "page": page, "limit": limit,
+        "items": items[begin:begin + limit],
+    }
 
 
 # ─────────────────────────── 7c. 打点事件用户信息补全 ───────────────────────────

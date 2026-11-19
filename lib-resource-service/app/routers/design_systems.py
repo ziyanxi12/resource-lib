@@ -15,8 +15,6 @@
 
 import logging
 import os
-import shutil
-from datetime import datetime
 from typing import Dict, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
@@ -114,9 +112,17 @@ def _ingest_detail(ingest: dict) -> dict:
 @router.get("")
 def list_design_systems(
     search: Optional[str] = Query(None, description="按名称/slug/规范id(source_slug)/作者模糊搜索"),
+    include_disabled: bool = Query(False, description="包含已禁用系统（v4.6：管理台传 true 取全量；展示端默认只看启用）"),
     db: Session = Depends(get_db),
 ):
+    """设计系统列表（含个数）——展示端与管理台共用（v4.6）。
+
+    默认过滤 is_disabled（展示端首页/生成页语义：禁用系统不可见）；管理台传
+    include_disabled=1/true 取全量（含禁用系统——再启用的唯一入口）。
+    """
     q = db.query(DesignSystem).filter(DesignSystem.is_deleted == 0)
+    if not include_disabled:
+        q = q.filter(DesignSystem.is_disabled == False)  # noqa: E712
     if search and search.strip():
         kw = "%%%s%%" % search.strip()
         q = q.filter(
@@ -211,7 +217,7 @@ async def create_design_system(
         raise HTTPException(status_code=400, detail="名称不能为空")
 
     meta = svc.extract_meta(tokens_raw)
-    # 表单覆盖派生值（name 已在 import_parts 写入 json = 表单值）
+    # 表单覆盖派生值（name 走 DB 列；usage 恒 0 起步）
     if desc is not None and desc != "":
         meta["desc"] = desc
     if cover:
@@ -333,43 +339,7 @@ async def put_design_system_parts(
     }
 
 
-# ─────────────────────────── 5a. 删除预览页面部件（v4.2） ───────────────────────────
-
-@router.delete("/{slug}/parts/preview")
-def delete_design_system_preview_part(
-    slug: str,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    """删除预览页面部件：{slug}/preview/ 整子树清理 + preview_entry_path 置空。
-
-    展示端详情页随之回落模板页渲染（preview_url=null → template.html + ds-data 注入）。
-    - 幂等：preview 部件本就不存在时照常返回当前 item（不报错，多标签页/重复操作安全）
-    - file_size 重算（{slug} 目录落盘合计）；updated_at 刷新（内容更新语义）
-    - 操作日志 action 沿用 update_parts，detail 注明「删除 preview 部件」
-    - 仅 preview 部件开放删除；管理写操作（登录态校验由全局中间件承担）
-    """
-    row = _get_by_slug(db, slug)
-    had = bool(row.preview_entry_path)
-    pdir = svc.preview_dir(row.slug)
-    if os.path.isdir(pdir):
-        shutil.rmtree(pdir, ignore_errors=True)
-    row.preview_entry_path = None
-    row.file_size = svc._dir_size(row.slug)
-    account, _ = get_operator(request)
-    row.updated_by = account
-    row.updated_at = datetime.now()
-    db.commit()
-    db.refresh(row)
-    _log(db, request, "update_parts", row, {
-        "slug": slug,
-        "action_detail": "删除 preview 部件",
-        "had_preview": had,
-    })
-    return svc.format_item(row, svc.resolve_display_map(db, [row.created_by, row.updated_by]))
-
-
-# ─────────────────────────── 3. 详情 JSON ───────────────────────────
+# ─────────────────────────── 3a. 详情 JSON ───────────────────────────
 
 @router.get("/{slug}/json")
 def get_design_system_json(slug: str, db: Session = Depends(get_db)):
@@ -391,6 +361,8 @@ async def patch_design_system(
     author: Optional[str] = Form(None, description="作者，JSON 数组字符串 [{account, nick_name, dept}]；空数组清空作者"),
     usage: Optional[str] = Form(None),
     views: Optional[str] = Form(None, description="预览量修正通道（仅 API 层，界面无编辑入口）；非负整数、整字段覆盖"),
+    preview_enabled: Optional[str] = Form(None, description="预览页面启用/禁用（v4.5）：false=禁用（文件不删、preview_url 置 null，展示端回落模板渲染）；true=启用恢复直连；无 preview 部件时无效果"),
+    enabled: Optional[str] = Form(None, description="系统级启用/禁用（v4.6）：false=禁用（数据全保留——展示端列表过滤/详情与打点 404，管理台 include_disabled 可见）；true=启用恢复展示；空/缺省不动"),
     default: Optional[str] = Form(None),
     cover_file: Optional[UploadFile] = File(None, description="可选新封面（jpg/png/webp ≤2MB）；不上传则保留现有封面"),
     icon_file: Optional[UploadFile] = File(None, description="可选新图标（jpg/png/webp/svg ≤2MB）；不上传则保留现有图标"),
@@ -423,6 +395,20 @@ async def patch_design_system(
             detail["views"] = row.views
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
+    if preview_enabled is not None:
+        # v4.5 禁用开关：只写 preview_disabled 列（文件保留、parts.preview 不变、file_size 不动）；
+        # 无 preview 部件时照常接受（preview_url 仍 null，无可见效果）；空/非法值视为未提供
+        pv = svc.parse_form_bool(preview_enabled)
+        if pv is not None:
+            row.preview_disabled = not pv
+            detail["preview_enabled"] = pv
+    if enabled is not None:
+        # v4.6 系统级开关：只写 is_disabled 列（数据/文件/统计全保留；展示端列表过滤、
+        # 详情与打点 404）；空/非法值视为未提供；默认系统禁用无特殊处理（is_default 标记保留）
+        ev = svc.parse_form_bool(enabled)
+        if ev is not None:
+            row.is_disabled = not ev
+            detail["enabled"] = ev
     if cover_file is not None:
         content = await cover_file.read()
         try:
@@ -474,11 +460,16 @@ def _increment_with_event(slug: str, request: Request, db: Session, column: str,
 
     row = (
         db.query(DesignSystem)
-        .filter(DesignSystem.slug == slug, DesignSystem.is_deleted == 0)
+        .filter(
+            DesignSystem.slug == slug,
+            DesignSystem.is_deleted == 0,
+            # v4.6：禁用系统对展示端/调用方不可见——打点与上报一并停（对齐详情 404）
+            DesignSystem.is_disabled == False,  # noqa: E712
+        )
         .first()
     )
     if not row:
-        logger.info("[ds-track] 打点丢弃：slug=%s 不存在/已软删（event=%s）", slug, event_type)
+        logger.info("[ds-track] 打点丢弃：slug=%s 不存在/已软删/已禁用（event=%s）", slug, event_type)
         raise HTTPException(status_code=404, detail="设计系统「%s」不存在" % slug)
 
     # 身份完整化（可能含 getAccount 外部查询）放在事务性写入之前，失败降级不丢打点
@@ -667,11 +658,15 @@ def stats_users(
     start: str = Query(""),
     end: str = Query(""),
     search: str = Query("", description="按工号/名字模糊搜索"),
+    page: int = Query(1, ge=1, description="页码（服务端分页，默认 1）"),
+    limit: int = Query(20, ge=1, le=100, description="每页条数（1-100，默认 20）"),
     db: Session = Depends(get_db),
 ):
-    """人员统计表：工号/名字/最近调用时间/预览数/调用量/一~四层部门（快照）。"""
+    """人员统计表：工号/名字/最近调用时间/预览数/调用量/一~四层部门（快照）。
+    v4.6 服务端分页：聚合按全量计算（每人合计口径不受分页影响），返回按 last_at
+    倒序排序后的当前页切片 + total 全量人数。"""
     from app.services import ds_stats_service as stats
-    return stats.stats_users(db, start, end, search)
+    return stats.stats_users(db, start, end, search, page, limit)
 
 
 # ─────────────────────────── 6. 删除（软删） ───────────────────────────
@@ -697,11 +692,14 @@ def get_design_system(slug: str, db: Session = Depends(get_db)):
     - 建议消费顺序：进页先 POST /{slug}/views 打点、再 GET 本接口——返回的 views
       已含本次浏览，头部一次渲染无「快照→自增」跳变
     - 匿名可访问（登录过期豁免清单内，与列表接口同等待遇——展示端匿名浏览详情依赖）
-    - slug 不存在/软删 → 404
+    - slug 不存在/软删 → 404；**已禁用（is_disabled）→ 404**（v4.6：禁用系统对展示端
+      不可见，深链同走「未找到」语义；管理台经列表 include_disabled 可见可再启用）
 
     路由注册位置：本路由为单段路径参数，必须注册在 GET /operation-logs（本文件内）
     之后；main.py 中 ds_whitelist.router（GET /api/design-systems/whitelist 单段）
     必须 include 在本 router 之前，否则会被 /{slug} 劫持。
     """
     row = _get_by_slug(db, slug)
+    if row.is_disabled:
+        raise HTTPException(status_code=404, detail="该设计系统已下线")
     return svc.format_item(row, svc.resolve_display_map(db, [row.created_by, row.updated_by]))

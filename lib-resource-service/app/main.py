@@ -119,6 +119,8 @@ async def lifespan(app: FastAPI):
     _ensure_column(engine, "design_systems", "skill_name", "VARCHAR(255)")
     _ensure_column(engine, "design_systems", "views", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(engine, "design_systems", "preview_entry_path", "VARCHAR(500)")
+    _ensure_column(engine, "design_systems", "preview_disabled", "BOOLEAN NOT NULL DEFAULT 0")
+    _ensure_column(engine, "design_systems", "is_disabled", "BOOLEAN NOT NULL DEFAULT 0")
 
     # design_systems.source_slug 存量回填：老数据 slug == MD id，回填后 URL/语义零变化
     try:
