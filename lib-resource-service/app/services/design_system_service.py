@@ -52,6 +52,10 @@ PART_FIELDS = ("design_md", "tokens", "components", "patterns", "skill", "previe
 # token 区块标准键（legacy 转换产物；老系统无 tokens 原件时按此剔除旧区块）
 TOKEN_SECTION_KEYS = ("color", "typography", "spacing", "radius", "shadow")
 
+# design-system.json 的 token 六键（v4.4：从 tokens.json 原件顶层原样深拷贝进 json，
+# other 供模板 LIVE token 注入消费——描边等不在八栏里的 token）
+TOKEN_JSON_KEYS = ("color", "typography", "spacing", "radius", "shadow", "other")
+
 
 def normalize_cover(cover) -> str:
     """JSON 派生/表单传入的 cover：仅认内置封面名，其余回落默认（不报错）。"""
@@ -288,29 +292,70 @@ def remove_skill_zip(rel_path: Optional[str]) -> None:
         os.remove(path)
 
 
-# ─────────────────────────── 五部件导入（新增 / 替换共用编排） ───────────────────────────
+# ─────────────────────────── 六部件导入（新增 / 替换共用编排） ───────────────────────────
+
+def _read_tokens_raw(slug: str) -> Optional[dict]:
+    """读 {slug}/tokens.json 原件（容忍 BOM）；不存在/损坏返回 None。"""
+    path = os.path.join(settings.FILE_ROOT_DIR, tokens_rel_path(slug))
+    if not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            raw = json.loads(f.read().decode("utf-8-sig"))
+        return raw if isinstance(raw, dict) else None
+    except (ValueError, UnicodeDecodeError, OSError):
+        return None
+
+
+def rebuild_design_system_json(slug: str, old_data: Optional[dict] = None) -> Tuple[dict, dict]:
+    """从 {slug} 落盘现状全量重建 design-system.json（v4.4：8+1 键单数据源）。
+
+    结构（模板唯一数据源，jsonUrl 直连消费）：
+    - ``overview``：恒 "source.md"（design_md 部件落盘件相对路径；文件不存在时
+      模板 fetch 404 → 概览栏容错提示）
+    - ``color/typography/spacing/radius/shadow/other``：**tokens.json 原件顶层同名键
+      原样深拷贝**；原件缺失的键回落 old json 同名键（老系统无原件 → 转换产物兼容；
+      原件缺失且老 json 也没有 → 不写该键，模板栏级容错空态）
+    - ``components/patterns``：scan_group_items 扫 assets/{group} 子树出条目
+      {id, name, group, height, html}；无条目不写该键（模板空态）
+    - 其余顶层键（老结构的 name/meta/coverage/source.files 内嵌源码等）一律不再写入
+
+    返回 (data, counts)，counts = {"components": 条目数, "patterns": 条目数}。
+    """
+    if not isinstance(old_data, dict):
+        old_data = _read_json_file(slug)
+    data = OrderedDict()
+    data["overview"] = "source.md"
+    raw = _read_tokens_raw(slug)
+    for k in TOKEN_JSON_KEYS:
+        if raw is not None and k in raw:
+            data[k] = raw[k]
+        elif k in old_data:
+            data[k] = old_data[k]
+    counts = {}
+    for part in ("components", "patterns"):
+        items = dzip.scan_group_items(group_dir(slug, part), part)
+        counts[part] = len(items)
+        if items:
+            data[part] = OrderedDict([("items", items)])
+    return data, counts
+
 
 def import_parts(
     db,
     part_files: Dict[str, Tuple[str, bytes]],
     existing=None,
-    name_override: Optional[str] = None,
 ) -> dict:
-    """五部件导入主流程（POST 新增与 PUT /{slug}/parts 替换共用）。
+    """六部件导入主流程（POST 新增与 PUT /{slug}/parts 替换共用）。
 
     - 逐部件独立成败：任一部件校验/解析失败 → 该部件忽略并记入 ingest 报告
       （{"provided", "ok", "error"/"count"/"skill_name"}），其余部件正常入库
     - part_files：{部件名: (文件名, 字节)}，仅包含请求里实际提供了的部件
-    - existing=None（新增）：slug 后端随机生成；json 从 tokens 部件起建
-      （data.name = 表单 name → tokens.name → slug 兜底）
-    - existing=row（替换）：slug 复用；json 从存量起合并——
-      * tokens 部件：剔除集 = TOKEN_SECTION_KEYS ∪ 旧 tokens 原件顶层键（老系统无原件
-        → 仅标准五键），剔除后合入新转换结果（name/id/cover/meta 不跟随）；
-        未提供部件 → 存量区块原样保留（老系统兼容）
-      * components/patterns 部件：assets/{group} 子树整体替换 + json 区块重建
-      * skill 部件：原文件名落盘；新名与旧附件不同时按 DB 列清理旧文件
-    - 返回 {"data": json dict, "slug", "source_md_rel"/"tokens_rel"/"skill_zip_rel"/
-      "skill_name"（仅部件成功提供时非 None）, "ingest": 报告, "file_size": 目录合计}
+    - v4.4 组装方式：逐部件落盘后从 {slug} 落盘现状**全量重建** design-system.json
+      （rebuild_design_system_json——未提供部件的落盘件未动，天然保留存量）
+    - 返回 {"data": json dict, "slug", "tokens_raw"（tokens 部件原件，未提供为 None）,
+      "source_slug", "source_md_rel"/"tokens_rel"/"skill_zip_rel"/"skill_name"
+      （仅部件成功提供时非 None）, "ingest": 报告, "file_size": 目录合计}
     """
     is_create = existing is None
     slug = existing.slug if existing is not None else generate_slug(db)
@@ -319,27 +364,14 @@ def import_parts(
                 "、".join(k for k in PART_FIELDS if k in part_files) or "（空）")
 
     report = {f: {"provided": f in part_files} for f in PART_FIELDS}
-    data = {} if is_create else _read_json_file(slug)
-
-    # 旧 tokens 原件顶层键集（替换模式：确定旧 token 区块剔除范围；无原件 → 空集。
-    # 剔除集恒并上 TOKEN_SECTION_KEYS——转换产物派生键（typography/spacing 等）不在原件键集里）
-    old_tokens_keys = set()
-    if not is_create:
-        old_path = os.path.join(settings.FILE_ROOT_DIR, tokens_rel_path(slug))
-        if os.path.isfile(old_path):
-            try:
-                with open(old_path, "rb") as f:
-                    old_raw = json.loads(f.read().decode("utf-8-sig"))
-                if isinstance(old_raw, dict):
-                    old_tokens_keys = set(old_raw.keys())
-            except (ValueError, UnicodeDecodeError, OSError):
-                old_tokens_keys = set()
+    old_data = {} if is_create else _read_json_file(slug)
 
     source_md_rel = None
     tokens_rel = None
     skill_zip_rel = None
     skill_name = None
     preview_entry_rel = None
+    tokens_raw = None
 
     # ① DESIGN.md：UTF-8 校验 → source.md 落盘
     if "design_md" in part_files:
@@ -351,41 +383,24 @@ def import_parts(
         except (dzip.ZipPackageError, ValueError) as e:
             report["design_md"] = {"provided": True, "ok": False, "error": str(e)}
 
-    # ② tokens.json：JSON 校验 → legacy 转换 → 原件落盘
+    # ② tokens.json：JSON 校验 → 原件落盘（v4.4：不做转换，json 六键重建时原样深拷贝）
     if "tokens" in part_files:
         _fname, content = part_files["tokens"]
         try:
-            _raw, converted = dzip.parse_tokens_bytes(content)
-            if is_create:
-                data = converted
-            else:
-                # 剔除集 = 标准五键 ∪ 旧 tokens 原件顶层键（老系统无原件 → 仅五键）；
-                # name/id/cover/meta 属管理性顶层键，不随 tokens 替换剔除（meta 归 create 标注 / PATCH）
-                remove_keys = (set(TOKEN_SECTION_KEYS) | old_tokens_keys) - {"name", "id", "cover", "meta"}
-                for k in remove_keys:
-                    data.pop(k, None)
-                # name/id/cover/meta 不跟随 tokens 部件（管理字段归 PATCH / 新增表单）
-                for k in ("name", "id", "cover", "meta"):
-                    converted.pop(k, None)
-                data.update(converted)
+            tokens_raw = dzip.parse_tokens_bytes(content)
             tokens_rel = save_tokens_file(slug, content)
             report["tokens"] = {"provided": True, "ok": True, "size": len(content)}
         except (dzip.ZipPackageError, ValueError) as e:
             report["tokens"] = {"provided": True, "ok": False, "error": str(e)}
 
-    # ③④ 组件包 / Pattern 包：安全解压 → 定位（同名嵌套剥离）→ 扫描 → assets/{group} 子树替换
+    # ③④ 组件包 / Pattern 包：安全解压 → 定位（同名嵌套剥离）→ assets/{group} 子树整体替换
     for part in ("components", "patterns"):
         if part not in part_files:
             continue
         _fname, content = part_files[part]
         try:
             ingested = dzip.ingest_group_zip(content, part, group_dir(slug, part))
-            if ingested["block"] is not None:
-                data[part] = ingested["block"]
-            else:
-                # zip 合规但无 html：区块移除（展示端空态），子树也已替换为实际内容
-                data.pop(part, None)
-            entry = {"provided": True, "ok": True, "count": ingested["count"]}
+            entry = {"provided": True, "ok": True}
             if ingested["nested"]:
                 entry["nested"] = True
             report[part] = entry
@@ -424,25 +439,29 @@ def import_parts(
         except (dzip.ZipPackageError, ValueError) as e:
             report["preview"] = {"provided": True, "ok": False, "error": str(e)}
 
-    # 组装收尾：name（新增模式）/ coverage / meta 标注（替换模式不动存量 meta）
-    if is_create:
-        data["name"] = (name_override or "").strip() or str(data.get("name") or "").strip() or slug
-        meta = data.get("meta") if isinstance(data.get("meta"), dict) else OrderedDict()
-        meta["source_file"] = "parts（DESIGN.md + tokens + 组件包 + Pattern 包 + skill 包）"
-        data["meta"] = meta
-    coverage = data.setdefault("coverage", OrderedDict())
-    coverage["components"] = isinstance(data.get("components"), dict) and bool(data.get("components", {}).get("items"))
-    coverage["patterns"] = isinstance(data.get("patterns"), dict) and bool(data.get("patterns", {}).get("items"))
-
-    dzip.slim_for_storage(data)
+    # 组装收尾（v4.4）：从 {slug} 落盘现状全量重建 design-system.json（8+1 键单数据源）
+    data, counts = rebuild_design_system_json(slug, old_data)
+    # ingest 报告回填条目计数（重建扫出的真实条目数）
+    for part in ("components", "patterns"):
+        if report[part].get("provided") and report[part].get("ok"):
+            report[part]["count"] = counts[part]
     save_json_file(slug, data)
     file_size = _dir_size(slug)
+
+    # source_slug：tokens 原件 id 优先（v4 原件可缺失 → 替换模式沿用存量 id → slug 兜底）
+    raw_id = str((tokens_raw or {}).get("id") or "").strip() if tokens_raw else ""
+    if raw_id:
+        source_slug = raw_id
+    elif is_create:
+        source_slug = slug
+    else:
+        source_slug = str((old_data or {}).get("id") or "").strip() or slug
 
     failed = [f for f in PART_FIELDS if report[f].get("provided") and not report[f].get("ok")]
     logger.info(
         "[parts-import] 落盘完成：slug=%s source_slug=%s skill_name=%s；json=%dB 目录合计=%dB；"
         "部件成败：%s%s",
-        slug, str(data.get("id") or ""), skill_name,
+        slug, source_slug, skill_name,
         os.path.getsize(abs_path(slug)), file_size,
         "、".join("%s=%s" % (f, "ok" if report[f].get("ok") or not report[f].get("provided") else "失败")
                   for f in PART_FIELDS),
@@ -451,8 +470,8 @@ def import_parts(
     return {
         "data": data,
         "slug": slug,
-        # MD 的 id 可缺失/任意格式（仅展示/搜索/多版本追溯用，不参与 URL）→ 缺失回落 slug（对齐存量）
-        "source_slug": str(data.get("id") or "").strip() or slug,
+        "tokens_raw": tokens_raw,
+        "source_slug": source_slug,
         "source_md_rel": source_md_rel,
         "tokens_rel": tokens_rel,
         "skill_zip_rel": skill_zip_rel,
@@ -671,6 +690,40 @@ def resolve_authors(db, form_author: Optional[str], md_author) -> str:
         authors = normalize_authors(md_author)
     enrich_authors(db, authors)
     return json.dumps(authors, ensure_ascii=False)
+
+
+# ─────────────────────────── 存量迁移（v4.4：json 重建） ───────────────────────────
+
+def migrate_design_systems_json() -> int:
+    """存量迁移：全量重建所有未删系统的 design-system.json 为 8+1 键单数据源（v4.4）。
+
+    启动时执行（幂等——从落盘现状重建，结果确定）：老结构（legacy 转换区块 /
+    source.files 内嵌源码 / coverage / name·meta 顶层）整体替换为新结构；
+    file_size 随 json 重算；file_path 为空的老系统顺带补齐。单系统失败不影响其余。
+    """
+    from app.database import SessionLocal
+    from app.models.design_system import DesignSystem
+
+    n = 0
+    session = SessionLocal()
+    try:
+        rows = session.query(DesignSystem).filter(DesignSystem.is_deleted == 0).all()
+        for row in rows:
+            try:
+                data, _counts = rebuild_design_system_json(row.slug)
+                save_json_file(row.slug, data)
+                row.file_size = _dir_size(row.slug)
+                if not row.file_path:
+                    row.file_path = rel_path(row.slug)
+                n += 1
+            except Exception as e:  # noqa: BLE001
+                logger.warning("[migrate] %s design-system.json 重建失败（保留原 json）：%s", row.slug, e)
+        session.commit()
+    finally:
+        session.close()
+    if n:
+        logger.info("[migrate] design-system.json v4.4 存量重建完成：%d 个系统", n)
+    return n
 
 
 # ─────────────────────────── slug 生成（后端分配，与文件内容解耦） ───────────────────────────

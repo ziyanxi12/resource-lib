@@ -146,10 +146,13 @@ def list_operation_logs(
     target_type: Optional[str] = Query(None, description="design_system/ds_whitelist"),
     db: Session = Depends(get_db),
 ):
-    """设计系统模块操作记录：固定 target_type IN (design_system, ds_whitelist)，id 倒序分页。"""
+    """设计系统模块操作记录：固定 target_type IN (design_system, ds_whitelist)，id 倒序分页；
+    operator_account 为 unknown 的记录不返回（历史脚本/公开维护通道 7d 无登录态写入，页面不展示）。"""
     q = db.query(OperationLog).filter(
         OperationLog.target_type.in_(("design_system", "ds_whitelist"))
     )
+    # 操作人 unknown 不展示（NULL 同样排除——也是无操作人记录）
+    q = q.filter(OperationLog.operator_account != "unknown")
     if action:
         q = q.filter(OperationLog.action == action)
     if target_type:
@@ -196,16 +199,18 @@ async def create_design_system(
         design_md=design_md_file, tokens=tokens_file,
         components=components_file, patterns=patterns_file, skill=skill_file, preview=preview_file,
     )
-    # 名称必填：表单 name 或 tokens.json 的 name 至少提供其一（后者 tokens 解析后由
-    # import_parts 写入 json.name；此处仅能预判「两者都不可能提供」的场景）
+    # 名称必填：表单 name 或 tokens.json 的 name 至少提供其一（后者 tokens 解析后经
+    # tokens_raw 回传；此处仅能预判「两者都不可能提供」的场景）
     if not name_val and "tokens" not in part_files:
         raise HTTPException(status_code=400, detail="名称不能为空（表单 name 或 tokens.json 的 name 至少提供其一）")
-    result = svc.import_parts(db, part_files, existing=None, name_override=name_val or None)
-    final_name = name_val or str(result["data"].get("name") or "").strip()
+    result = svc.import_parts(db, part_files, existing=None)
+    # v4.4：json 不再存 name/meta——卡片字段派生改从 tokens 原件（tokens_raw）读
+    tokens_raw = result.get("tokens_raw") or {}
+    final_name = name_val or str(tokens_raw.get("name") or "").strip()
     if not final_name:
         raise HTTPException(status_code=400, detail="名称不能为空")
 
-    meta = svc.extract_meta(result["data"])
+    meta = svc.extract_meta(tokens_raw)
     # 表单覆盖派生值（name 已在 import_parts 写入 json = 表单值）
     if desc is not None and desc != "":
         meta["desc"] = desc

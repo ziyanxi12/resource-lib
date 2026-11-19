@@ -1,26 +1,5 @@
 {
- "id": "text-to-ui",
- "name": "HarmonyOS PC 客户端规范（text-to-ui-html）",
- "source": {
-  "skill": "HarmonyOS PC 客户端规范（text-to-ui-html）",
-  "adapter": "text-to-ui-html"
- },
- "cover": "cover-cyan.jpg",
- "overview": {
-  "text": "用于生成和修改 HarmonyOS PC 动态 HTML 页面，或把已确认的交互 Demo 规范化为标准组件、Pattern 和 Token 的实现。交付物包括独立的组件与 CSS、浏览器验证截图，以及带版本号的交接包。",
-  "principles": [
-   "支持与设备相匹配的多模态输入，在 HarmonyOS PC 上包括鼠标、触控板和键盘。",
-   "交互与当前状态保持一致，并符合用户熟悉的输入习惯。",
-   "在适用时考虑自由窗口、全屏、分屏、悬浮窗、多任务和窗口拖拽等场景。",
-   "在支持的各种窗口模式和尺寸下，保持布局质量和任务连续性。",
-   "通过响应式和自适应能力重新组织内容，而不是简单地拉伸。",
-   "用动效说明状态变化、引导下一步操作，并缓解等待时的不适感。",
-   "当声音反馈能改善信息传达时，考虑加入声音反馈。",
-   "在交互设计中纳入无障碍需求。",
-   "适用时优先使用 HarmonyOS 系统组件、窗口模式、系统资源和平台能力。"
-  ],
-  "principlesSource": "来源：references/interaction-spec.md「Official Platform Principles」"
- },
+ "overview": "source.md",
  "color": {
   "title": "语义色",
   "themes": [
@@ -1683,26 +1662,5 @@
    "只有浮层类组件使用投影：Snackbar、Tooltip、Popover、Hover Card、Dialog、Alert Dialog、Semi-modal、Dropdown Menu、Context Menu。",
    "其余场景默认不加投影，用描边或表面色对比区分层级。"
   ]
- },
- "coverage": {
-  "overview": true,
-  "color": true,
-  "typography": true,
-  "spacing": true,
-  "radius": true,
-  "shadow": true
- },
- "meta": {
-  "format": "octo-design-md/1",
-  "author": "ahai66666",
-  "usage": 0,
-  "order": 7,
-  "source_skill": "HarmonyOS PC 客户端规范（text-to-ui-html）",
-  "adapter": "text-to-ui-html",
-  "source_files": "585",
-  "source_size": "5.1 MB",
-  "source_entry": "apps/component-gallery（组件预览页）+ pattern-contracts.json",
-  "source_file": "DESIGN.md",
-  "note": "由 spec-skill-to-design-system 从规范 Skill 转换生成。每个区块的正文是说明和使用规则，`json design` 数据块供管理页渲染； 标注「未定义」的区块表示规范里没有提取到这部分内容。"
  }
 }

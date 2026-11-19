@@ -1,20 +1,21 @@
-"""设计系统五部件解析服务（octo-design-parts/1 格式）。
+"""设计系统六部件解析服务（octo-design-parts/1 格式）。
 
-五部件（multipart 各自独立上传、独立成败，失败部件忽略并回报错误）：
+六部件（multipart 各自独立上传、独立成败，失败部件忽略并回报错误）：
     design_md    DESIGN.md 原文：UTF-8 校验后原样存 {slug}/source.md
-                 （展示端概览 fetch 后 markdown 渲染，不再机器解析）
-    tokens       tokens.json（唯一数据源）：UTF-8 + JSON 校验 → convert_tokens_to_legacy
-                 转 老 design-system.json 区块结构 + 原件存 {slug}/tokens.json
-    components   组件 zip：根须含 components/ 目录；扫描子目录层级 = group、
-                 html 文件名 = 组件名，落盘 {slug}/assets/components/**
+                 （json.overview 存其相对路径，展示端 fetch 后 markdown 渲染）
+    tokens       tokens.json（唯一数据源）：UTF-8 + JSON 校验 → 原件存 {slug}/tokens.json；
+                 v4.4 起不再做 legacy 转换——design-system.json 的 color/typography/
+                 spacing/radius/shadow/other 六键从原件顶层原样深拷贝
+    components   组件 zip：根须含 components/ 目录；落盘 {slug}/assets/components/**，
+                 条目扫描见 scan_group_items（spec.json 优先，老结构按叶子 html）
     patterns     Pattern zip：根须含 patterns/ 目录，同组件包规则，
                  落盘 {slug}/assets/patterns/**
-    skill        skill 包 zip：第一层须含 SKILL.md（frontmatter name 入 skill_name），
-                 原样落盘 {slug}/{原文件名}
+    skill        skill 包 zip：第一层须含 SKILL.md（frontmatter name 非空 → 加
+                 design-system- 前缀改写，v4.3），改写后落盘 {slug}/{原文件名}
+    preview      预览页面包 zip：整站落盘 {slug}/preview/**，入口 html 记 preview_entry_path
 
-components/patterns zip 兼容同名双层嵌套（components/components/按钮/Button.html）：
-locate_group_base 循环剥离同名子层后以最内层为扫描基目录（group/path 归一化，
-不含重复层）。
+components/patterns zip 兼容同名双层嵌套（components/components/…）：
+locate_group_base 循环剥离同名子层后以最内层为基目录。
 
 职责：
 - 安全校验：zip slip（`..`/绝对路径/反斜杠/symlink）、zip bomb（条目数/解压总大小/
@@ -25,8 +26,7 @@ locate_group_base 循环剥离同名子层后以最内层为扫描基目录（gr
 - 解压到临时目录（zip 字节先写临时文件再解压，对齐需求「先落盘，再解压」）
 - 各部件独立校验 / 解析原语（本模块不落盘到 {slug}/，正式入库走
   design_system_service.import_parts 编排）
-- components/patterns 区块按 template.html 既有协议生成（items[].height 固定 160）
-- skill 包严格校验：第一层 SKILL.md + frontmatter name 非空 ≤255 字符
+- skill 包严格校验：第一层 SKILL.md + frontmatter name 非空 ≤255 字符（含前缀）
 
 解析失败抛 ZipPackageError(ValueError)（路由层转 400 / 部件级错误回报）。
 """
@@ -235,13 +235,12 @@ def parse_design_md_bytes(content: bytes) -> None:
 
 # ─────────────────────────── 部件 2：tokens.json ───────────────────────────
 
-def parse_tokens_bytes(content: bytes) -> Tuple[Dict, Dict]:
-    """tokens.json 部件校验 + 转换：返回 (原件 dict, legacy 转换 dict)。
+def parse_tokens_bytes(content: bytes) -> Dict:
+    """tokens.json 部件校验：UTF-8（容忍 BOM）+ 合法 JSON + 顶层对象 → 返回原件 dict。
 
-    - **唯一数据源**：UTF-8（容忍 BOM）+ JSON 语法错误是硬错误 → ZipPackageError；
-      顶层必须是 JSON 对象；分组结构零校验（color/… 缺失 → 模板渲染空态）
-    - legacy 转换（convert_tokens_to_legacy）：tokens.json → 老 design-system.json
-      区块结构（模板与存量零改动）；多余分组（fontScale 等）顶层原样保留、暂不渲染
+    **唯一数据源**：JSON 语法错误是硬错误 → ZipPackageError；分组结构零校验
+    （color/… 缺失 → 模板渲染空态）。v4.4 起不再做 legacy 转换——
+    design-system.json 六个 token 键从原件顶层原样深拷贝（见 service.rebuild_design_system_json）。
     """
     if len(content) > MAX_ZIP_BYTES:
         raise ZipPackageError("tokens.json 超过 %dMB 上限" % (MAX_ZIP_BYTES // 1024 // 1024))
@@ -255,208 +254,7 @@ def parse_tokens_bytes(content: bytes) -> Tuple[Dict, Dict]:
         raise ZipPackageError("tokens.json 不是合法 JSON：%s" % e)
     if not isinstance(raw, dict):
         raise ZipPackageError("tokens.json 顶层必须是 JSON 对象，收到：%s" % type(raw).__name__)
-    return raw, convert_tokens_to_legacy(raw)
-
-
-def _first_theme_id(color: dict) -> str:
-    """颜色主题感知：取 themes[0].id（缺省 'light'）。多主题扩展点：将来出现 dark 等主题时，
-    token 形态扩展为 values 全量保留 + 模板主题切换器，改此入口即可。"""
-    themes = color.get("themes")
-    if isinstance(themes, list) and themes and isinstance(themes[0], dict) and themes[0].get("id"):
-        return str(themes[0]["id"])
-    return "light"
-
-
-def _theme_value(value, theme_id: str):
-    """value 是主题映射（{light: ...}）时取指定主题（缺则取首个）；普通单值原样返回。"""
-    if isinstance(value, dict):
-        if theme_id in value:
-            return value[theme_id]
-        for v in value.values():
-            return v
-        return ""
-    return value
-
-
-def _px_num(value):
-    """'8px' / '0' / '16' → float；解析失败返回 None。"""
-    s = str(value).strip()
-    if s.endswith("px"):
-        s = s[:-2]
-    try:
-        return float(s)
-    except (TypeError, ValueError):
-        return None
-
-
-def _arr_dicts(v) -> bool:
-    """非空 list 且元素均为 dict（对齐 template sanitizeDs 的 arr() 语义 + 非空）。"""
-    return isinstance(v, list) and bool(v) and all(isinstance(x, dict) for x in v)
-
-
-def _legacy_token_dicts(v) -> bool:
-    """tokens 数组是否已是模板渲染态条目（带 raw/desc/token/ref 等源格式没有的键）。"""
-    return isinstance(v, list) and bool(v) and all(
-        isinstance(x, dict) and any(k in x for k in ("raw", "desc", "token", "ref")) for x in v
-    )
-
-
-def convert_tokens_to_legacy(tokens: dict) -> dict:
-    """tokens.json（octo-design-parts 数据源）→ 老 design-system.json 区块结构。
-
-    模板与存量系统零改动：转换产物即模板原生渲染的老结构。输入支持两种格式：
-    - octo-design-tokens 源格式（requirement/tokens.json 同构）：扁平 tokens 列表，按下述规则转换；
-    - 模板渲染态（DESIGN.md json design 同构）：已是 design-system.json 结构，原样直通拷贝。
-    - color：源格式 tokens[].value 按主题映射 → 主题感知取首主题；themes 原样保留；
-      groups = [{title, tokens: [{name, token: usage, value, label: name}]}]；
-      渲染态（color.groups / palettes 合法）→ 原样直通
-    - type（families 映射 + groups[].styles）→ typography（families/weights/scale：
-      style → {name, size, lineHeight, weight, family: families[group.family], desc: group.name}）；
-      tokens.typography / spacing 已是渲染态 → 原样直通（既有守卫）
-    - size → spacing、radius → radius（value 数值化）、shadow → shadow（value 原样 css 串）；
-      radius / shadow 已是渲染态（scenes 或 raw/desc/token/ref 条目）→ 原样直通
-    - 装不进老结构的分组（fontScale/fontScaleRegular/opacity/other）：**顶层原样保留，暂不渲染**
-    - name/id（预留）/cover/version/meta：顶层原样
-    - 源分组缺 tokens / 空列表 → 对应区块不生成（模板渲染空态）
-    """
-    out = dict(tokens)  # 浅拷贝：多余分组与元数据原样保留
-
-    # ── 颜色：源格式扁平 tokens（主题感知）→ 单组映射；已是渲染态（groups/palettes）→ 原样直通 ──
-    color = tokens.get("color")
-    if isinstance(color, dict):
-        theme_id = _first_theme_id(color)
-        mapped = []
-        for t in color.get("tokens") or []:
-            if not isinstance(t, dict):
-                continue
-            mapped.append({
-                "name": str(t.get("name") or ""),
-                "token": str(t.get("usage") or ""),
-                "value": _theme_value(t.get("value"), theme_id),
-                "label": str(t.get("name") or ""),
-            })
-        if mapped:
-            out["color"] = {
-                "title": str(color.get("title") or "颜色"),
-                "desc": color.get("desc") or "",
-                "themes": color.get("themes") or [],
-                "groups": [{"title": "全部颜色", "desc": "", "tokens": mapped}],
-                "rules": color.get("rules") or [],
-            }
-        elif _arr_dicts(color.get("groups")) or _arr_dicts(color.get("palettes")):
-            pass  # 渲染态直通：title/themes/palettes/groups/rules 原样保留，模板原生渲染色阶 + 分组
-        else:
-            out.pop("color", None)
-
-    # ── 字体：type → typography ──
-    if not isinstance(tokens.get("typography"), dict):
-        ty = tokens.get("type") if isinstance(tokens.get("type"), dict) else {}
-        families_map = ty.get("families") if isinstance(ty.get("families"), dict) else {}
-        families = [str(v) for v in families_map.values()]
-        scale, weights = [], []
-        for g in ty.get("groups") or []:
-            if not isinstance(g, dict):
-                continue
-            fam_key = str(g.get("family") or "")
-            for st in g.get("styles") or []:
-                if not isinstance(st, dict):
-                    continue
-                scale.append({
-                    "name": str(st.get("name") or ""),
-                    "size": _px_num(st.get("fontSize")) or 0,
-                    "lineHeight": _px_num(st.get("lineHeight")) or 0,
-                    "weight": st.get("fontWeight") or 400,
-                    "family": families_map.get(fam_key, fam_key) or "",
-                    "token": str(st.get("name") or ""),
-                    "desc": str(g.get("name") or ""),
-                })
-                w = str(st.get("fontWeight") or "")
-                if w and w not in weights:
-                    weights.append(w)
-        if families or scale:
-            out["typography"] = {
-                "title": str(ty.get("title") or "字体"),
-                "desc": ty.get("desc") or "",
-                "families": families,
-                "weights": weights,
-                "scale": scale,
-                "rules": ty.get("rules") or [],
-            }
-        else:
-            out.pop("typography", None)
-
-    # ── 间距：size → spacing（value 数值化）──
-    if not isinstance(tokens.get("spacing"), dict):
-        sz = tokens.get("size") if isinstance(tokens.get("size"), dict) else {}
-        mapped = []
-        for t in sz.get("tokens") or []:
-            if isinstance(t, dict):
-                mapped.append({
-                    "name": str(t.get("name") or ""),
-                    "value": _px_num(t.get("value")),
-                    "desc": t.get("usage") or "",
-                })
-        mapped = [t for t in mapped if t["value"] is not None]
-        if mapped:
-            out["spacing"] = {
-                "title": str(sz.get("title") or "间距"),
-                "desc": sz.get("desc") or "",
-                "tokens": mapped,
-                "rules": sz.get("rules") or [],
-            }
-        else:
-            out.pop("spacing", None)
-
-    # ── 圆角：radius（value 数值化）；已是渲染态（scenes / raw 条目）→ 原样直通 ──
-    rad = tokens.get("radius")
-    if isinstance(rad, dict):
-        if _arr_dicts(rad.get("scenes")) or _legacy_token_dicts(rad.get("tokens")):
-            pass  # 渲染态直通：基础 tokens + scenes（组件圆角场景）原样保留，模板渲染 scenes 页签
-        else:
-            mapped = []
-            for t in rad.get("tokens") or []:
-                if not isinstance(t, dict):
-                    continue
-                num = _px_num(t.get("value"))
-                if num is None:
-                    continue
-                mapped.append({"name": str(t.get("name") or ""), "value": num,
-                               "desc": t.get("usage") or t.get("desc") or ""})
-            if mapped:
-                out["radius"] = {
-                    "title": str(rad.get("title") or "圆角"),
-                    "desc": rad.get("desc") or "",
-                    "tokens": mapped,
-                    "rules": rad.get("rules") or [],
-                }
-            else:
-                out.pop("radius", None)
-
-    # ── 阴影：shadow（value 原样 css 串）；已是渲染态（token/desc 条目）→ 原样直通 ──
-    sh = tokens.get("shadow")
-    if isinstance(sh, dict):
-        if _legacy_token_dicts(sh.get("tokens")):
-            pass  # 渲染态直通：token/desc 等字段原样保留
-        else:
-            mapped = []
-            for t in sh.get("tokens") or []:
-                if isinstance(t, dict):
-                    mapped.append({
-                        "name": str(t.get("name") or ""),
-                        "value": str(t.get("value") or ""),
-                        "desc": t.get("usage") or t.get("desc") or "",
-                    })
-            if mapped:
-                out["shadow"] = {
-                    "title": str(sh.get("title") or "阴影"),
-                    "desc": sh.get("desc") or "",
-                    "tokens": mapped,
-                    "rules": sh.get("rules") or [],
-                }
-            else:
-                out.pop("shadow", None)
-
-    return out
+    return raw
 
 
 # ─────────────────────────── 部件 3/4：组件包 / Pattern 包 ───────────────────────────
@@ -482,155 +280,147 @@ def locate_group_base(extract_root: str, group: str) -> Tuple[str, bool]:
     return base, nested
 
 
-def _scan_group(base: str, group: str) -> List[Dict]:
-    """扫描基目录递归结构，返回叶子条目（已按路径排序）。
-
-    name  html 文件名去扩展（= 组件名）；group 目录层级数组（基目录之下）；
-    path  归一化存储路径 assets/{group}/…（不含同名嵌套剥离层）；
-    html/css 为绝对路径（css = 同目录 css/scss，一并内嵌）。
-    打包垃圾文件名（._* / .DS_Store / Thumbs.db）防御性过滤（正常在解压阶段已丢弃）。
-    """
-    items = []
-    if not os.path.isdir(base):
-        return items
-    for dirpath, _dirnames, filenames in sorted(os.walk(base)):
-        rel_dir = os.path.relpath(dirpath, base).replace(os.sep, "/")
-        levels = [p for p in rel_dir.split("/") if p not in (".", "")]
-        for fn in sorted(filenames):
-            if _is_junk_entry(fn):
-                continue
-            ext = fn.rsplit(".", 1)[-1].lower() if "." in fn else ""
-            if ext != "html":
-                continue
-            parts = ["assets", group] + levels + [fn]
-            items.append({
-                "name": fn[: -len(".html")],
-                "group": levels,
-                "path": "/".join(parts),
-                "html": os.path.join(dirpath, fn),
-                "css": [
-                    os.path.join(dirpath, c)
-                    for c in sorted(filenames)
-                    if c.lower().endswith((".css", ".scss"))
-                ],
-            })
-    return items
-
-
-def _embed_file(abs_path: str, lang: str, rel_path: str) -> Dict:
-    """读文件生成模板 files[] 条目（超 MAX_EMBED_HTML_BYTES 只存路径不内嵌）。"""
-    entry = OrderedDict()
-    entry["lang"] = lang
-    entry["path"] = rel_path
-    if os.path.getsize(abs_path) <= MAX_EMBED_HTML_BYTES:
-        with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
-            entry["code"] = f.read()
-    return entry
-
-
 def _uniquify_ids(items: List[Dict]) -> None:
-    """不同目录同名 html：id 追加序号保证唯一（name 保留原名）。"""
+    """不同目录同名条目：id 追加序号保证唯一（name 保留原名）。"""
     seen: Dict[str, int] = {}
     for it in items:
-        base_id = re.sub(r"[^a-z0-9-]", "-", it["name"].lower()).strip("-") or "comp"
+        base_id = re.sub(r"[^a-z0-9-]", "-", str(it["name"]).lower()).strip("-") or "comp"
         seen[base_id] = seen.get(base_id, 0) + 1
         it["id"] = base_id if seen[base_id] == 1 else "%s-%d" % (base_id, seen[base_id])
 
 
-def _build_components_block(items: List[Dict]) -> Optional[Dict]:
-    """扫描条目 → components 区块（template.html 既有协议）。
+def scan_group_items(group_root: str, group: str) -> List[Dict]:
+    """扫描 assets/{group} 子树 → design-system.json 条目（v4.4：{id, name, group, height, html}）。
 
-    items[].source.files[{lang: html/css, code}] —— 模板 sandbox srcdoc 渲染；
-    层级：目录层级保留在 group 数组，同时拼进 name（模板组件导航为平铺，层级进 name 可读）。
+    条目来源（落盘现状扫描，index.json 有则按其 items 顺序）：
+    - **spec.json 优先**（v3/v4 转化产物）：目录含 spec.json = 一个条目——
+      name = spec.name、html = spec.preview.file（spec 目录内相对路径，文件须存在；
+      preview 缺失/文件不存在 → 该条目不上网站，整目录跳过不回退——combos 等辅助
+      html 不应被误当成独立条目）
+    - **无 spec.json 的目录**（老 zip 结构）：叶子 html 逐个成条（历史规则——
+      目录层级 = group、文件名去扩展 = name）
+    - html 为 design-systems/{slug}/ 起的 POSIX 相对路径（含 assets/{group}/ 前缀），
+      模板按 jsonUrl 目录解析
+    - spec.json 读取失败（非法 JSON）→ 该目录按无 spec 的老规则扫 html（容错不中断）
     """
-    if not items:
-        return None
+    items = []
+    if not os.path.isdir(group_root):
+        return items
+    prefix = "assets/%s/" % group
+    spec_dirs = set()
+
+    def rel_levels(dirpath):
+        rel = os.path.relpath(dirpath, group_root).replace(os.sep, "/")
+        return [x for x in rel.split("/") if x not in (".", "")]
+
+    # ① spec.json 目录 → 条目（整目录子树由 spec 拥有，其中的其他 html 不再单独成条）
+    for dirpath, dirnames, filenames in os.walk(group_root):
+        if "spec.json" not in filenames:
+            continue
+        spec_path = os.path.join(dirpath, "spec.json")
+        try:
+            with open(spec_path, "r", encoding="utf-8") as f:
+                spec = json.load(f)
+            if not isinstance(spec, dict):
+                raise ValueError("顶层不是对象")
+        except (ValueError, OSError) as e:
+            logger.warning("[scan] %s spec.json 读取失败，目录按老结构扫 html：%s", spec_path, e)
+            continue
+        spec_dirs.add(dirpath)
+        levels = rel_levels(dirpath)
+        name = str(spec.get("name") or "").strip() or levels[-1]
+        # 分类：spec.group 优先（转化产物已给分类）；缺省回落目录层级去组件目录本身（["通用类","Button"]→["通用类"]）
+        sg = spec.get("group")
+        if isinstance(sg, list) and sg:
+            group = [str(x) for x in sg if str(x).strip()]
+        elif isinstance(sg, str) and sg.strip():
+            group = [sg.strip()]
+        else:
+            group = levels[:-1] if len(levels) > 1 else []
+        pf = str((spec.get("preview") or {}).get("file") or "").strip()
+        if not pf or pf.startswith(("/", "..")):
+            continue  # 没有 preview 的条目不上网站
+        html_abs = os.path.normpath(os.path.join(dirpath, pf))
+        # dirpath 可能带 ./ 前缀（相对 FILE_ROOT_DIR 配置），normpath 归一后再比较
+        if not (os.path.isfile(html_abs) and os.path.commonpath([os.path.normpath(dirpath), html_abs]) == os.path.normpath(dirpath)):
+            continue
+        rel_dir = "/".join(levels)
+        items.append({
+            "name": name,
+            "group": group,
+            "html": prefix + rel_dir + "/" + pf.replace(os.sep, "/"),
+            "_order_key": rel_dir + "/spec.json",  # index.json items 的形态（无 assets 前缀）
+        })
+
+    # ② 无 spec.json 的目录（老 zip 结构）：叶子 html 逐个成条（spec 目录子树跳过）
+    for dirpath, dirnames, filenames in os.walk(group_root):
+        if any(d == dirpath or dirpath.startswith(d + os.sep) for d in spec_dirs):
+            dirnames[:] = []
+            continue
+        levels = rel_levels(dirpath)
+        for fn in sorted(filenames):
+            if _is_junk_entry(fn) or not fn.lower().endswith(".html"):
+                continue
+            rel_html = "/".join(levels + [fn])
+            items.append({
+                "name": fn[:-len(".html")],
+                "group": levels,
+                "html": prefix + rel_html,
+                "_order_key": rel_html,
+            })
+
+    # ③ 排序：index.json 的 items 顺序优先（转化 skill 定义的展示顺序），其余按路径稳定排序
+    try:
+        with open(os.path.join(group_root, "index.json"), "r", encoding="utf-8") as f:
+            idx = json.load(f)
+        order = {str(p): i for i, p in enumerate((idx or {}).get("items") or [])}
+    except (ValueError, OSError):
+        order = {}
+    if order:
+        items.sort(key=lambda it: (order.get(it.pop("_order_key", ""), len(order)), it["html"]))
+    else:
+        for it in items:
+            it.pop("_order_key", None)
+        items.sort(key=lambda it: it["html"])
+
     _uniquify_ids(items)
-    out_items = []
-    for it in items:
-        files = [_embed_file(it["html"], "html", it["path"])]
-        for css in it["css"]:
-            rel = it["path"][: -len(os.path.basename(it["html"]))] + os.path.basename(css)
-            files.append(_embed_file(css, "css", rel))
-        out_items.append(OrderedDict([
+    return [
+        OrderedDict([
             ("id", it["id"]),
-            ("name", " / ".join(it["group"] + [it["name"]]) if it["group"] else it["name"]),
-            ("desc", it["path"]),
+            ("name", it["name"]),
             ("group", it["group"]),
             ("height", DEFAULT_ROW_HEIGHT),
-            ("source", OrderedDict([
-                ("status", "found"),
-                ("files", files),
-            ])),
-        ]))
-    return OrderedDict([
-        ("title", "组件"),
-        ("desc", "%d 个组件 · 来自 assets/components" % len(out_items)),
-        ("items", out_items),
-    ])
-
-
-def _build_patterns_block(items: List[Dict]) -> Optional[Dict]:
-    """扫描条目 → patterns 区块（template.html 既有协议）。
-
-    items[] 元信息 + view.cards[].states.html 内嵌源码 —— 模板 iframe srcdoc 渲染。
-    """
-    if not items:
-        return None
-    _uniquify_ids(items)
-    out_items = []
-    cards = []
-    for it in items:
-        display_name = " / ".join(it["group"] + [it["name"]]) if it["group"] else it["name"]
-        out_items.append(OrderedDict([
-            ("id", it["id"]),
-            ("name", display_name),
-            ("label", it["path"]),
-            ("group", it["group"]),
-            ("height", DEFAULT_ROW_HEIGHT),
-        ]))
-        html_file = _embed_file(it["html"], "html", it["path"])
-        code = html_file.get("code")
-        state = OrderedDict([("meta", it["path"])])
-        if code is not None:
-            state["html"] = code
-        cards.append(OrderedDict([
-            ("id", it["id"]),
-            ("states", OrderedDict([("default", state)])),
-        ]))
-    return OrderedDict([
-        ("title", "Pattern"),
-        ("desc", "%d 个 Pattern · 来自 assets/patterns" % len(out_items)),
-        ("items", out_items),
-        ("view", OrderedDict([("cards", cards)])),
-    ])
+            ("html", it["html"]),
+        ])
+        for it in items
+    ]
 
 
 def ingest_group_zip(content: bytes, group: str, dst_group_dir: str) -> Dict:
-    """组件包 / Pattern 包部件导入：校验 + 解压 + 定位（含同名嵌套剥离）+ 扫描 + 落盘。
+    """组件包 / Pattern 包部件导入：校验 + 解压 + 定位（含同名嵌套剥离）+ 落盘。
 
     - 安全校验同上传入口（validate_zip_bytes：slip/bomb/条目数/同名冲突）
     - zip 根须含 {group}/ 目录（否则该部件失败）；同名嵌套层（components/components/）
-      循环剥离后以最内层为扫描基目录
+      循环剥离后以最内层为基目录
     - 落盘：dst_group_dir（= design-systems/{slug}/assets/{group}）整体替换——
       先清空旧子树再拷入新内容；本函数任何一步抛错时目标子树不受影响
-    - 返回 {"block": 区块 dict 或 None（无 html）, "count": 叶子 html 数, "nested": 是否剥离}
+    - v4.4：不再构建 json 区块——落盘后由 service.rebuild_design_system_json
+      从落盘现状全量扫描条目（scan_group_items）；条目计数一并由重建结果回报
+    - 返回 {"nested": 是否剥离}
     """
     label = GROUP_LABEL.get(group, group)
     validate_zip_bytes(content)
     with tempfile.TemporaryDirectory(prefix="ds-group-") as tmp:
         extract_zip(content, tmp)
         base, nested = locate_group_base(tmp, group)
-        items = _scan_group(base, group)
-        block = _build_components_block(items) if group == "components" else _build_patterns_block(items)
         # 落盘：先验证后拷贝（copytree 失败属于系统级异常，不属于部件校验失败）
         if os.path.isdir(dst_group_dir):
             shutil.rmtree(dst_group_dir)
         os.makedirs(os.path.dirname(dst_group_dir), exist_ok=True)
         shutil.copytree(base, dst_group_dir)
-        logger.info("[parts-import] %s包导入完成：%d 个 html，%s",
-                    label, len(items), "检测到同名嵌套目录并已剥离" if nested else "标准结构")
-        return {"block": block, "count": len(items), "nested": nested}
+        logger.info("[parts-import] %s包落盘完成：%s",
+                    label, "检测到同名嵌套目录并已剥离" if nested else "标准结构")
+        return {"nested": nested}
 
 
 # ─────────────────────────── 部件 6：预览页面包 ───────────────────────────
@@ -808,34 +598,3 @@ def _replace_frontmatter_name(text: str, new_name: str) -> str:
     head, body = text[:end], text[end:]
     replaced = re.sub(r"(?m)^(\s*)name:\s*.*$", lambda mo: "%sname: %s" % (mo.group(1), new_name), head, count=1)
     return replaced + body
-
-
-# ─────────────────────────── 存储版瘦身 ───────────────────────────
-
-def slim_for_storage(data: Dict) -> None:
-    """存储版 design-system.json 瘦身（只影响入库落盘）。
-
-    展示端模板 iframe src 直连 /static 资产（不再 srcdoc/内嵌源码渲染），
-    存储版只保留路径字段即可：
-    - components：items[].source.files 只留 html 条目并去掉内嵌 code（css 条目随沙箱渲染一并废弃）
-    - patterns：view.cards[].states[*] 去掉内嵌 html（meta 已是部件内路径，展示端据此推 URL）
-    - overview：去掉内嵌 markdown（展示端概览 fetch source.md=design_md_url 落盘件）
-    - 其余字段（title/desc/items[].desc/items[].label/height 等）全部保留
-    """
-    overview = data.get("overview")
-    if isinstance(overview, dict):
-        overview.pop("markdown", None)
-    components = data.get("components") or {}
-    for it in components.get("items") or []:
-        source = it.get("source") or {}
-        files = source.get("files") or []
-        source["files"] = [
-            OrderedDict([("lang", f.get("lang")), ("path", f.get("path"))])
-            for f in files
-            if f.get("lang") == "html"
-        ]
-    patterns = data.get("patterns") or {}
-    for card in (patterns.get("view") or {}).get("cards") or []:
-        for state in (card.get("states") or {}).values():
-            if isinstance(state, dict):
-                state.pop("html", None)

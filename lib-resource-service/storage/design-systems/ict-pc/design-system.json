@@ -1,710 +1,4875 @@
 {
- "id": "ict-pc",
- "name": "ICT领域PC端设计规范",
- "source": {
-  "skill": "ICT领域PC端设计规范",
-  "adapter": "markdown-tokens"
- },
- "cover": "cover-blue.jpg",
- "overview": {
-  "text": "用于创建、审查符合 ICT 基础设施通用 UI 规范 3.1.1 一致性的 UI，在保留企业级页面场景适配弹性的同时，提高 Design Token 使用、组件规范、视觉一致性、无障碍和规范完整性的上线要求",
-  "principles": [],
-  "principlesSource": ""
- },
+ "overview": "source.md",
  "color": {
-  "title": "语义色",
-  "themes": [
-   "light"
-  ],
+  "title": "颜色",
   "groups": [
    {
-    "title": "品牌色",
-    "desc": "品牌主色及其容器、固定色",
-    "kind": "cards",
+    "id": "brand",
+    "label": "品牌 Brand",
+    "kind": "palette",
+    "heading": "Core families",
     "tokens": [
      {
-      "name": "primary",
-      "token": "primary",
-      "value": "#0067D1"
+      "name": "color-brand-05",
+      "token": "--color-brand-05",
+      "value": "#0A59F70C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t104"
+      ]
      },
      {
-      "name": "on-primary",
-      "token": "on-primary",
-      "value": "#FFFFFF"
+      "name": "color-brand-10",
+      "token": "--color-brand-10",
+      "value": "#0A59F719",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t105"
+      ]
      },
      {
-      "name": "primary-container",
-      "token": "primary-container",
-      "value": "#E6F2FD"
+      "name": "color-brand-15",
+      "token": "--color-brand-15",
+      "value": "#0A59F726",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t106"
+      ]
      },
      {
-      "name": "on-primary-container",
-      "token": "on-primary-container",
-      "value": "#191919"
+      "name": "color-brand-20",
+      "token": "--color-brand-20",
+      "value": "#0A59F733",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t107"
+      ]
      },
      {
-      "name": "primary-fixed",
-      "token": "primary-fixed",
-      "value": "#0067D1"
+      "name": "color-brand-30",
+      "token": "--color-brand-30",
+      "value": "#0A59F74D",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t108"
+      ]
      },
      {
-      "name": "primary-fixed-dim",
-      "token": "primary-fixed-dim",
-      "value": "#004EA8"
+      "name": "color-brand-40",
+      "token": "--color-brand-40",
+      "value": "#0A59F766",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t109"
+      ]
      },
      {
-      "name": "on-primary-fixed",
-      "token": "on-primary-fixed",
-      "value": "#FFFFFF"
+      "name": "color-brand-50",
+      "token": "--color-brand-50",
+      "value": "#0A59F77F",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t110"
+      ]
      },
      {
-      "name": "on-primary-fixed-variant",
-      "token": "on-primary-fixed-variant",
-      "value": "#F3F3F3"
+      "name": "color-brand-60",
+      "token": "--color-brand-60",
+      "value": "#0A59F799",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t111"
+      ]
      },
      {
-      "name": "inverse-primary",
-      "token": "inverse-primary",
-      "value": "#0067D1"
+      "name": "color-brand-70",
+      "token": "--color-brand-70",
+      "value": "#0A59F7B2",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t112"
+      ]
+     },
+     {
+      "name": "color-brand-80",
+      "token": "--color-brand-80",
+      "value": "#0A59F7CC",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t113"
+      ]
+     },
+     {
+      "name": "color-brand-90",
+      "token": "--color-brand-90",
+      "value": "#0A59F7E5",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t114"
+      ]
+     },
+     {
+      "name": "color-brand-100",
+      "token": "--color-brand-100",
+      "value": "#0A59F7FF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t115"
+      ]
+     },
+     {
+      "name": "color-brand-5",
+      "token": "--color-brand-5",
+      "value": "#0A59F70C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t160"
+      ]
      }
+    ],
+    "src": [
+     "t187"
     ]
    },
    {
-    "title": "表面色",
-    "desc": "页面与容器的层级背景及其文字色",
-    "kind": "cards",
+    "id": "neutral-dark",
+    "label": "深色中性 Neutral Dark",
+    "kind": "palette",
+    "heading": "Core families",
     "tokens": [
      {
-      "name": "surface",
-      "token": "surface",
-      "value": "#F3F3F3"
+      "name": "color-neutral-dark-05",
+      "token": "--color-neutral-dark-05",
+      "value": "#0000000C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t116"
+      ]
      },
      {
-      "name": "surface-dim",
-      "token": "surface-dim",
-      "value": "#DFDFDF"
+      "name": "color-neutral-dark-10",
+      "token": "--color-neutral-dark-10",
+      "value": "#00000019",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t117"
+      ]
      },
      {
-      "name": "surface-bright",
-      "token": "surface-bright",
-      "value": "#FFFFFF"
+      "name": "color-neutral-dark-15",
+      "token": "--color-neutral-dark-15",
+      "value": "#00000026",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t118"
+      ]
      },
      {
-      "name": "on-surface",
-      "token": "on-surface",
-      "value": "#191919"
+      "name": "color-neutral-dark-20",
+      "token": "--color-neutral-dark-20",
+      "value": "#00000033",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t119"
+      ]
      },
      {
-      "name": "surface-variant",
-      "token": "surface-variant",
-      "value": "#F3F3F3"
+      "name": "color-neutral-dark-30",
+      "token": "--color-neutral-dark-30",
+      "value": "#0000004D",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t120"
+      ]
      },
      {
-      "name": "on-surface-variant",
-      "token": "on-surface-variant",
-      "value": "#777777"
+      "name": "color-neutral-dark-40",
+      "token": "--color-neutral-dark-40",
+      "value": "#00000066",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t121"
+      ]
      },
      {
-      "name": "surface-container-lowest",
-      "token": "surface-container-lowest",
-      "value": "#F3F3F3"
+      "name": "color-neutral-dark-50",
+      "token": "--color-neutral-dark-50",
+      "value": "#0000007F",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t122"
+      ]
      },
      {
-      "name": "surface-container-low",
-      "token": "surface-container-low",
-      "value": "rgba(255,255,255,0.5)"
+      "name": "color-neutral-dark-60",
+      "token": "--color-neutral-dark-60",
+      "value": "#00000099",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t123"
+      ]
      },
      {
-      "name": "surface-container",
-      "token": "surface-container",
-      "value": "rgba(255,255,255,0.65)"
+      "name": "color-neutral-dark-70",
+      "token": "--color-neutral-dark-70",
+      "value": "#000000B2",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t124"
+      ]
      },
      {
-      "name": "surface-container-high",
-      "token": "surface-container-high",
-      "value": "rgba(255,255,255,0.8)"
+      "name": "color-neutral-dark-80",
+      "token": "--color-neutral-dark-80",
+      "value": "#000000CC",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t125"
+      ]
      },
      {
-      "name": "surface-container-highest",
-      "token": "surface-container-highest",
-      "value": "#FFFFFF"
+      "name": "color-neutral-dark-90",
+      "token": "--color-neutral-dark-90",
+      "value": "#000000E5",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t126"
+      ]
      },
      {
-      "name": "inverse-surface",
-      "token": "inverse-surface",
-      "value": "#191919"
+      "name": "color-neutral-dark-100",
+      "token": "--color-neutral-dark-100",
+      "value": "#000000FF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t127"
+      ]
      },
      {
-      "name": "inverse-on-surface",
-      "token": "inverse-on-surface",
-      "value": "#FFFFFF"
-     },
-     {
-      "name": "inverse-on-surface-variant",
-      "token": "inverse-on-surface-variant",
-      "value": "#C9C9C9"
+      "name": "color-neutral-dark-5",
+      "token": "--color-neutral-dark-5",
+      "value": "#0000000C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t161"
+      ]
      }
+    ],
+    "src": [
+     "t188"
     ]
    },
    {
-    "title": "语义色",
-    "desc": "错误、成功、警告、严重、信息状态",
-    "kind": "cards",
+    "id": "neutral-light",
+    "label": "浅色中性 Neutral Light",
+    "kind": "palette",
+    "heading": "Core families",
     "tokens": [
      {
-      "name": "error",
-      "token": "error",
-      "value": "#E02128"
+      "name": "color-neutral-light-05",
+      "token": "--color-neutral-light-05",
+      "value": "#FFFFFF0C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t128"
+      ]
      },
      {
-      "name": "on-error",
-      "token": "on-error",
-      "value": "#FFFFFF"
+      "name": "color-neutral-light-10",
+      "token": "--color-neutral-light-10",
+      "value": "#FFFFFF19",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t129"
+      ]
      },
      {
-      "name": "error-container",
-      "token": "error-container",
-      "value": "#FEE7E8"
+      "name": "color-neutral-light-15",
+      "token": "--color-neutral-light-15",
+      "value": "#FFFFFF26",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t130"
+      ]
      },
      {
-      "name": "on-error-container",
-      "token": "on-error-container",
-      "value": "#191919"
+      "name": "color-neutral-light-20",
+      "token": "--color-neutral-light-20",
+      "value": "#FFFFFF33",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t131"
+      ]
      },
      {
-      "name": "success",
-      "token": "success",
-      "value": "#09AA71"
+      "name": "color-neutral-light-30",
+      "token": "--color-neutral-light-30",
+      "value": "#FFFFFF4D",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t132"
+      ]
      },
      {
-      "name": "on-success",
-      "token": "on-success",
-      "value": "#FFFFFF"
+      "name": "color-neutral-light-40",
+      "token": "--color-neutral-light-40",
+      "value": "#FFFFFF66",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t133"
+      ]
      },
      {
-      "name": "success-container",
-      "token": "success-container",
-      "value": "#E7FBF2"
+      "name": "color-neutral-light-50",
+      "token": "--color-neutral-light-50",
+      "value": "#FFFFFF7F",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t134"
+      ]
      },
      {
-      "name": "on-success-container",
-      "token": "on-success-container",
-      "value": "#191919"
+      "name": "color-neutral-light-60",
+      "token": "--color-neutral-light-60",
+      "value": "#FFFFFF99",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t135"
+      ]
      },
      {
-      "name": "critical",
-      "token": "critical",
-      "value": "#F4840C"
+      "name": "color-neutral-light-70",
+      "token": "--color-neutral-light-70",
+      "value": "#FFFFFFB2",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t136"
+      ]
      },
      {
-      "name": "on-critical",
-      "token": "on-critical",
-      "value": "#FFFFFF"
+      "name": "color-neutral-light-80",
+      "token": "--color-neutral-light-80",
+      "value": "#FFFFFFCC",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t137"
+      ]
      },
      {
-      "name": "critical-container",
-      "token": "critical-container",
-      "value": "#FEF5E8"
+      "name": "color-neutral-light-90",
+      "token": "--color-neutral-light-90",
+      "value": "#FFFFFFE5",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t138"
+      ]
      },
      {
-      "name": "on-critical-container",
-      "token": "on-critical-container",
-      "value": "#191919"
+      "name": "color-neutral-light-100",
+      "token": "--color-neutral-light-100",
+      "value": "#FFFFFFFF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t139"
+      ]
      },
      {
-      "name": "warning",
-      "token": "warning",
-      "value": "#FCC800"
-     },
-     {
-      "name": "on-warning",
-      "token": "on-warning",
-      "value": "#FFFFFF"
-     },
-     {
-      "name": "warning-container",
-      "token": "warning-container",
-      "value": "#FEFCE0"
-     },
-     {
-      "name": "on-warning-container",
-      "token": "on-warning-container",
-      "value": "#191919"
-     },
-     {
-      "name": "info",
-      "token": "info",
-      "value": "#0067D1"
-     },
-     {
-      "name": "on-info",
-      "token": "on-info",
-      "value": "#FFFFFF"
-     },
-     {
-      "name": "info-container",
-      "token": "info-container",
-      "value": "#E6F2FD"
-     },
-     {
-      "name": "on-info-container",
-      "token": "on-info-container",
-      "value": "#191919"
+      "name": "color-neutral-light-5",
+      "token": "--color-neutral-light-5",
+      "value": "#FFFFFF0C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t162"
+      ]
      }
+    ],
+    "src": [
+     "t189"
     ]
    },
    {
-    "title": "辅助色",
-    "desc": "图表与分类用的扩展色",
-    "kind": "cards",
+    "id": "function",
+    "label": "功能色 Function",
+    "kind": "palette",
+    "heading": "Core families",
     "tokens": [
      {
-      "name": "accent-1",
-      "token": "accent-1",
-      "value": "#8B5CF6"
+      "name": "color-function-success-10",
+      "token": "--color-function-success-10",
+      "value": "#64BB5C19",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t140"
+      ]
      },
      {
-      "name": "on-accent-1",
-      "token": "on-accent-1",
-      "value": "#FFFFFF"
+      "name": "color-function-success-20",
+      "token": "--color-function-success-20",
+      "value": "#64BB5C33",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t141"
+      ]
      },
      {
-      "name": "accent-1-container",
-      "token": "accent-1-container",
-      "value": "#EDE9FE"
+      "name": "color-function-success-100",
+      "token": "--color-function-success-100",
+      "value": "#64BB5CFF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t142"
+      ]
      },
      {
-      "name": "on-accent-1-container",
-      "token": "on-accent-1-container",
-      "value": "#4C1D95"
+      "name": "color-function-warning-10",
+      "token": "--color-function-warning-10",
+      "value": "#ED6F2119",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t143"
+      ]
      },
      {
-      "name": "accent-2",
-      "token": "accent-2",
-      "value": "#F43F5E"
+      "name": "color-function-warning-20",
+      "token": "--color-function-warning-20",
+      "value": "#ED6F2133",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t144"
+      ]
      },
      {
-      "name": "on-accent-2",
-      "token": "on-accent-2",
-      "value": "#FFFFFF"
+      "name": "color-function-warning-100",
+      "token": "--color-function-warning-100",
+      "value": "#ED6F21FF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t145"
+      ]
      },
      {
-      "name": "accent-2-container",
-      "token": "accent-2-container",
-      "value": "#FFE4E6"
+      "name": "color-function-danger-10",
+      "token": "--color-function-danger-10",
+      "value": "#E8402619",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t146"
+      ]
      },
      {
-      "name": "on-accent-2-container",
-      "token": "on-accent-2-container",
-      "value": "#9F1239"
+      "name": "color-function-danger-20",
+      "token": "--color-function-danger-20",
+      "value": "#E8402633",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t147"
+      ]
      },
      {
-      "name": "accent-3",
-      "token": "accent-3",
-      "value": "#F59E0B"
-     },
-     {
-      "name": "on-accent-3",
-      "token": "on-accent-3",
-      "value": "#FFFFFF"
-     },
-     {
-      "name": "accent-3-container",
-      "token": "accent-3-container",
-      "value": "#FEF3C7"
-     },
-     {
-      "name": "on-accent-3-container",
-      "token": "on-accent-3-container",
-      "value": "#92400E"
-     },
-     {
-      "name": "accent-4",
-      "token": "accent-4",
-      "value": "#06B6D4"
-     },
-     {
-      "name": "on-accent-4",
-      "token": "on-accent-4",
-      "value": "#FFFFFF"
-     },
-     {
-      "name": "accent-4-container",
-      "token": "accent-4-container",
-      "value": "#CFFAFE"
-     },
-     {
-      "name": "on-accent-4-container",
-      "token": "on-accent-4-container",
-      "value": "#164E63"
-     },
-     {
-      "name": "accent-5",
-      "token": "accent-5",
-      "value": "#6366F1"
-     },
-     {
-      "name": "on-accent-5",
-      "token": "on-accent-5",
-      "value": "#FFFFFF"
-     },
-     {
-      "name": "accent-5-container",
-      "token": "accent-5-container",
-      "value": "#E0E7FF"
-     },
-     {
-      "name": "on-accent-5-container",
-      "token": "on-accent-5-container",
-      "value": "#3730A3"
+      "name": "color-function-danger-100",
+      "token": "--color-function-danger-100",
+      "value": "#E84026FF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t148"
+      ]
      }
+    ],
+    "src": [
+     "t190"
     ]
    },
    {
-    "title": "其他",
-    "desc": "分割线等",
-    "kind": "cards",
+    "id": "multi",
+    "label": "多彩色 Multi",
+    "kind": "palette",
+    "heading": "Core families",
     "tokens": [
      {
-      "name": "divider",
-      "token": "divider",
-      "value": "#F3F3F3"
+      "name": "color-multi-01",
+      "token": "--color-multi-01",
+      "value": "#564AF7",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t149"
+      ]
+     },
+     {
+      "name": "color-multi-02",
+      "token": "--color-multi-02",
+      "value": "#46B1E3",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t150"
+      ]
+     },
+     {
+      "name": "color-multi-03",
+      "token": "--color-multi-03",
+      "value": "#61CFBE",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t151"
+      ]
+     },
+     {
+      "name": "color-multi-04",
+      "token": "--color-multi-04",
+      "value": "#A5D61D",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t152"
+      ]
+     },
+     {
+      "name": "color-multi-05",
+      "token": "--color-multi-05",
+      "value": "#AC49F5",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t153"
+      ]
+     },
+     {
+      "name": "color-multi-06",
+      "token": "--color-multi-06",
+      "value": "#E64566",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t154"
+      ]
+     },
+     {
+      "name": "color-multi-07",
+      "token": "--color-multi-07",
+      "value": "#F9A01E",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t155"
+      ]
+     },
+     {
+      "name": "color-multi-08",
+      "token": "--color-multi-08",
+      "value": "#F7CE00",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t156"
+      ]
+     },
+     {
+      "name": "color-multi-09",
+      "token": "--color-multi-09",
+      "value": "#64BB5C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t157"
+      ]
+     },
+     {
+      "name": "color-multi-10",
+      "token": "--color-multi-10",
+      "value": "#E84026",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t158"
+      ]
+     },
+     {
+      "name": "color-multi-11",
+      "token": "--color-multi-11",
+      "value": "#ED6F21",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t159"
+      ]
      }
+    ],
+    "src": [
+     "t191"
     ]
    },
    {
-    "title": "描边色",
-    "desc": "",
-    "kind": "cards",
+    "id": "core",
+    "label": "核心 Core",
+    "kind": "semantic",
+    "heading": "Core",
     "tokens": [
      {
-      "name": "border-base",
-      "token": "border-base",
-      "value": "#C9C9C9"
+      "name": "color-bg",
+      "token": "--color-bg",
+      "value": "#FFFFFFFF",
+      "ref": "--color-neutral-light-100",
+      "desc": "",
+      "src": [
+       "t1"
+      ]
      },
      {
-      "name": "border-divider",
-      "token": "border-divider",
-      "value": "#F3F3F3"
+      "name": "color-bg-subtle",
+      "token": "--color-bg-subtle",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t2"
+      ]
      },
      {
-      "name": "border-selected",
-      "token": "border-selected",
-      "value": "#0067D1"
+      "name": "color-surface",
+      "token": "--color-surface",
+      "value": "#FFFFFFFF",
+      "ref": "--color-neutral-light-100",
+      "desc": "",
+      "src": [
+       "t3"
+      ]
      },
      {
-      "name": "border-error",
-      "token": "border-error",
-      "value": "#E02128"
+      "name": "color-surface-raised",
+      "token": "--color-surface-raised",
+      "value": "#FFFFFFFF",
+      "ref": "--color-neutral-light-100",
+      "desc": "",
+      "src": [
+       "t4"
+      ]
+     },
+     {
+      "name": "color-surface-muted",
+      "token": "--color-surface-muted",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t5"
+      ]
+     },
+     {
+      "name": "color-titlebar-normal-bg",
+      "token": "--color-titlebar-normal-bg",
+      "value": "transparent",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t6"
+      ]
+     },
+     {
+      "name": "color-titlebar-unfocus-bg",
+      "token": "--color-titlebar-unfocus-bg",
+      "value": "transparent",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t7"
+      ]
+     },
+     {
+      "name": "color-overlay",
+      "token": "--color-overlay",
+      "value": "#00000066",
+      "ref": "--color-neutral-dark-40",
+      "desc": "",
+      "src": [
+       "t8"
+      ]
+     },
+     {
+      "name": "color-dialog-bg",
+      "token": "--color-dialog-bg",
+      "value": "#FFFFFFFF",
+      "ref": "--color-surface-raised",
+      "desc": "",
+      "src": [
+       "t9"
+      ]
+     },
+     {
+      "name": "color-modal-bg-white",
+      "token": "--color-modal-bg-white",
+      "value": "#FFFFFFFF",
+      "ref": "--color-surface-raised",
+      "desc": "",
+      "src": [
+       "t10"
+      ]
+     },
+     {
+      "name": "color-modal-bg-gray",
+      "token": "--color-modal-bg-gray",
+      "value": "#0000000C",
+      "ref": "--color-surface-muted",
+      "desc": "",
+      "src": [
+       "t11"
+      ]
+     },
+     {
+      "name": "color-secondary",
+      "token": "--color-secondary",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t12"
+      ]
+     },
+     {
+      "name": "color-secondary-hover",
+      "token": "--color-secondary-hover",
+      "value": "#00000019",
+      "ref": "--color-neutral-dark-10",
+      "desc": "",
+      "src": [
+       "t13"
+      ]
+     },
+     {
+      "name": "color-accent",
+      "token": "--color-accent",
+      "value": "#0A59F7FF",
+      "ref": "--color-brand-100",
+      "desc": "",
+      "src": [
+       "t14"
+      ]
+     },
+     {
+      "name": "color-accent-hover",
+      "token": "--color-accent-hover",
+      "value": "#0A59F7FF",
+      "ref": "--color-accent",
+      "desc": "",
+      "src": [
+       "t15"
+      ]
+     },
+     {
+      "name": "color-accent-hover-layer",
+      "token": "--color-accent-hover-layer",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t16"
+      ]
+     },
+     {
+      "name": "color-sidebar-bg",
+      "token": "--color-sidebar-bg",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t17"
+      ]
+     },
+     {
+      "name": "color-sidebar-accent",
+      "token": "--color-sidebar-accent",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t18"
+      ]
+     },
+     {
+      "name": "color-sidebar-accent-text",
+      "token": "--color-sidebar-accent-text",
+      "value": "#0A59F7FF",
+      "ref": "--color-brand-100",
+      "desc": "",
+      "src": [
+       "t19"
+      ]
+     },
+     {
+      "name": "color-sidebar-selected",
+      "token": "--color-sidebar-selected",
+      "value": "#0A59F719",
+      "ref": "--color-brand-10",
+      "desc": "",
+      "src": [
+       "t20"
+      ]
+     },
+     {
+      "name": "color-sidebar-selected-text",
+      "token": "--color-sidebar-selected-text",
+      "value": "#0A59F7FF",
+      "ref": "--color-brand-100",
+      "desc": "",
+      "src": [
+       "t21"
+      ]
+     },
+     {
+      "name": "color-tab-list-bg",
+      "token": "--color-tab-list-bg",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t22"
+      ]
+     },
+     {
+      "name": "color-tab-text",
+      "token": "--color-tab-text",
+      "value": "#00000099",
+      "ref": "--color-neutral-dark-60",
+      "desc": "",
+      "src": [
+       "t23"
+      ]
+     },
+     {
+      "name": "color-tab-hover-bg",
+      "token": "--color-tab-hover-bg",
+      "value": "#00000019",
+      "ref": "--color-neutral-dark-10",
+      "desc": "",
+      "src": [
+       "t24"
+      ]
+     },
+     {
+      "name": "color-tab-selected-bg",
+      "token": "--color-tab-selected-bg",
+      "value": "#FFFFFFFF",
+      "ref": "--color-white",
+      "desc": "",
+      "src": [
+       "t25"
+      ]
+     },
+     {
+      "name": "color-tab-selected-text",
+      "token": "--color-tab-selected-text",
+      "value": "#000000E5",
+      "ref": "--color-neutral-dark-90",
+      "desc": "",
+      "src": [
+       "t26"
+      ]
+     },
+     {
+      "name": "color-tooltip-bg",
+      "token": "--color-tooltip-bg",
+      "value": "#FFFFFFFF",
+      "ref": "--color-surface",
+      "desc": "",
+      "src": [
+       "t27"
+      ]
+     },
+     {
+      "name": "color-tooltip-text",
+      "token": "--color-tooltip-text",
+      "value": "#000000E5",
+      "ref": "--color-text",
+      "desc": "",
+      "src": [
+       "t28"
+      ]
+     },
+     {
+      "name": "color-input-border",
+      "token": "--color-input-border",
+      "value": "transparent",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t29"
+      ]
+     },
+     {
+      "name": "color-input-bg",
+      "token": "--color-input-bg",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t30"
+      ]
+     },
+     {
+      "name": "color-input-bg-on-default",
+      "token": "--color-input-bg-on-default",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t31"
+      ]
+     },
+     {
+      "name": "color-input-hover-bg",
+      "token": "--color-input-hover-bg",
+      "value": "#00000019",
+      "ref": "--color-neutral-dark-10",
+      "desc": "",
+      "src": [
+       "t32"
+      ]
+     },
+     {
+      "name": "color-input-hover-bg-on-default",
+      "token": "--color-input-hover-bg-on-default",
+      "value": "#00000019",
+      "ref": "--color-neutral-dark-10",
+      "desc": "",
+      "src": [
+       "t33"
+      ]
+     },
+     {
+      "name": "color-input-focus-bg",
+      "token": "--color-input-focus-bg",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t34"
+      ]
+     },
+     {
+      "name": "color-input-focus-bg-on-default",
+      "token": "--color-input-focus-bg-on-default",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t35"
+      ]
+     },
+     {
+      "name": "color-input-error-bg",
+      "token": "--color-input-error-bg",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t36"
+      ]
+     },
+     {
+      "name": "color-input-error-bg-on-default",
+      "token": "--color-input-error-bg-on-default",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t37"
+      ]
+     },
+     {
+      "name": "color-input-bg-on-subtle",
+      "token": "--color-input-bg-on-subtle",
+      "value": "#FFFFFFFF",
+      "ref": "--color-white",
+      "desc": "",
+      "src": [
+       "t38"
+      ]
+     },
+     {
+      "name": "color-input-hover-bg-on-subtle",
+      "token": "--color-input-hover-bg-on-subtle",
+      "value": "#FFFFFFFF",
+      "ref": "--color-white",
+      "desc": "",
+      "src": [
+       "t39"
+      ]
+     },
+     {
+      "name": "color-input-hover-bg-on-subtle-layer",
+      "token": "--color-input-hover-bg-on-subtle-layer",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t40"
+      ]
+     },
+     {
+      "name": "color-input-hover-border-on-subtle",
+      "token": "--color-input-hover-border-on-subtle",
+      "value": "#FFFFFFFF",
+      "ref": "--color-white",
+      "desc": "",
+      "src": [
+       "t41"
+      ]
+     },
+     {
+      "name": "color-input-focus-bg-on-subtle",
+      "token": "--color-input-focus-bg-on-subtle",
+      "value": "#FFFFFFFF",
+      "ref": "--color-white",
+      "desc": "",
+      "src": [
+       "t42"
+      ]
+     },
+     {
+      "name": "color-input-error-bg-on-subtle",
+      "token": "--color-input-error-bg-on-subtle",
+      "value": "#FFFFFFFF",
+      "ref": "--color-white",
+      "desc": "",
+      "src": [
+       "t43"
+      ]
+     },
+     {
+      "name": "color-input-error-border",
+      "token": "--color-input-error-border",
+      "value": "#E84026FF",
+      "ref": "--color-function-danger-100",
+      "desc": "",
+      "src": [
+       "t44"
+      ]
      }
+    ],
+    "src": [
+     "t45"
     ]
    },
    {
-    "title": "焦点描边",
-    "desc": "",
-    "kind": "cards",
+    "id": "text",
+    "label": "文字 Text",
+    "kind": "semantic",
+    "heading": "Text",
     "tokens": [
      {
-      "name": "outline-brand",
-      "token": "outline-brand",
-      "value": "#0067D1"
+      "name": "color-text",
+      "token": "--color-text",
+      "value": "#000000E5",
+      "ref": "--color-neutral-dark-90",
+      "desc": "",
+      "src": [
+       "t46"
+      ]
      },
      {
-      "name": "outline-error",
-      "token": "outline-error",
-      "value": "#E02128"
+      "name": "color-text-muted",
+      "token": "--color-text-muted",
+      "value": "#00000099",
+      "ref": "--color-neutral-dark-60",
+      "desc": "",
+      "src": [
+       "t47"
+      ]
+     },
+     {
+      "name": "color-text-subtle",
+      "token": "--color-text-subtle",
+      "value": "#00000066",
+      "ref": "--color-neutral-dark-40",
+      "desc": "",
+      "src": [
+       "t48"
+      ]
+     },
+     {
+      "name": "color-text-inverse",
+      "token": "--color-text-inverse",
+      "value": "#FFFFFFFF",
+      "ref": "--color-neutral-light-100",
+      "desc": "",
+      "src": [
+       "t49"
+      ]
+     },
+     {
+      "name": "color-text-brand",
+      "token": "--color-text-brand",
+      "value": "#0A59F7FF",
+      "ref": "--color-brand-100",
+      "desc": "",
+      "src": [
+       "t50"
+      ]
+     },
+     {
+      "name": "color-link",
+      "token": "--color-link",
+      "value": "#000000FF",
+      "ref": "--color-neutral-dark-100",
+      "desc": "",
+      "src": [
+       "t51"
+      ]
+     }
+    ],
+    "src": [
+     "t52"
+    ]
+   },
+   {
+    "id": "icon",
+    "label": "图标 Icon",
+    "kind": "semantic",
+    "heading": "Icon",
+    "tokens": [
+     {
+      "name": "color-icon",
+      "token": "--color-icon",
+      "value": "#000000E5",
+      "ref": "--color-neutral-dark-90",
+      "desc": "",
+      "src": [
+       "t53"
+      ]
+     },
+     {
+      "name": "color-icon-muted",
+      "token": "--color-icon-muted",
+      "value": "#00000099",
+      "ref": "--color-neutral-dark-60",
+      "desc": "",
+      "src": [
+       "t54"
+      ]
+     },
+     {
+      "name": "color-primary-level-unselected",
+      "token": "--color-primary-level-unselected",
+      "value": "#00000066",
+      "ref": "--color-icon-subtle",
+      "desc": "",
+      "src": [
+       "t55"
+      ]
+     },
+     {
+      "name": "color-icon-subtle",
+      "token": "--color-icon-subtle",
+      "value": "#00000066",
+      "ref": "--color-neutral-dark-40",
+      "desc": "",
+      "src": [
+       "t56"
+      ]
+     },
+     {
+      "name": "color-icon-inverse",
+      "token": "--color-icon-inverse",
+      "value": "#FFFFFFFF",
+      "ref": "--color-neutral-light-100",
+      "desc": "",
+      "src": [
+       "t57"
+      ]
+     }
+    ],
+    "src": [
+     "t58"
+    ]
+   },
+   {
+    "id": "border",
+    "label": "描边 Border",
+    "kind": "semantic",
+    "heading": "Border",
+    "tokens": [
+     {
+      "name": "color-border",
+      "token": "--color-border",
+      "value": "#00000019",
+      "ref": "--color-neutral-dark-10",
+      "desc": "",
+      "src": [
+       "t59"
+      ]
+     },
+     {
+      "name": "color-divider",
+      "token": "--color-divider",
+      "value": "#00000033",
+      "ref": "--color-neutral-dark-20",
+      "desc": "",
+      "src": [
+       "t60"
+      ]
+     },
+     {
+      "name": "color-focus-ring",
+      "token": "--color-focus-ring",
+      "value": "#0A59F7FF",
+      "ref": "--color-brand-100",
+      "desc": "",
+      "src": [
+       "t61"
+      ]
+     }
+    ],
+    "src": [
+     "t68"
+    ]
+   },
+   {
+    "id": "brand",
+    "label": "品牌 Brand",
+    "kind": "semantic",
+    "heading": "Brand",
+    "tokens": [
+     {
+      "name": "color-primary",
+      "token": "--color-primary",
+      "value": "#0A59F7FF",
+      "ref": "--color-brand-100",
+      "desc": "",
+      "src": [
+       "t69"
+      ]
+     },
+     {
+      "name": "color-primary-text",
+      "token": "--color-primary-text",
+      "value": "#FFFFFFFF",
+      "ref": "--color-neutral-light-100",
+      "desc": "",
+      "src": [
+       "t70"
+      ]
+     }
+    ],
+    "src": [
+     "t71"
+    ]
+   },
+   {
+    "id": "state",
+    "label": "状态 State",
+    "kind": "semantic",
+    "heading": "State",
+    "tokens": [
+     {
+      "name": "color-success",
+      "token": "--color-success",
+      "value": "#64BB5CFF",
+      "ref": "--color-function-success-100",
+      "desc": "",
+      "src": [
+       "t72"
+      ]
+     },
+     {
+      "name": "color-success-subtle",
+      "token": "--color-success-subtle",
+      "value": "#64BB5C19",
+      "ref": "--color-function-success-10",
+      "desc": "",
+      "src": [
+       "t73"
+      ]
+     },
+     {
+      "name": "color-warning",
+      "token": "--color-warning",
+      "value": "#ED6F21FF",
+      "ref": "--color-function-warning-100",
+      "desc": "",
+      "src": [
+       "t74"
+      ]
+     },
+     {
+      "name": "color-warning-subtle",
+      "token": "--color-warning-subtle",
+      "value": "#ED6F2119",
+      "ref": "--color-function-warning-10",
+      "desc": "",
+      "src": [
+       "t75"
+      ]
+     },
+     {
+      "name": "color-danger",
+      "token": "--color-danger",
+      "value": "#E84026FF",
+      "ref": "--color-function-danger-100",
+      "desc": "",
+      "src": [
+       "t76"
+      ]
+     },
+     {
+      "name": "color-danger-subtle",
+      "token": "--color-danger-subtle",
+      "value": "#E8402619",
+      "ref": "--color-function-danger-10",
+      "desc": "",
+      "src": [
+       "t77"
+      ]
+     },
+     {
+      "name": "color-info",
+      "token": "--color-info",
+      "value": "#0A59F7FF",
+      "ref": "--color-brand-100",
+      "desc": "",
+      "src": [
+       "t78"
+      ]
+     },
+     {
+      "name": "color-info-subtle",
+      "token": "--color-info-subtle",
+      "value": "#0A59F719",
+      "ref": "--color-brand-10",
+      "desc": "",
+      "src": [
+       "t79"
+      ]
+     },
+     {
+      "name": "color-alert-neutral",
+      "token": "--color-alert-neutral",
+      "value": "#00000099",
+      "ref": "--color-text-muted",
+      "desc": "",
+      "src": [
+       "t80"
+      ]
+     },
+     {
+      "name": "color-alert-neutral-subtle",
+      "token": "--color-alert-neutral-subtle",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t81"
+      ]
+     },
+     {
+      "name": "color-badge-neutral-text",
+      "token": "--color-badge-neutral-text",
+      "value": "#00000099",
+      "ref": "--color-text-muted",
+      "desc": "",
+      "src": [
+       "t82"
+      ]
+     },
+     {
+      "name": "color-badge-neutral-bg",
+      "token": "--color-badge-neutral-bg",
+      "value": "#00000019",
+      "ref": "--color-neutral-dark-10",
+      "desc": "",
+      "src": [
+       "t83"
+      ]
+     },
+     {
+      "name": "color-badge-info-text",
+      "token": "--color-badge-info-text",
+      "value": "#0A59F7FF",
+      "ref": "--color-info",
+      "desc": "",
+      "src": [
+       "t84"
+      ]
+     },
+     {
+      "name": "color-badge-info-bg",
+      "token": "--color-badge-info-bg",
+      "value": "#0A59F719",
+      "ref": "--color-brand-10",
+      "desc": "",
+      "src": [
+       "t85"
+      ]
+     },
+     {
+      "name": "color-badge-success-text",
+      "token": "--color-badge-success-text",
+      "value": "#64BB5CFF",
+      "ref": "--color-function-success-100",
+      "desc": "",
+      "src": [
+       "t86"
+      ]
+     },
+     {
+      "name": "color-badge-success-bg",
+      "token": "--color-badge-success-bg",
+      "value": "#64BB5C19",
+      "ref": "--color-function-success-10",
+      "desc": "",
+      "src": [
+       "t87"
+      ]
+     },
+     {
+      "name": "color-badge-warning-text",
+      "token": "--color-badge-warning-text",
+      "value": "#ED6F21FF",
+      "ref": "--color-function-warning-100",
+      "desc": "",
+      "src": [
+       "t88"
+      ]
+     },
+     {
+      "name": "color-badge-warning-bg",
+      "token": "--color-badge-warning-bg",
+      "value": "#ED6F2119",
+      "ref": "--color-function-warning-10",
+      "desc": "",
+      "src": [
+       "t89"
+      ]
+     }
+    ],
+    "src": [
+     "t90"
+    ]
+   },
+   {
+    "id": "data-visualization",
+    "label": "数据可视化 Data Visualization",
+    "kind": "semantic",
+    "heading": "Data Visualization",
+    "tokens": [
+     {
+      "name": "color-chart-1",
+      "token": "--color-chart-1",
+      "value": "#564AF7",
+      "ref": "--color-multi-01",
+      "desc": "",
+      "src": [
+       "t91"
+      ]
+     },
+     {
+      "name": "color-chart-2",
+      "token": "--color-chart-2",
+      "value": "#46B1E3",
+      "ref": "--color-multi-02",
+      "desc": "",
+      "src": [
+       "t92"
+      ]
+     },
+     {
+      "name": "color-chart-3",
+      "token": "--color-chart-3",
+      "value": "#61CFBE",
+      "ref": "--color-multi-03",
+      "desc": "",
+      "src": [
+       "t93"
+      ]
+     },
+     {
+      "name": "color-chart-4",
+      "token": "--color-chart-4",
+      "value": "#A5D61D",
+      "ref": "--color-multi-04",
+      "desc": "",
+      "src": [
+       "t94"
+      ]
+     },
+     {
+      "name": "color-chart-5",
+      "token": "--color-chart-5",
+      "value": "#AC49F5",
+      "ref": "--color-multi-05",
+      "desc": "",
+      "src": [
+       "t95"
+      ]
+     }
+    ],
+    "src": [
+     "t96"
+    ]
+   },
+   {
+    "id": "interaction-state-layers",
+    "label": "交互状态层 Interaction State Layers",
+    "kind": "semantic",
+    "heading": "Interaction State Layers",
+    "tokens": [
+     {
+      "name": "state-layer-hover",
+      "token": "--state-layer-hover",
+      "value": "#0000000C",
+      "ref": "--color-neutral-dark-05",
+      "desc": "",
+      "src": [
+       "t97"
+      ]
+     },
+     {
+      "name": "state-layer-pressed",
+      "token": "--state-layer-pressed",
+      "value": "#00000019",
+      "ref": "--color-neutral-dark-10",
+      "desc": "",
+      "src": [
+       "t98"
+      ]
+     },
+     {
+      "name": "state-layer-selected",
+      "token": "--state-layer-selected",
+      "value": "#00000019",
+      "ref": "--color-neutral-dark-10",
+      "desc": "",
+      "src": [
+       "t99"
+      ]
+     },
+     {
+      "name": "state-layer-focus",
+      "token": "--state-layer-focus",
+      "value": "#0A59F719",
+      "ref": "--color-brand-10",
+      "desc": "",
+      "src": [
+       "t100"
+      ]
+     }
+    ],
+    "src": [
+     "t103"
+    ]
+   },
+   {
+    "id": "other",
+    "label": "其他",
+    "kind": "semantic",
+    "heading": null,
+    "tokens": [
+     {
+      "name": "color-white",
+      "token": "--color-white",
+      "value": "#FFFFFFFF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t163"
+      ]
+     },
+     {
+      "name": "color-black",
+      "token": "--color-black",
+      "value": "#000000FF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t164"
+      ]
+     },
+     {
+      "name": "color-gray-01",
+      "token": "--color-gray-01",
+      "value": "#0000000C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t165"
+      ]
+     },
+     {
+      "name": "color-warning-10",
+      "token": "--color-warning-10",
+      "value": "#ED6F2119",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t166"
+      ]
+     },
+     {
+      "name": "color-warning-20",
+      "token": "--color-warning-20",
+      "value": "#ED6F2133",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t167"
+      ]
+     },
+     {
+      "name": "color-alert",
+      "token": "--color-alert",
+      "value": "#E84026FF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t168"
+      ]
+     },
+     {
+      "name": "color-alert-20",
+      "token": "--color-alert-20",
+      "value": "#E8402633",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t169"
+      ]
+     },
+     {
+      "name": "color-confirm",
+      "token": "--color-confirm",
+      "value": "#64BB5CFF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t170"
+      ]
+     },
+     {
+      "name": "color-confirm-10",
+      "token": "--color-confirm-10",
+      "value": "#64BB5C19",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t171"
+      ]
+     },
+     {
+      "name": "color-confirm-20",
+      "token": "--color-confirm-20",
+      "value": "#64BB5C33",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t172"
+      ]
+     },
+     {
+      "name": "color-button-secondary-bg",
+      "token": "--color-button-secondary-bg",
+      "value": "#0000000C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t173"
+      ]
+     },
+     {
+      "name": "color-button-secondary-hover-bg",
+      "token": "--color-button-secondary-hover-bg",
+      "value": "#00000019",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t174"
+      ]
+     },
+     {
+      "name": "color-button-secondary-text",
+      "token": "--color-button-secondary-text",
+      "value": "#000000E5",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t175"
+      ]
+     },
+     {
+      "name": "color-button-ghost-bg",
+      "token": "--color-button-ghost-bg",
+      "value": "transparent",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t176"
+      ]
+     },
+     {
+      "name": "color-button-ghost-hover-bg",
+      "token": "--color-button-ghost-hover-bg",
+      "value": "#0000000C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t177"
+      ]
+     },
+     {
+      "name": "color-button-ghost-text",
+      "token": "--color-button-ghost-text",
+      "value": "#0A59F7FF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t178"
+      ]
+     },
+     {
+      "name": "color-button-danger-bg",
+      "token": "--color-button-danger-bg",
+      "value": "#0000000C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t179"
+      ]
+     },
+     {
+      "name": "color-button-danger-hover-bg",
+      "token": "--color-button-danger-hover-bg",
+      "value": "#00000019",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t180"
+      ]
+     },
+     {
+      "name": "color-button-danger-text",
+      "token": "--color-button-danger-text",
+      "value": "#E84026FF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t181"
+      ]
+     },
+     {
+      "name": "color-icon-text-button-ghost-bg",
+      "token": "--color-icon-text-button-ghost-bg",
+      "value": "transparent",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t182"
+      ]
+     },
+     {
+      "name": "color-icon-text-button-ghost-hover-bg",
+      "token": "--color-icon-text-button-ghost-hover-bg",
+      "value": "#0000000C",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t183"
+      ]
+     },
+     {
+      "name": "color-icon-text-button-ghost-content",
+      "token": "--color-icon-text-button-ghost-content",
+      "value": "#000000E5",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t184"
+      ]
+     },
+     {
+      "name": "color-badge-danger-text",
+      "token": "--color-badge-danger-text",
+      "value": "#E84026FF",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t185"
+      ]
+     },
+     {
+      "name": "color-badge-danger-bg",
+      "token": "--color-badge-danger-bg",
+      "value": "#E8402619",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t186"
+      ]
      }
     ]
    }
-  ],
-  "desc": "70 个颜色 token，按用途分组。",
-  "rules": [
-   "所有 UI 颜色必须引用颜色 token 或组件语义 props。",
-   "背景、文字、图标、边框、状态、图表和数据高亮都不得在消费端硬编码色值。",
-   "禁止为了局部视觉效果新增一次性色值；确需新增时，先沉淀为 token，再在规范中登记用途。",
-   "语义状态必须使用 `error`、`success`、`warning`、`critical`、`info` 及其 container/on-container token。",
-   "文本必须使用与背景匹配的 `on-*` token，避免手动猜测对比度。"
   ]
  },
  "typography": {
-  "title": "字体层级",
+  "title": "字体",
   "families": [
-   "HarmonyOS Sans SC"
-  ],
-  "weights": [],
-  "scale": [
    {
-    "name": "text-sm",
-    "token": "text-sm",
-    "size": 12,
-    "lineHeight": 19,
-    "weight": null
+    "name": "font-sans",
+    "token": "--font-sans",
+    "stack": "\"HarmonyOS Sans\", \"HarmonyOS Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+    "ref": null,
+    "src": [
+     "t316"
+    ]
    },
    {
-    "name": "text-md",
-    "token": "text-md",
-    "size": 14,
-    "lineHeight": 21,
-    "weight": null
-   },
-   {
-    "name": "text-lg",
-    "token": "text-lg",
-    "size": 16,
-    "lineHeight": 24,
-    "weight": null
-   },
-   {
-    "name": "text-xl",
-    "token": "text-xl",
-    "size": 18,
-    "lineHeight": 27,
-    "weight": null
-   },
-   {
-    "name": "text-2xl",
-    "token": "text-2xl",
-    "size": 20,
-    "lineHeight": 28,
-    "weight": null
-   },
-   {
-    "name": "text-3xl",
-    "token": "text-3xl",
-    "size": 24,
-    "lineHeight": 34,
-    "weight": null
-   },
-   {
-    "name": "text-4xl",
-    "token": "text-4xl",
-    "size": 28,
-    "lineHeight": 39,
-    "weight": null
-   },
-   {
-    "name": "text-5xl",
-    "token": "text-5xl",
-    "size": 36,
-    "lineHeight": 50,
-    "weight": null
-   },
-   {
-    "name": "text-6xl",
-    "token": "text-6xl",
-    "size": 48,
-    "lineHeight": 62,
-    "weight": null
-   },
-   {
-    "name": "text-7xl",
-    "token": "text-7xl",
-    "size": 60,
-    "lineHeight": 78,
-    "weight": null
-   },
-   {
-    "name": "text-8xl",
-    "token": "text-8xl",
-    "size": 72,
-    "lineHeight": 86,
-    "weight": null
-   },
-   {
-    "name": "text-9xl",
-    "token": "text-9xl",
-    "size": 96,
-    "lineHeight": 115,
-    "weight": null
+    "name": "font-display",
+    "token": "--font-display",
+    "stack": "\"HarmonyOS Sans\", \"HarmonyOS Sans SC\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
+    "ref": "--font-sans",
+    "src": [
+     "t317"
+    ]
    }
   ],
-  "desc": "12 级字号，字体家族 HarmonyOS Sans SC。",
-  "rules": [
-   "`font-size` 和 `line-height` 必须使用 typography token，不得自定义任意字号或行高。",
-   "`font-weight` 必须使用规范角色定义：正文/表格默认 Regular，标题/激活导航/关键指标使用 Medium，避免随意使用 Bold。",
-   "中文主字体使用 HarmonyOS Sans SC；运行环境未加载时使用系统 fallback。",
-   "卡片标题必须使用 `text-lg`。表格内容必须使用 `text-md`。",
-   "页面级标题、模块标题、表格内容、表单标签、Caption、KPI 数字必须按信息层级选择 token，不得用视觉喜好临时放大或缩小。",
-   "禁止使用 viewport width 缩放字体，字距保持 `0`。"
+  "groups": [
+   {
+    "id": "font-size-tokens",
+    "label": "字号",
+    "tab": "字号",
+    "heading": "Font Size Tokens",
+    "tokens": [
+     {
+      "name": "font-size-10",
+      "token": "--font-size-10",
+      "value": "10px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t318"
+      ]
+     },
+     {
+      "name": "font-size-12",
+      "token": "--font-size-12",
+      "value": "12px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t319"
+      ]
+     },
+     {
+      "name": "font-size-14",
+      "token": "--font-size-14",
+      "value": "14px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t320"
+      ]
+     },
+     {
+      "name": "font-size-16",
+      "token": "--font-size-16",
+      "value": "16px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t321"
+      ]
+     },
+     {
+      "name": "font-size-18",
+      "token": "--font-size-18",
+      "value": "18px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t322"
+      ]
+     },
+     {
+      "name": "font-size-20",
+      "token": "--font-size-20",
+      "value": "20px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t323"
+      ]
+     },
+     {
+      "name": "font-size-24",
+      "token": "--font-size-24",
+      "value": "24px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t324"
+      ]
+     },
+     {
+      "name": "font-size-30",
+      "token": "--font-size-30",
+      "value": "30px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t325"
+      ]
+     },
+     {
+      "name": "font-size-38",
+      "token": "--font-size-38",
+      "value": "38px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t326"
+      ]
+     },
+     {
+      "name": "font-size-48",
+      "token": "--font-size-48",
+      "value": "48px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t327"
+      ]
+     },
+     {
+      "name": "font-size-56",
+      "token": "--font-size-56",
+      "value": "56px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t328"
+      ]
+     }
+    ],
+    "src": [
+     "t329"
+    ]
+   },
+   {
+    "id": "line-height-tokens",
+    "label": "行高",
+    "tab": "行高",
+    "heading": "Line Height Tokens",
+    "tokens": [
+     {
+      "name": "line-height-12",
+      "token": "--line-height-12",
+      "value": "12px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t330"
+      ]
+     },
+     {
+      "name": "line-height-14",
+      "token": "--line-height-14",
+      "value": "14px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t331"
+      ]
+     },
+     {
+      "name": "line-height-16",
+      "token": "--line-height-16",
+      "value": "16px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t332"
+      ]
+     },
+     {
+      "name": "line-height-20",
+      "token": "--line-height-20",
+      "value": "20px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t333"
+      ]
+     },
+     {
+      "name": "line-height-22",
+      "token": "--line-height-22",
+      "value": "22px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t334"
+      ]
+     },
+     {
+      "name": "line-height-24",
+      "token": "--line-height-24",
+      "value": "24px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t335"
+      ]
+     },
+     {
+      "name": "line-height-28",
+      "token": "--line-height-28",
+      "value": "28px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t336"
+      ]
+     },
+     {
+      "name": "line-height-36",
+      "token": "--line-height-36",
+      "value": "36px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t337"
+      ]
+     },
+     {
+      "name": "line-height-44",
+      "token": "--line-height-44",
+      "value": "44px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t338"
+      ]
+     },
+     {
+      "name": "line-height-58",
+      "token": "--line-height-58",
+      "value": "58px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t339"
+      ]
+     },
+     {
+      "name": "line-height-66",
+      "token": "--line-height-66",
+      "value": "66px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t340"
+      ]
+     }
+    ],
+    "src": [
+     "t341"
+    ]
+   },
+   {
+    "id": "font-weight-tokens",
+    "label": "字重",
+    "tab": "字重",
+    "heading": "Font Weight Tokens",
+    "tokens": [
+     {
+      "name": "font-weight-400",
+      "token": "--font-weight-400",
+      "value": "400",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t342"
+      ]
+     },
+     {
+      "name": "font-weight-500",
+      "token": "--font-weight-500",
+      "value": "500",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t343"
+      ]
+     },
+     {
+      "name": "font-weight-700",
+      "token": "--font-weight-700",
+      "value": "700",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t344"
+      ]
+     }
+    ],
+    "src": [
+     "t345"
+    ]
+   },
+   {
+    "id": "letter-spacing-tokens",
+    "label": "字间距",
+    "tab": "字间距",
+    "heading": "Letter Spacing Tokens",
+    "tokens": [
+     {
+      "name": "letter-spacing-normal",
+      "token": "--letter-spacing-normal",
+      "value": "0",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t346"
+      ]
+     }
+    ],
+    "src": [
+     "t347"
+    ]
+   },
+   {
+    "id": "semantic-type-styles",
+    "label": "样式",
+    "tab": "样式",
+    "heading": "Semantic Type Styles",
+    "tokens": [
+     {
+      "name": "display-l",
+      "token": "display-l",
+      "category": "展示类标题",
+      "fontFamily": "--font-sans",
+      "fontSize": "56px",
+      "lineHeight": "66px",
+      "fontWeight": "400",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-display-l-size",
+       "lineHeight": "--type-display-l-leading",
+       "fontWeight": "--type-display-l-weight"
+      },
+      "desc": "大号展示标题",
+      "src": [
+       "t348"
+      ]
+     },
+     {
+      "name": "display-m",
+      "token": "display-m",
+      "category": "展示类标题",
+      "fontFamily": "--font-sans",
+      "fontSize": "48px",
+      "lineHeight": "58px",
+      "fontWeight": "400",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-display-m-size",
+       "lineHeight": "--type-display-m-leading",
+       "fontWeight": "--type-display-m-weight"
+      },
+      "desc": "中号展示标题",
+      "src": [
+       "t349"
+      ]
+     },
+     {
+      "name": "display-s",
+      "token": "display-s",
+      "category": "展示类标题",
+      "fontFamily": "--font-sans",
+      "fontSize": "38px",
+      "lineHeight": "44px",
+      "fontWeight": "400",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-display-s-size",
+       "lineHeight": "--type-display-s-leading",
+       "fontWeight": "--type-display-s-weight"
+      },
+      "desc": "小号展示标题",
+      "src": [
+       "t350"
+      ]
+     },
+     {
+      "name": "title-l",
+      "token": "title-l",
+      "category": "主标题",
+      "fontFamily": "--font-sans",
+      "fontSize": "30px",
+      "lineHeight": "36px",
+      "fontWeight": "700",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-title-l-size",
+       "lineHeight": "--type-title-l-leading",
+       "fontWeight": "--type-title-l-weight"
+      },
+      "desc": "页面主标题",
+      "src": [
+       "t351"
+      ]
+     },
+     {
+      "name": "title-m",
+      "token": "title-m",
+      "category": "主标题",
+      "fontFamily": "--font-sans",
+      "fontSize": "24px",
+      "lineHeight": "28px",
+      "fontWeight": "700",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-title-m-size",
+       "lineHeight": "--type-title-m-leading",
+       "fontWeight": "--type-title-m-weight"
+      },
+      "desc": "标题栏文本",
+      "src": [
+       "t352"
+      ]
+     },
+     {
+      "name": "title-s",
+      "token": "title-s",
+      "category": "主标题",
+      "fontFamily": "--font-sans",
+      "fontSize": "20px",
+      "lineHeight": "24px",
+      "fontWeight": "700",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-title-s-size",
+       "lineHeight": "--type-title-s-leading",
+       "fontWeight": "--type-title-s-weight"
+      },
+      "desc": "卡片标题、半模态弹窗标题、弹窗标题",
+      "src": [
+       "t353"
+      ]
+     },
+     {
+      "name": "subtitle-l",
+      "token": "subtitle-l",
+      "category": "次标题",
+      "fontFamily": "--font-sans",
+      "fontSize": "18px",
+      "lineHeight": "22px",
+      "fontWeight": "500",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-subtitle-l-size",
+       "lineHeight": "--type-subtitle-l-leading",
+       "fontWeight": "--type-subtitle-l-weight"
+      },
+      "desc": "普通内容子标题、菜单标题",
+      "src": [
+       "t354"
+      ]
+     },
+     {
+      "name": "subtitle-m",
+      "token": "subtitle-m",
+      "category": "次标题",
+      "fontFamily": "--font-sans",
+      "fontSize": "16px",
+      "lineHeight": "20px",
+      "fontWeight": "500",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-subtitle-m-size",
+       "lineHeight": "--type-subtitle-m-leading",
+       "fontWeight": "--type-subtitle-m-weight"
+      },
+      "desc": "标题辅助文本、列表文本、气泡提示主标题",
+      "src": [
+       "t355"
+      ]
+     },
+     {
+      "name": "subtitle-s",
+      "token": "subtitle-s",
+      "category": "次标题",
+      "fontFamily": "--font-sans",
+      "fontSize": "14px",
+      "lineHeight": "16px",
+      "fontWeight": "500",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-subtitle-s-size",
+       "lineHeight": "--type-subtitle-s-leading",
+       "fontWeight": "--type-subtitle-s-weight"
+      },
+      "desc": "列表子标题、普通副标题",
+      "src": [
+       "t356"
+      ]
+     },
+     {
+      "name": "body-l",
+      "token": "body-l",
+      "category": "主文本",
+      "fontFamily": "--font-sans",
+      "fontSize": "16px",
+      "lineHeight": "20px",
+      "fontWeight": "400",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-body-l-size",
+       "lineHeight": "--type-body-l-leading",
+       "fontWeight": "--type-body-l-weight"
+      },
+      "desc": "客户端默认正文、Sidebar、表格单元格、列表主文本、40px 菜单与操作控件",
+      "src": [
+       "t357"
+      ]
+     },
+     {
+      "name": "body-m",
+      "token": "body-m",
+      "category": "副文本",
+      "fontFamily": "--font-sans",
+      "fontSize": "14px",
+      "lineHeight": "16px",
+      "fontWeight": "400",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-body-m-size",
+       "lineHeight": "--type-body-m-leading",
+       "fontWeight": "--type-body-m-weight"
+      },
+      "desc": "列表摘要与时间、普通描述、Toast、Label、表格表头、Checkbox / Radio / Switch 标签、Tabs 与 28px Small Button",
+      "src": [
+       "t358"
+      ]
+     },
+     {
+      "name": "body-s",
+      "token": "body-s",
+      "category": "小号正文",
+      "fontFamily": "--font-sans",
+      "fontSize": "12px",
+      "lineHeight": "14px",
+      "fontWeight": "400",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-body-s-size",
+       "lineHeight": "--type-body-s-leading",
+       "fontWeight": "--type-body-s-weight"
+      },
+      "desc": "辅助文本、次要说明、字段帮助与错误、状态标签",
+      "src": [
+       "t359"
+      ]
+     },
+     {
+      "name": "caption-m",
+      "token": "caption-m",
+      "category": "小号说明",
+      "fontFamily": "--font-sans",
+      "fontSize": "10px",
+      "lineHeight": "12px",
+      "fontWeight": "400",
+      "letterSpacing": "0",
+      "refs": {
+       "fontSize": "--type-caption-m-size",
+       "lineHeight": "--type-caption-m-leading",
+       "fontWeight": "--type-caption-m-weight"
+      },
+      "desc": "极小字号的辅助说明",
+      "src": [
+       "t360"
+      ]
+     }
+    ],
+    "src": [
+     "t361"
+    ]
+   }
   ]
  },
  "spacing": {
   "title": "间距",
-  "tokens": [
+  "groups": [
    {
-    "name": "inline",
-    "value": 8,
-    "raw": "0.5rem",
-    "desc": "用于图标与文字、按钮内部元素、小型内联元素之间的间距。"
+    "id": "primitive-spacing-scale",
+    "label": "基础",
+    "tab": "基础",
+    "heading": "Primitive Spacing Scale",
+    "tokens": [
+     {
+      "name": "space-0",
+      "token": "--space-0",
+      "value": "0px",
+      "ref": null,
+      "desc": "No spacing",
+      "src": [
+       "t192"
+      ]
+     },
+     {
+      "name": "space-1",
+      "token": "--space-1",
+      "value": "2px",
+      "ref": null,
+      "desc": "Minimum item separation and compact container inset",
+      "src": [
+       "t193"
+      ]
+     },
+     {
+      "name": "space-2",
+      "token": "--space-2",
+      "value": "4px",
+      "ref": null,
+      "desc": "Icon-label gap and compact menu/card inset",
+      "src": [
+       "t194"
+      ]
+     },
+     {
+      "name": "space-3",
+      "token": "--space-3",
+      "value": "8px",
+      "ref": null,
+      "desc": "Default control, field, and inline-content gap",
+      "src": [
+       "t195"
+      ]
+     },
+     {
+      "name": "space-4",
+      "token": "--space-4",
+      "value": "12px",
+      "ref": null,
+      "desc": "Brand lockup gap and common control horizontal padding",
+      "src": [
+       "t196"
+      ]
+     },
+     {
+      "name": "space-5",
+      "token": "--space-5",
+      "value": "16px",
+      "ref": null,
+      "desc": "Cross-group gap and standard component padding",
+      "src": [
+       "t197"
+      ]
+     },
+     {
+      "name": "space-6",
+      "token": "--space-6",
+      "value": "24px",
+      "ref": null,
+      "desc": "Module gap and dialog padding",
+      "src": [
+       "t198"
+      ]
+     },
+     {
+      "name": "space-7",
+      "token": "--space-7",
+      "value": "32px",
+      "ref": null,
+      "desc": "Major page-section gap",
+      "src": [
+       "t199"
+      ]
+     }
+    ],
+    "src": [
+     "t200"
+    ]
    },
    {
-    "name": "stack",
-    "value": 12,
-    "raw": "0.75rem",
-    "desc": "用于表单字段、标题与说明、列表项内部的垂直间距。"
+    "id": "semantic-gap-tokens",
+    "label": "间隙",
+    "tab": "间隙",
+    "heading": "Semantic Gap Tokens",
+    "tokens": [
+     {
+      "name": "gap-list-item",
+      "token": "--gap-list-item",
+      "value": "2px",
+      "ref": "--space-1",
+      "desc": "List 集合内相邻子项的纵向间距",
+      "src": [
+       "t201"
+      ]
+     },
+     {
+      "name": "gap-selection-option",
+      "token": "--gap-selection-option",
+      "value": "2px",
+      "ref": "--space-1",
+      "desc": "单选块中相邻选项或按钮",
+      "src": [
+       "t202"
+      ]
+     },
+     {
+      "name": "gap-tabs-list",
+      "token": "--gap-tabs-list",
+      "value": "2px",
+      "ref": "--space-1",
+      "desc": "Filled Tabs 相邻触发项",
+      "src": [
+       "t203"
+      ]
+     },
+     {
+      "name": "gap-menu-item",
+      "token": "--gap-menu-item",
+      "value": "2px",
+      "ref": "--space-1",
+      "desc": "同一菜单中相邻菜单项",
+      "src": [
+       "t204"
+      ]
+     },
+     {
+      "name": "gap-nav-item",
+      "token": "--gap-nav-item",
+      "value": "2px",
+      "ref": "--space-1",
+      "desc": "导航菜单中相邻选项",
+      "src": [
+       "t205"
+      ]
+     },
+     {
+      "name": "gap-button-icon-label",
+      "token": "--gap-button-icon-label",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "Button 与 Split Button 中图标和文字",
+      "src": [
+       "t206"
+      ]
+     },
+     {
+      "name": "gap-button-group",
+      "token": "--gap-button-group",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "同组图标按钮或同组按钮",
+      "src": [
+       "t207"
+      ]
+     },
+     {
+      "name": "gap-menu-item-content",
+      "token": "--gap-menu-item-content",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "菜单项中的图标与文字",
+      "src": [
+       "t208"
+      ]
+     },
+     {
+      "name": "gap-breadcrumb-item",
+      "token": "--gap-breadcrumb-item",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "Breadcrumb 相邻项",
+      "src": [
+       "t209"
+      ]
+     },
+     {
+      "name": "gap-subtab-item",
+      "token": "--gap-subtab-item",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "子页签中的相邻页签项",
+      "src": [
+       "t210"
+      ]
+     },
+     {
+      "name": "gap-alert-content",
+      "token": "--gap-alert-content",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "公告或 Alert 中的图标与文字",
+      "src": [
+       "t211"
+      ]
+     },
+     {
+      "name": "gap-field-label",
+      "token": "--gap-field-label",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "表单标题与输入内容框",
+      "src": [
+       "t212"
+      ]
+     },
+     {
+      "name": "gap-form-field",
+      "token": "--gap-form-field",
+      "value": "16px",
+      "ref": "--space-5",
+      "desc": "相邻表单字段，以及多列表单的行列间距",
+      "src": [
+       "t213"
+      ]
+     },
+     {
+      "name": "gap-choice-label",
+      "token": "--gap-choice-label",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "Checkbox、Radio 与文字",
+      "src": [
+       "t214"
+      ]
+     },
+     {
+      "name": "gap-titlebar-brand",
+      "token": "--gap-titlebar-brand",
+      "value": "12px",
+      "ref": "--space-4",
+      "desc": "Titlebar 中 App Icon 与应用名称",
+      "src": [
+       "t215"
+      ]
+     },
+     {
+      "name": "gap-cross-group-control",
+      "token": "--gap-cross-group-control",
+      "value": "16px",
+      "ref": "--space-5",
+      "desc": "非同组控件，例如输入框与操作按钮",
+      "src": [
+       "t216"
+      ]
+     },
+     {
+      "name": "gap-menu-section",
+      "token": "--gap-menu-section",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "导航或菜单中的不同功能模块",
+      "src": [
+       "t217"
+      ]
+     },
+     {
+      "name": "gap-page-section",
+      "token": "--gap-page-section",
+      "value": "32px",
+      "ref": "--space-7",
+      "desc": "页面主要内容区块",
+      "src": [
+       "t218"
+      ]
+     }
+    ],
+    "src": [
+     "t219"
+    ]
    },
    {
-    "name": "gutter",
-    "value": 16,
-    "raw": "1rem",
-    "desc": "用于表格工具区、筛选项、按钮组、卡片内部较紧凑的横向间距。"
+    "id": "semantic-padding-tokens",
+    "label": "内边距",
+    "tab": "内边距",
+    "heading": "Semantic Padding Tokens",
+    "tokens": [
+     {
+      "name": "padding-segmented-control",
+      "token": "--padding-segmented-control",
+      "value": "2px",
+      "ref": "--space-1",
+      "desc": "分段按钮容器与内部按钮项",
+      "src": [
+       "t220"
+      ]
+     },
+     {
+      "name": "padding-popup-menu",
+      "token": "--padding-popup-menu",
+      "value": "4px",
+      "ref": "--space-2",
+      "desc": "悬浮菜单、下拉菜单容器",
+      "src": [
+       "t221"
+      ]
+     },
+     {
+      "name": "padding-list-card",
+      "token": "--padding-list-card",
+      "value": "4px",
+      "ref": "--space-2",
+      "desc": "List Card 与内部菜单项",
+      "src": [
+       "t222"
+      ]
+     },
+     {
+      "name": "padding-tooltip",
+      "token": "--padding-tooltip",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "气泡提示",
+      "src": [
+       "t223"
+      ]
+     },
+     {
+      "name": "padding-alert",
+      "token": "--padding-alert",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "公告提示旧版兼容值；新实现使用左右独立 Token",
+      "src": [
+       "t224"
+      ]
+     },
+     {
+      "name": "padding-alert-left",
+      "token": "--padding-alert-left",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "40px 公告提示左内边距",
+      "src": [
+       "t225"
+      ]
+     },
+     {
+      "name": "padding-alert-right",
+      "token": "--padding-alert-right",
+      "value": "4px",
+      "ref": "--space-2",
+      "desc": "40px 公告提示右内边距",
+      "src": [
+       "t226"
+      ]
+     },
+     {
+      "name": "padding-selection-option",
+      "token": "--padding-selection-option",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "单选块中的单选项",
+      "src": [
+       "t227"
+      ]
+     },
+     {
+      "name": "padding-tab-x",
+      "token": "--padding-tab-x",
+      "value": "12px",
+      "ref": "--space-4",
+      "desc": "Tabs Trigger 水平内边距",
+      "src": [
+       "t228"
+      ]
+     },
+     {
+      "name": "padding-tab-panel",
+      "token": "--padding-tab-panel",
+      "value": "16px",
+      "ref": "--space-5",
+      "desc": "Tabs Panel 内容内边距",
+      "src": [
+       "t229"
+      ]
+     },
+     {
+      "name": "padding-titlebar-leading",
+      "token": "--padding-titlebar-leading",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "PC Titlebar S / M / L / XL 统一左侧内边距",
+      "src": [
+       "t230"
+      ]
+     },
+     {
+      "name": "padding-titlebar-trailing-s",
+      "token": "--padding-titlebar-trailing-s",
+      "value": "0px",
+      "ref": "--space-0",
+      "desc": "S Titlebar 右侧内边距",
+      "src": [
+       "t231"
+      ]
+     },
+     {
+      "name": "padding-titlebar-trailing-m",
+      "token": "--padding-titlebar-trailing-m",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "M Titlebar 右侧内边距",
+      "src": [
+       "t232"
+      ]
+     },
+     {
+      "name": "padding-titlebar-trailing-l",
+      "token": "--padding-titlebar-trailing-l",
+      "value": "12px",
+      "ref": "--space-4",
+      "desc": "L Titlebar 右侧内边距；一级页面默认规格",
+      "src": [
+       "t233"
+      ]
+     },
+     {
+      "name": "padding-titlebar-trailing-xl",
+      "token": "--padding-titlebar-trailing-xl",
+      "value": "16px",
+      "ref": "--space-5",
+      "desc": "XL Titlebar 右侧内边距",
+      "src": [
+       "t234"
+      ]
+     },
+     {
+      "name": "padding-button-sm-x",
+      "token": "--padding-button-sm-x",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "Small Button 水平内边距",
+      "src": [
+       "t235"
+      ]
+     },
+     {
+      "name": "padding-split-button-main-x",
+      "token": "--padding-split-button-main-x",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "Split Dropdown 左侧快捷按钮水平内边距",
+      "src": [
+       "t236"
+      ]
+     },
+     {
+      "name": "padding-split-button-trigger",
+      "token": "--padding-split-button-trigger",
+      "value": "0px",
+      "ref": "--space-0",
+      "desc": "Split Dropdown 右侧下拉按钮内边距",
+      "src": [
+       "t237"
+      ]
+     },
+     {
+      "name": "padding-list",
+      "token": "--padding-list",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "List 容器",
+      "src": [
+       "t238"
+      ]
+     },
+     {
+      "name": "padding-tag-x",
+      "token": "--padding-tag-x",
+      "value": "12px",
+      "ref": "--space-4",
+      "desc": "标签水平内边距",
+      "src": [
+       "t239"
+      ]
+     },
+     {
+      "name": "padding-select-x",
+      "token": "--padding-select-x",
+      "value": "12px",
+      "ref": "--space-4",
+      "desc": "下拉框水平内边距",
+      "src": [
+       "t240"
+      ]
+     },
+     {
+      "name": "padding-textarea-x",
+      "token": "--padding-textarea-x",
+      "value": "12px",
+      "ref": "--space-4",
+      "desc": "Textarea 水平内边距",
+      "src": [
+       "t241"
+      ]
+     },
+     {
+      "name": "padding-textarea-y",
+      "token": "--padding-textarea-y",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "Textarea 垂直内边距",
+      "src": [
+       "t242"
+      ]
+     },
+     {
+      "name": "padding-search-x",
+      "token": "--padding-search-x",
+      "value": "12px",
+      "ref": "--space-4",
+      "desc": "搜索框水平内边距",
+      "src": [
+       "t243"
+      ]
+     },
+     {
+      "name": "padding-menu-item-x",
+      "token": "--padding-menu-item-x",
+      "value": "12px",
+      "ref": "--space-4",
+      "desc": "菜单项水平内边距",
+      "src": [
+       "t244"
+      ]
+     },
+     {
+      "name": "padding-button-x",
+      "token": "--padding-button-x",
+      "value": "16px",
+      "ref": "--space-5",
+      "desc": "标准 40px Button 水平内边距；图标 + 文本按钮使用 `--padding-button-sm-x",
+      "src": [
+       "t245"
+      ]
+     },
+     {
+      "name": "padding-card",
+      "token": "--padding-card",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "卡片容器",
+      "src": [
+       "t246"
+      ]
+     },
+     {
+      "name": "padding-table",
+      "token": "--padding-table",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "Table 外层容器的四边内边距",
+      "src": [
+       "t247"
+      ]
+     },
+     {
+      "name": "padding-dialog",
+      "token": "--padding-dialog",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "弹窗容器",
+      "src": [
+       "t248"
+      ]
+     },
+     {
+      "name": "padding-dialog-content",
+      "token": "--padding-dialog-content",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "Dialog 内容区",
+      "src": [
+       "t249"
+      ]
+     },
+     {
+      "name": "padding-modal-content-x",
+      "token": "--padding-modal-content-x",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "半模态内容区左右内边距",
+      "src": [
+       "t250"
+      ]
+     },
+     {
+      "name": "padding-modal-content-y",
+      "token": "--padding-modal-content-y",
+      "value": "0px",
+      "ref": "--space-0",
+      "desc": "半模态内容区上下内边距",
+      "src": [
+       "t251"
+      ]
+     },
+     {
+      "name": "padding-modal-header-top",
+      "token": "--padding-modal-header-top",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "半模态标题区顶部内边距",
+      "src": [
+       "t252"
+      ]
+     },
+     {
+      "name": "padding-modal-header-x",
+      "token": "--padding-modal-header-x",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "半模态标题区左右内边距",
+      "src": [
+       "t253"
+      ]
+     },
+     {
+      "name": "padding-modal-footer-x",
+      "token": "--padding-modal-footer-x",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "半模态操作区左右内边距",
+      "src": [
+       "t254"
+      ]
+     }
+    ],
+    "src": [
+     "t255"
+    ]
    },
    {
-    "name": "inset",
-    "value": 24,
-    "raw": "1.5rem",
-    "desc": "用于 Card、Drawer、Dialog、表单区块等容器内部 padding。"
-   },
-   {
-    "name": "section",
-    "value": 16,
-    "raw": "1rem",
-    "desc": "用于模块、Card、表格、图表和功能区之间的间距。"
-   },
-   {
-    "name": "page",
-    "value": 32,
-    "raw": "2rem",
-    "desc": "用于页面最外层容器 padding。"
+    "id": "layout-spacing",
+    "label": "布局",
+    "tab": "布局",
+    "heading": "Layout Spacing",
+    "tokens": [
+     {
+      "name": "layout-main-content-padding-x",
+      "token": "--layout-main-content-padding-x",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "",
+      "src": [
+       "t256"
+      ]
+     },
+     {
+      "name": "layout-main-content-padding-top",
+      "token": "--layout-main-content-padding-top",
+      "value": "16px",
+      "ref": "--space-5",
+      "desc": "",
+      "src": [
+       "t257"
+      ]
+     },
+     {
+      "name": "layout-main-content-padding-bottom",
+      "token": "--layout-main-content-padding-bottom",
+      "value": "0px",
+      "ref": "--space-0",
+      "desc": "",
+      "src": [
+       "t258"
+      ]
+     },
+     {
+      "name": "layout-grid-gutter",
+      "token": "--layout-grid-gutter",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "",
+      "src": [
+       "t259"
+      ]
+     },
+     {
+      "name": "layout-content-max-width",
+      "token": "--layout-content-max-width",
+      "value": "none",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t260"
+      ]
+     },
+     {
+      "name": "layout-header-padding-x",
+      "token": "--layout-header-padding-x",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "",
+      "src": [
+       "t261"
+      ]
+     },
+     {
+      "name": "layout-main-title-leading-padding",
+      "token": "--layout-main-title-leading-padding",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "",
+      "src": [
+       "t262"
+      ]
+     },
+     {
+      "name": "layout-main-detail-action-leading-padding",
+      "token": "--layout-main-detail-action-leading-padding",
+      "value": "16px",
+      "ref": "--space-5",
+      "desc": "",
+      "src": [
+       "t263"
+      ]
+     },
+     {
+      "name": "layout-sidebar-padding-x",
+      "token": "--layout-sidebar-padding-x",
+      "value": "16px",
+      "ref": "--space-5",
+      "desc": "",
+      "src": [
+       "t264"
+      ]
+     },
+     {
+      "name": "layout-sidebar-padding-y",
+      "token": "--layout-sidebar-padding-y",
+      "value": "16px",
+      "ref": "--space-5",
+      "desc": "",
+      "src": [
+       "t265"
+      ]
+     },
+     {
+      "name": "layout-primary-action-slot-gap-top",
+      "token": "--layout-primary-action-slot-gap-top",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "",
+      "src": [
+       "t266"
+      ]
+     },
+     {
+      "name": "layout-primary-action-slot-gap-bottom",
+      "token": "--layout-primary-action-slot-gap-bottom",
+      "value": "12px",
+      "ref": "--space-4",
+      "desc": "",
+      "src": [
+       "t267"
+      ]
+     },
+     {
+      "name": "layout-secondary-list-card-inset-x",
+      "token": "--layout-secondary-list-card-inset-x",
+      "value": "16px",
+      "ref": "--space-5",
+      "desc": "",
+      "src": [
+       "t268"
+      ]
+     },
+     {
+      "name": "layout-secondary-list-card-padding-x",
+      "token": "--layout-secondary-list-card-padding-x",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "",
+      "src": [
+       "t269"
+      ]
+     },
+     {
+      "name": "layout-secondary-content-axis-x",
+      "token": "--layout-secondary-content-axis-x",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "",
+      "src": [
+       "t270"
+      ]
+     },
+     {
+      "name": "layout-secondary-pane-padding-x",
+      "token": "--layout-secondary-pane-padding-x",
+      "value": "16px",
+      "ref": "--layout-secondary-list-card-inset-x",
+      "desc": "",
+      "src": [
+       "t271"
+      ]
+     },
+     {
+      "name": "layout-secondary-pane-padding-y",
+      "token": "--layout-secondary-pane-padding-y",
+      "value": "8px",
+      "ref": "--space-3",
+      "desc": "",
+      "src": [
+       "t272"
+      ]
+     },
+     {
+      "name": "layout-main-detail-padding-x",
+      "token": "--layout-main-detail-padding-x",
+      "value": "24px",
+      "ref": "--space-6",
+      "desc": "",
+      "src": [
+       "t273"
+      ]
+     },
+     {
+      "name": "layout-main-detail-padding-top",
+      "token": "--layout-main-detail-padding-top",
+      "value": "16px",
+      "ref": "--space-5",
+      "desc": "",
+      "src": [
+       "t274"
+      ]
+     },
+     {
+      "name": "layout-main-detail-padding-bottom",
+      "token": "--layout-main-detail-padding-bottom",
+      "value": "0px",
+      "ref": "--space-0",
+      "desc": "",
+      "src": [
+       "t275"
+      ]
+     }
+    ],
+    "src": [
+     "t276"
+    ]
    }
-  ],
-  "desc": "6 个 token。",
-  "rules": [
-   "`padding`、`margin`、`gap` 必须使用 spacing token，不得自定义任意数值。",
-   "禁止使用 `p-[...]`、`px-[...]`、`m-[...]`、`mt-[...]`、`gap-[...]` 等任意值。",
-   "同一页面同类区块的 spacing 层级必须一致，不能随机混用多个相近数值。"
   ]
  },
  "radius": {
   "title": "圆角",
-  "tokens": [
+  "groups": [
    {
-    "name": "rounded-sm",
-    "value": 2,
-    "raw": "2px",
-    "desc": ""
+    "id": "primitive-radius-scale",
+    "label": "基础",
+    "tab": "基础",
+    "heading": "Primitive Radius Scale",
+    "tokens": [
+     {
+      "name": "radius-0",
+      "token": "--radius-0",
+      "value": "0px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t277"
+      ]
+     },
+     {
+      "name": "radius-1",
+      "token": "--radius-1",
+      "value": "4px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t278"
+      ]
+     },
+     {
+      "name": "radius-2",
+      "token": "--radius-2",
+      "value": "6px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t279"
+      ]
+     },
+     {
+      "name": "radius-3",
+      "token": "--radius-3",
+      "value": "8px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t280"
+      ]
+     },
+     {
+      "name": "radius-4",
+      "token": "--radius-4",
+      "value": "12px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t281"
+      ]
+     },
+     {
+      "name": "radius-5",
+      "token": "--radius-5",
+      "value": "16px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t282"
+      ]
+     },
+     {
+      "name": "radius-full",
+      "token": "--radius-full",
+      "value": "999px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t283"
+      ]
+     }
+    ],
+    "src": [
+     "t284"
+    ]
    },
    {
-    "name": "rounded-md",
-    "value": 4,
-    "raw": "4px",
-    "desc": ""
-   },
-   {
-    "name": "rounded-lg",
-    "value": 6,
-    "raw": "6px",
-    "desc": ""
-   },
-   {
-    "name": "rounded-xl",
-    "value": 8,
-    "raw": "8px",
-    "desc": ""
-   },
-   {
-    "name": "rounded-badge",
-    "value": 4,
-    "raw": "4px",
-    "desc": ""
-   },
-   {
-    "name": "rounded-action",
-    "value": 4,
-    "raw": "4px",
-    "desc": ""
-   },
-   {
-    "name": "rounded-container",
-    "value": 8,
-    "raw": "8px",
-    "desc": ""
-   },
-   {
-    "name": "rounded-overlay",
-    "value": 8,
-    "raw": "8px",
-    "desc": ""
+    "id": "semantic-radius-tokens",
+    "label": "语义",
+    "tab": "语义",
+    "heading": "Semantic Radius Tokens",
+    "tokens": [
+     {
+      "name": "radius-popup-menu-item",
+      "token": "--radius-popup-menu-item",
+      "value": "4px",
+      "ref": "--radius-1",
+      "desc": "悬浮菜单中的菜单项",
+      "src": [
+       "t285"
+      ]
+     },
+     {
+      "name": "radius-checkbox",
+      "token": "--radius-checkbox",
+      "value": "4px",
+      "ref": "--radius-1",
+      "desc": "Checkbox",
+      "src": [
+       "t286"
+      ]
+     },
+     {
+      "name": "radius-subtab",
+      "token": "--radius-subtab",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "子页签",
+      "src": [
+       "t287"
+      ]
+     },
+     {
+      "name": "radius-sidebar-nav-item",
+      "token": "--radius-sidebar-nav-item",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "左侧导航菜单项",
+      "src": [
+       "t288"
+      ]
+     },
+     {
+      "name": "radius-button",
+      "token": "--radius-button",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "标准 Button",
+      "src": [
+       "t289"
+      ]
+     },
+     {
+      "name": "radius-icon-text-button",
+      "token": "--radius-icon-text-button",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "图标文本按钮",
+      "src": [
+       "t290"
+      ]
+     },
+     {
+      "name": "radius-icon-button",
+      "token": "--radius-icon-button",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "Icon Button",
+      "src": [
+       "t291"
+      ]
+     },
+     {
+      "name": "radius-status-button",
+      "token": "--radius-status-button",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "状态按钮",
+      "src": [
+       "t292"
+      ]
+     },
+     {
+      "name": "radius-dropdown-button",
+      "token": "--radius-dropdown-button",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "下拉按钮",
+      "src": [
+       "t293"
+      ]
+     },
+     {
+      "name": "radius-alert",
+      "token": "--radius-alert",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "公告提示和 Alert",
+      "src": [
+       "t294"
+      ]
+     },
+     {
+      "name": "radius-select",
+      "token": "--radius-select",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "下拉框",
+      "src": [
+       "t295"
+      ]
+     },
+     {
+      "name": "radius-input",
+      "token": "--radius-input",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "文本输入框",
+      "src": [
+       "t296"
+      ]
+     },
+     {
+      "name": "radius-textarea",
+      "token": "--radius-textarea",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "多行文本框",
+      "src": [
+       "t297"
+      ]
+     },
+     {
+      "name": "radius-tooltip",
+      "token": "--radius-tooltip",
+      "value": "6px",
+      "ref": "--radius-2",
+      "desc": "Tooltip",
+      "src": [
+       "t298"
+      ]
+     },
+     {
+      "name": "radius-search",
+      "token": "--radius-search",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "搜索框",
+      "src": [
+       "t299"
+      ]
+     },
+     {
+      "name": "radius-number-input",
+      "token": "--radius-number-input",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "数字选择器",
+      "src": [
+       "t300"
+      ]
+     },
+     {
+      "name": "radius-tag",
+      "token": "--radius-tag",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "标签",
+      "src": [
+       "t301"
+      ]
+     },
+     {
+      "name": "radius-selection-block",
+      "token": "--radius-selection-block",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "单选块",
+      "src": [
+       "t302"
+      ]
+     },
+     {
+      "name": "radius-selection-option",
+      "token": "--radius-selection-option",
+      "value": "6px",
+      "ref": "--radius-2",
+      "desc": "单选块中的单选项",
+      "src": [
+       "t303"
+      ]
+     },
+     {
+      "name": "radius-tab",
+      "token": "--radius-tab",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "Tab",
+      "src": [
+       "t304"
+      ]
+     },
+     {
+      "name": "radius-list",
+      "token": "--radius-list",
+      "value": "12px",
+      "ref": "--radius-4",
+      "desc": "List 集合容器",
+      "src": [
+       "t305"
+      ]
+     },
+     {
+      "name": "radius-list-item",
+      "token": "--radius-list-item",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "List 子项",
+      "src": [
+       "t306"
+      ]
+     },
+     {
+      "name": "radius-badge",
+      "token": "--radius-badge",
+      "value": "999px",
+      "ref": "--radius-full",
+      "desc": "Badge",
+      "src": [
+       "t307"
+      ]
+     },
+     {
+      "name": "radius-progress",
+      "token": "--radius-progress",
+      "value": "999px",
+      "ref": "--radius-full",
+      "desc": "Progress 轨道与指示条",
+      "src": [
+       "t308"
+      ]
+     },
+     {
+      "name": "radius-avatar",
+      "token": "--radius-avatar",
+      "value": "999px",
+      "ref": "--radius-full",
+      "desc": "Avatar",
+      "src": [
+       "t309"
+      ]
+     },
+     {
+      "name": "radius-card",
+      "token": "--radius-card",
+      "value": "12px",
+      "ref": "--radius-4",
+      "desc": "Card 与 Metric Card",
+      "src": [
+       "t310"
+      ]
+     },
+     {
+      "name": "radius-table",
+      "token": "--radius-table",
+      "value": "12px",
+      "ref": "--radius-4",
+      "desc": "Table 外框",
+      "src": [
+       "t311"
+      ]
+     },
+     {
+      "name": "radius-pagination-item",
+      "token": "--radius-pagination-item",
+      "value": "8px",
+      "ref": "--radius-3",
+      "desc": "Pagination 项",
+      "src": [
+       "t312"
+      ]
+     },
+     {
+      "name": "radius-dialog",
+      "token": "--radius-dialog",
+      "value": "16px",
+      "ref": "--radius-5",
+      "desc": "弹窗",
+      "src": [
+       "t313"
+      ]
+     },
+     {
+      "name": "radius-modal",
+      "token": "--radius-modal",
+      "value": "16px",
+      "ref": "--radius-5",
+      "desc": "模态弹窗",
+      "src": [
+       "t314"
+      ]
+     }
+    ],
+    "src": [
+     "t315"
+    ]
    }
-  ],
-  "desc": "8 个 token。",
-  "rules": [
-   "`border-radius` 必须使用 radius token，不得自定义任意圆角值。",
-   "小型控件和紧凑元素使用 `rounded-sm` 或 `rounded-md`。",
-   "Button、Input、Search、Select、Checkbox、Tag 等默认操作和表单控件使用组件映射的 action/control 圆角。",
-   "Card、Dialog、Drawer、Popover、Tooltip、Overlay 等容器使用 `rounded-xl`、`rounded-container` 或 `rounded-overlay`。",
-   "Switch、进度条、胶囊型标签等需要完全圆角时使用 `rounded-full`。",
-   "禁止把所有组件统一改成大圆角；圆角必须匹配组件尺寸、密度和功能。"
   ]
  },
  "shadow": {
   "title": "阴影",
-  "tokens": [
+  "groups": [
    {
-    "name": "shadow-sm",
-    "value": "1px 1px 6px 0 rgba(0, 0, 0, 0.08)",
-    "raw": "1px 1px 6px 0 rgba(0, 0, 0, 0.08)",
-    "desc": ""
-   },
-   {
-    "name": "shadow-md",
-    "value": "0 4px 12px 0px rgba(0, 0, 0, 0.16)",
-    "raw": "0 4px 12px 0px rgba(0, 0, 0, 0.16)",
-    "desc": ""
-   },
-   {
-    "name": "shadow-lg",
-    "value": "0 8px 24px 0px rgba(0, 0, 0, 0.16)",
-    "raw": "0 8px 24px 0px rgba(0, 0, 0, 0.16)",
-    "desc": ""
-   },
-   {
-    "name": "shadow-xl",
-    "value": "0 16px 48px 0px rgba(0, 0, 0, 0.16)",
-    "raw": "0 16px 48px 0px rgba(0, 0, 0, 0.16)",
-    "desc": ""
-   },
-   {
-    "name": "shadow-card",
-    "value": "1px 1px 6px 0 rgba(0, 0, 0, 0.08)",
-    "raw": "1px 1px 6px 0 rgba(0, 0, 0, 0.08)",
-    "desc": "同 shadow-sm"
-   },
-   {
-    "name": "shadow-popover",
-    "value": "0 8px 24px 0px rgba(0, 0, 0, 0.16)",
-    "raw": "0 8px 24px 0px rgba(0, 0, 0, 0.16)",
-    "desc": "同 shadow-lg"
-   },
-   {
-    "name": "shadow-modal",
-    "value": "0 16px 48px 0px rgba(0, 0, 0, 0.16)",
-    "raw": "0 16px 48px 0px rgba(0, 0, 0, 0.16)",
-    "desc": "同 shadow-xl"
+    "id": "shadows",
+    "label": "阴影",
+    "tab": null,
+    "heading": "4.6 Shadows",
+    "tokens": [
+     {
+      "name": "shadow-1",
+      "token": "--shadow-1",
+      "value": "0 0 4px 0 rgb(0 0 30 / 15%)",
+      "ref": null,
+      "desc": "Snackbar、Tooltip",
+      "src": [
+       "t362",
+       "t368"
+      ]
+     },
+     {
+      "name": "shadow-2",
+      "token": "--shadow-2",
+      "value": "0 0 20px 0 rgb(0 0 30 / 8%)",
+      "ref": null,
+      "desc": "Popover、Hover Card、Dropdown Menu",
+      "src": [
+       "t363",
+       "t369"
+      ]
+     },
+     {
+      "name": "shadow-3",
+      "token": "--shadow-3",
+      "value": "0 10px 50px 0 rgb(0 0 30 / 15%)",
+      "ref": null,
+      "desc": "Context Menu",
+      "src": [
+       "t364",
+       "t370"
+      ]
+     },
+     {
+      "name": "shadow-4",
+      "token": "--shadow-4",
+      "value": "0 10px 50px 0 rgb(0 0 30 / 30%)",
+      "ref": null,
+      "desc": "Dialog、Alert Dialog",
+      "src": [
+       "t365",
+       "t371"
+      ]
+     },
+     {
+      "name": "shadow-5",
+      "token": "--shadow-5",
+      "value": "0 10px 55px 0 rgb(0 0 30 / 25%)",
+      "ref": null,
+      "desc": "Semi-modal",
+      "src": [
+       "t366",
+       "t372"
+      ]
+     },
+     {
+      "name": "shadow-6",
+      "token": "--shadow-6",
+      "value": "0 10px 70px 0 rgb(0 0 30 / 45%)",
+      "ref": null,
+      "desc": "保留为兼容性基础样式，不分配常规场景",
+      "src": [
+       "t367",
+       "t373"
+      ]
+     }
+    ]
    }
-  ],
-  "desc": "7 个 token。",
-  "rules": []
+  ]
  },
- "coverage": {
-  "overview": true,
-  "color": true,
-  "typography": true,
-  "spacing": true,
-  "radius": true,
-  "shadow": true
- },
- "meta": {
-  "format": "octo-design-md/1",
-  "author": "黄舒凡",
-  "usage": 158,
-  "order": 4,
-  "source_skill": "ICT领域PC端设计规范",
-  "adapter": "markdown-tokens",
-  "source_files": "31",
-  "source_size": "68 KB",
-  "source_entry": "references/design_system.md",
-  "source_file": "DESIGN.md",
-  "note": "由 spec-skill-to-design-system 从规范 Skill 转换生成。每个区块的正文是说明和使用规则，`json design` 数据块供管理页渲染； 标注「未定义」的区块表示规范里没有提取到这部分内容。"
+ "other": {
+  "groups": [
+   {
+    "id": "colors",
+    "label": "colors",
+    "tokens": [
+     {
+      "name": "opacity-40",
+      "token": "--opacity-40",
+      "value": "0.4",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t374"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "size",
+    "label": "size",
+    "tokens": [
+     {
+      "name": "size-1",
+      "token": "--size-1",
+      "value": "4px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t375"
+      ]
+     },
+     {
+      "name": "size-2",
+      "token": "--size-2",
+      "value": "6px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t376"
+      ]
+     },
+     {
+      "name": "size-3",
+      "token": "--size-3",
+      "value": "8px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t377"
+      ]
+     },
+     {
+      "name": "size-4",
+      "token": "--size-4",
+      "value": "12px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t378"
+      ]
+     },
+     {
+      "name": "size-5",
+      "token": "--size-5",
+      "value": "16px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t379"
+      ]
+     },
+     {
+      "name": "size-6",
+      "token": "--size-6",
+      "value": "20px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t380"
+      ]
+     },
+     {
+      "name": "size-7",
+      "token": "--size-7",
+      "value": "24px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t381"
+      ]
+     },
+     {
+      "name": "size-8",
+      "token": "--size-8",
+      "value": "28px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t382"
+      ]
+     },
+     {
+      "name": "size-9",
+      "token": "--size-9",
+      "value": "32px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t383"
+      ]
+     },
+     {
+      "name": "size-10",
+      "token": "--size-10",
+      "value": "36px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t384"
+      ]
+     },
+     {
+      "name": "size-11",
+      "token": "--size-11",
+      "value": "40px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t385"
+      ]
+     },
+     {
+      "name": "size-12",
+      "token": "--size-12",
+      "value": "44px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t386"
+      ]
+     },
+     {
+      "name": "size-13",
+      "token": "--size-13",
+      "value": "48px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t387"
+      ]
+     },
+     {
+      "name": "size-14",
+      "token": "--size-14",
+      "value": "56px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t388"
+      ]
+     },
+     {
+      "name": "size-15",
+      "token": "--size-15",
+      "value": "64px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t389"
+      ]
+     },
+     {
+      "name": "size-16",
+      "token": "--size-16",
+      "value": "72px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t390"
+      ]
+     },
+     {
+      "name": "size-17",
+      "token": "--size-17",
+      "value": "80px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t391"
+      ]
+     },
+     {
+      "name": "icon-size-xs",
+      "token": "--icon-size-xs",
+      "value": "12px",
+      "ref": "--size-4",
+      "desc": "",
+      "src": [
+       "t392"
+      ]
+     },
+     {
+      "name": "icon-size-sm",
+      "token": "--icon-size-sm",
+      "value": "16px",
+      "ref": "--size-5",
+      "desc": "",
+      "src": [
+       "t393"
+      ]
+     },
+     {
+      "name": "icon-size-md",
+      "token": "--icon-size-md",
+      "value": "20px",
+      "ref": "--size-6",
+      "desc": "",
+      "src": [
+       "t394"
+      ]
+     },
+     {
+      "name": "icon-size-lg",
+      "token": "--icon-size-lg",
+      "value": "24px",
+      "ref": "--size-7",
+      "desc": "",
+      "src": [
+       "t395"
+      ]
+     },
+     {
+      "name": "notification-dot-sm",
+      "token": "--notification-dot-sm",
+      "value": "6px",
+      "ref": "--size-2",
+      "desc": "",
+      "src": [
+       "t396"
+      ]
+     },
+     {
+      "name": "notification-badge-size",
+      "token": "--notification-badge-size",
+      "value": "16px",
+      "ref": "--size-5",
+      "desc": "",
+      "src": [
+       "t397"
+      ]
+     },
+     {
+      "name": "checkbox-size",
+      "token": "--checkbox-size",
+      "value": "20px",
+      "ref": "--size-6",
+      "desc": "",
+      "src": [
+       "t398"
+      ]
+     },
+     {
+      "name": "radio-size",
+      "token": "--radio-size",
+      "value": "20px",
+      "ref": "--size-6",
+      "desc": "",
+      "src": [
+       "t399"
+      ]
+     },
+     {
+      "name": "switch-height",
+      "token": "--switch-height",
+      "value": "20px",
+      "ref": "--size-6",
+      "desc": "",
+      "src": [
+       "t400"
+      ]
+     },
+     {
+      "name": "switch-width",
+      "token": "--switch-width",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t401"
+      ]
+     },
+     {
+      "name": "height-badge",
+      "token": "--height-badge",
+      "value": "24px",
+      "ref": "--size-7",
+      "desc": "",
+      "src": [
+       "t402"
+      ]
+     },
+     {
+      "name": "height-progress",
+      "token": "--height-progress",
+      "value": "4px",
+      "ref": "--size-1",
+      "desc": "",
+      "src": [
+       "t403"
+      ]
+     },
+     {
+      "name": "size-avatar-sm",
+      "token": "--size-avatar-sm",
+      "value": "32px",
+      "ref": "--size-9",
+      "desc": "",
+      "src": [
+       "t404"
+      ]
+     },
+     {
+      "name": "size-avatar-md",
+      "token": "--size-avatar-md",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t405"
+      ]
+     },
+     {
+      "name": "height-pagination-item",
+      "token": "--height-pagination-item",
+      "value": "32px",
+      "ref": "--size-9",
+      "desc": "",
+      "src": [
+       "t406"
+      ]
+     },
+     {
+      "name": "height-button-sm",
+      "token": "--height-button-sm",
+      "value": "28px",
+      "ref": "--size-8",
+      "desc": "",
+      "src": [
+       "t407"
+      ]
+     },
+     {
+      "name": "height-input-sm",
+      "token": "--height-input-sm",
+      "value": "28px",
+      "ref": "--size-8",
+      "desc": "",
+      "src": [
+       "t408"
+      ]
+     },
+     {
+      "name": "height-select-sm",
+      "token": "--height-select-sm",
+      "value": "28px",
+      "ref": "--size-8",
+      "desc": "",
+      "src": [
+       "t409"
+      ]
+     },
+     {
+      "name": "height-search-sm",
+      "token": "--height-search-sm",
+      "value": "28px",
+      "ref": "--size-8",
+      "desc": "",
+      "src": [
+       "t410"
+      ]
+     },
+     {
+      "name": "height-tag",
+      "token": "--height-tag",
+      "value": "28px",
+      "ref": "--size-8",
+      "desc": "",
+      "src": [
+       "t411"
+      ]
+     },
+     {
+      "name": "height-selection-option",
+      "token": "--height-selection-option",
+      "value": "28px",
+      "ref": "--size-8",
+      "desc": "",
+      "src": [
+       "t412"
+      ]
+     },
+     {
+      "name": "height-selection-block",
+      "token": "--height-selection-block",
+      "value": "32px",
+      "ref": "--size-9",
+      "desc": "",
+      "src": [
+       "t413"
+      ]
+     },
+     {
+      "name": "height-chips-tab",
+      "token": "--height-chips-tab",
+      "value": "36px",
+      "ref": "--size-10",
+      "desc": "",
+      "src": [
+       "t414"
+      ]
+     },
+     {
+      "name": "height-tab-line",
+      "token": "--height-tab-line",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t415"
+      ]
+     },
+     {
+      "name": "height-tab-vertical",
+      "token": "--height-tab-vertical",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t416"
+      ]
+     },
+     {
+      "name": "height-menu-item",
+      "token": "--height-menu-item",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t417"
+      ]
+     },
+     {
+      "name": "height-list-item",
+      "token": "--height-list-item",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t418"
+      ]
+     },
+     {
+      "name": "height-list-item-single-line",
+      "token": "--height-list-item-single-line",
+      "value": "48px",
+      "ref": "--size-13",
+      "desc": "",
+      "src": [
+       "t419"
+      ]
+     },
+     {
+      "name": "height-list-item-double-line",
+      "token": "--height-list-item-double-line",
+      "value": "56px",
+      "ref": "--size-14",
+      "desc": "",
+      "src": [
+       "t420"
+      ]
+     },
+     {
+      "name": "height-list-item-triple-line",
+      "token": "--height-list-item-triple-line",
+      "value": "80px",
+      "ref": "--size-17",
+      "desc": "",
+      "src": [
+       "t421"
+      ]
+     },
+     {
+      "name": "height-list-heading",
+      "token": "--height-list-heading",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t422"
+      ]
+     },
+     {
+      "name": "height-tree-item",
+      "token": "--height-tree-item",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t423"
+      ]
+     },
+     {
+      "name": "height-button",
+      "token": "--height-button",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t424"
+      ]
+     },
+     {
+      "name": "size-icon-button",
+      "token": "--size-icon-button",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t425"
+      ]
+     },
+     {
+      "name": "height-icon-text-button",
+      "token": "--height-icon-text-button",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t426"
+      ]
+     },
+     {
+      "name": "height-dropdown-control",
+      "token": "--height-dropdown-control",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t427"
+      ]
+     },
+     {
+      "name": "width-split-button-trigger",
+      "token": "--width-split-button-trigger",
+      "value": "16px",
+      "ref": "--size-5",
+      "desc": "",
+      "src": [
+       "t428"
+      ]
+     },
+     {
+      "name": "height-select",
+      "token": "--height-select",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t429"
+      ]
+     },
+     {
+      "name": "height-search",
+      "token": "--height-search",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t430"
+      ]
+     },
+     {
+      "name": "height-input",
+      "token": "--height-input",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t431"
+      ]
+     },
+     {
+      "name": "min-height-textarea",
+      "token": "--min-height-textarea",
+      "value": "80px",
+      "ref": "--size-17",
+      "desc": "",
+      "src": [
+       "t432"
+      ]
+     },
+     {
+      "name": "height-alert",
+      "token": "--height-alert",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t433"
+      ]
+     },
+     {
+      "name": "min-height-alert",
+      "token": "--min-height-alert",
+      "value": "40px",
+      "ref": "--height-alert",
+      "desc": "",
+      "src": [
+       "t434"
+      ]
+     },
+     {
+      "name": "height-snackbar",
+      "token": "--height-snackbar",
+      "value": "48px",
+      "ref": "--size-13",
+      "desc": "",
+      "src": [
+       "t435"
+      ]
+     },
+     {
+      "name": "height-table-header",
+      "token": "--height-table-header",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t436"
+      ]
+     },
+     {
+      "name": "height-table-row",
+      "token": "--height-table-row",
+      "value": "48px",
+      "ref": "--size-13",
+      "desc": "",
+      "src": [
+       "t437"
+      ]
+     },
+     {
+      "name": "height-titlebar-sm",
+      "token": "--height-titlebar-sm",
+      "value": "40px",
+      "ref": "--size-11",
+      "desc": "",
+      "src": [
+       "t438"
+      ]
+     },
+     {
+      "name": "height-titlebar-md",
+      "token": "--height-titlebar-md",
+      "value": "56px",
+      "ref": "--size-14",
+      "desc": "",
+      "src": [
+       "t439"
+      ]
+     },
+     {
+      "name": "height-titlebar-lg",
+      "token": "--height-titlebar-lg",
+      "value": "64px",
+      "ref": "--size-15",
+      "desc": "",
+      "src": [
+       "t440"
+      ]
+     },
+     {
+      "name": "height-titlebar-xl",
+      "token": "--height-titlebar-xl",
+      "value": "72px",
+      "ref": "--size-16",
+      "desc": "",
+      "src": [
+       "t441"
+      ]
+     },
+     {
+      "name": "height-dialog-header",
+      "token": "--height-dialog-header",
+      "value": "56px",
+      "ref": "--size-14",
+      "desc": "",
+      "src": [
+       "t442"
+      ]
+     },
+     {
+      "name": "height-modal-header",
+      "token": "--height-modal-header",
+      "value": "56px",
+      "ref": "--size-14",
+      "desc": "",
+      "src": [
+       "t443"
+      ]
+     },
+     {
+      "name": "height-modal-footer",
+      "token": "--height-modal-footer",
+      "value": "80px",
+      "ref": "--size-17",
+      "desc": "",
+      "src": [
+       "t444"
+      ]
+     },
+     {
+      "name": "width-modal-sm",
+      "token": "--width-modal-sm",
+      "value": "480px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t445"
+      ]
+     },
+     {
+      "name": "width-modal-md",
+      "token": "--width-modal-md",
+      "value": "640px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t446"
+      ]
+     },
+     {
+      "name": "width-modal-lg",
+      "token": "--width-modal-lg",
+      "value": "800px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t447"
+      ]
+     },
+     {
+      "name": "width-dialog",
+      "token": "--width-dialog",
+      "value": "400px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t448"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "icon",
+    "label": "icon",
+    "tokens": [
+     {
+      "name": "icon-source-size",
+      "token": "--icon-source-size",
+      "value": "24px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t449"
+      ]
+     },
+     {
+      "name": "icon-weight-regular",
+      "token": "--icon-weight-regular",
+      "value": "400",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t450"
+      ]
+     },
+     {
+      "name": "icon-lucide-stroke-width",
+      "token": "--icon-lucide-stroke-width",
+      "value": "1.5",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t451"
+      ]
+     },
+     {
+      "name": "icon-outline-source-stroke-width",
+      "token": "--icon-outline-source-stroke-width",
+      "value": "1.5",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t452"
+      ]
+     },
+     {
+      "name": "icon-outline-stroke-width-16",
+      "token": "--icon-outline-stroke-width-16",
+      "value": "1",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t453"
+      ]
+     },
+     {
+      "name": "icon-outline-stroke-width-20",
+      "token": "--icon-outline-stroke-width-20",
+      "value": "1.25",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t454"
+      ]
+     },
+     {
+      "name": "icon-outline-stroke-width-24",
+      "token": "--icon-outline-stroke-width-24",
+      "value": "1.5",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t455"
+      ]
+     },
+     {
+      "name": "icon-lucide-linecap",
+      "token": "--icon-lucide-linecap",
+      "value": "round",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t456"
+      ]
+     },
+     {
+      "name": "icon-lucide-linejoin",
+      "token": "--icon-lucide-linejoin",
+      "value": "round",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t457"
+      ]
+     },
+     {
+      "name": "icon-manual-fallback-stroke-width",
+      "token": "--icon-manual-fallback-stroke-width",
+      "value": "1.5",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t458"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "layout",
+    "label": "layout",
+    "tokens": [
+     {
+      "name": "layout-frame-width",
+      "token": "--layout-frame-width",
+      "value": "1728px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t459"
+      ]
+     },
+     {
+      "name": "layout-frame-height",
+      "token": "--layout-frame-height",
+      "value": "1152px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t460"
+      ]
+     },
+     {
+      "name": "layout-window-min-width",
+      "token": "--layout-window-min-width",
+      "value": "1100px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t461"
+      ]
+     },
+     {
+      "name": "layout-window-min-height",
+      "token": "--layout-window-min-height",
+      "value": "720px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t462"
+      ]
+     },
+     {
+      "name": "layout-window-max-width",
+      "token": "--layout-window-max-width",
+      "value": "none",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t463"
+      ]
+     },
+     {
+      "name": "layout-titlebar-height",
+      "token": "--layout-titlebar-height",
+      "value": "64px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t464"
+      ]
+     },
+     {
+      "name": "layout-sidebar-width",
+      "token": "--layout-sidebar-width",
+      "value": "240px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t465"
+      ]
+     },
+     {
+      "name": "layout-sidebar-width-collapsed",
+      "token": "--layout-sidebar-width-collapsed",
+      "value": "64px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t466"
+      ]
+     },
+     {
+      "name": "layout-sidebar-width-wide",
+      "token": "--layout-sidebar-width-wide",
+      "value": "360px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t467"
+      ]
+     },
+     {
+      "name": "layout-secondary-pane-width",
+      "token": "--layout-secondary-pane-width",
+      "value": "360px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t468"
+      ]
+     },
+     {
+      "name": "layout-main-pane-width",
+      "token": "--layout-main-pane-width",
+      "value": "1fr",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t469"
+      ]
+     },
+     {
+      "name": "layout-navigation-divider-width",
+      "token": "--layout-navigation-divider-width",
+      "value": "0.5px",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t470"
+      ]
+     },
+     {
+      "name": "layout-grid-columns",
+      "token": "--layout-grid-columns",
+      "value": "12",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t471"
+      ]
+     }
+    ]
+   },
+   {
+    "id": "colors-non-color",
+    "label": "colors-non-color",
+    "tokens": [
+     {
+      "name": "border-width-divider",
+      "token": "--border-width-divider",
+      "value": null,
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t62"
+      ]
+     },
+     {
+      "name": "border-width-input-default",
+      "token": "--border-width-input-default",
+      "value": null,
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t63"
+      ]
+     },
+     {
+      "name": "border-width-input-hover",
+      "token": "--border-width-input-hover",
+      "value": null,
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t64"
+      ]
+     },
+     {
+      "name": "border-width-input-hover-on-subtle",
+      "token": "--border-width-input-hover-on-subtle",
+      "value": null,
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t65"
+      ]
+     },
+     {
+      "name": "border-width-input-error",
+      "token": "--border-width-input-error",
+      "value": null,
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t66"
+      ]
+     },
+     {
+      "name": "opacity-input-disabled",
+      "token": "--opacity-input-disabled",
+      "value": null,
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t67"
+      ]
+     },
+     {
+      "name": "state-disabled-opacity",
+      "token": "--state-disabled-opacity",
+      "value": "0.4",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t101"
+      ]
+     },
+     {
+      "name": "state-window-unfocus-opacity",
+      "token": "--state-window-unfocus-opacity",
+      "value": "0.4",
+      "ref": null,
+      "desc": "",
+      "src": [
+       "t102"
+      ]
+     }
+    ]
+   }
+  ]
  }
 }

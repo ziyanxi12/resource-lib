@@ -130,6 +130,13 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("design_systems.source_slug 回填失败: %s", e)
 
+    # design-system.json v4.4 存量重建：全量改为 8+1 键单数据源（幂等，单系统失败不影响其余）
+    try:
+        from app.services import design_system_service as _ds
+        _ds.migrate_design_systems_json()
+    except Exception as e:
+        logger.warning("design-system.json v4.4 存量重建失败: %s", e)
+
     # 增量补索引（create_all 只建新表的索引，不补已有表）
     _ensure_index(engine, "resources", "idx_resources_type_source_deleted", "resource_type, source_id, is_deleted")
     _ensure_index(engine, "resources", "idx_resources_group", "group_id")
