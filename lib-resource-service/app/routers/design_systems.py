@@ -364,6 +364,10 @@ def sync_component_mapping(slug: str, request: Request, db: Session = Depends(ge
     _get_by_slug(db, slug)
     account, _op_name = get_operator(request)
     result = dmap.sync_html_components(db, slug, operator=account)
+    try:
+        dmap.inject_mapping(db, slug)   # 新组件行 status=missing 影响灰卡展示 → 刷投影
+    except Exception as e:
+        logger.warning("映射投影注入失败（不阻塞 sync）：%s", e)
     _log(db, request, "update_parts", _get_by_slug(db, slug), {
         "slug": slug, "mapping_sync": result, "note": "component mapping sync",
     })
@@ -387,6 +391,7 @@ def put_component_mapping(slug: str, body: MappingPutBody, request: Request, db:
     account, _op_name = get_operator(request)
     try:
         result = dmap.put_mapping(db, slug, body.items, operator=account)
+        dmap.inject_mapping(db, slug)   # DB 更新后刷新 design-system.json 投影
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     _log(db, request, "update_parts", _get_by_slug(db, slug), {

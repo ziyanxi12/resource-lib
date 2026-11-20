@@ -119,9 +119,9 @@ def _parse_json_field(val: Optional[str]) -> Optional[dict]:
 
 
 def get_mapping(db: Session, slug: str) -> Dict:
-    """整表读取（渲染端消费）：{slug, count, items:[{component_name, html_zh, html_group,
+    """整表读取：{slug, count, items:[{component_name, html_zh, html_group,
     pixso_name, pixso_guid, status, match_type, url, pixso_category, instance_spec(已解析), instance_code}]}。
-    无行 → count 0（展示端据此保持两列不渲染第三列）。"""
+    无行 → count 0。"""
     q = db.query(DesignSystem).filter(DesignSystem.slug == slug, DesignSystem.is_deleted == 0).first()
     if not q:
         return {"slug": slug, "count": 0, "items": []}
@@ -196,3 +196,57 @@ def put_mapping(db: Session, slug: str, items: List[Dict], operator: Optional[st
             "aligned": status_stat.get("aligned", 0),
             "partial": status_stat.get("partial", 0),
             "missing": status_stat.get("missing", 0)}
+
+
+# ─────────────────────────── design-system.json 投影（v4.4 mapping 键注入） ───────────────────────────
+
+def _library_name() -> str:
+    """来源库名：pixso-thumbs/library.json（组件库全局信息约定文件）；缺失 → 空串。"""
+    path = os.path.join(settings.FILE_ROOT_DIR, "design-systems", "pixso-thumbs", "library.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        return str(data.get("libraryName") or "")
+    except (ValueError, OSError):
+        return ""
+
+
+def inject_mapping(db: Session, slug: str) -> bool:
+    """把 DB 映射行投影进 design-system.json 的 mapping / mappingLibraryName 键。
+
+    - DB 为唯一可写源（PUT mapping / sync / import_parts 自动重建后调用本函数刷新投影）
+    - 无映射行 → 不写 mapping 键（模板保持两列）；有行 → per-name 字典
+      {component_name: {pixso_name, pixso_guid, url, status}}（模板第三列「关联设计组件」直读）
+    - json 缺失/损坏 → 静默跳过（不阻塞调用方；import_parts 重建后再刷即可）
+    - 幂等：重复调用覆盖同键
+    """
+    path = os.path.join(settings.FILE_ROOT_DIR, "design-systems", slug, "design-system.json")
+    if not os.path.isfile(path):
+        return False
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return False
+    except (ValueError, OSError) as e:
+        logger.warning("[mapping-inject] %s design-system.json 读取失败（跳过注入）：%s", slug, e)
+        return False
+
+    rows = db.query(DsComponentMapping).filter(DsComponentMapping.slug == slug).all()
+    if rows:
+        data["mapping"] = {r.component_name: {
+            "pixso_name": r.pixso_name, "pixso_guid": r.pixso_guid,
+            "url": r.url, "status": r.status or "missing",
+        } for r in rows}
+        data["mappingLibraryName"] = _library_name()
+    else:
+        data.pop("mapping", None)
+        data.pop("mappingLibraryName", None)
+
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=1)
+        return True
+    except OSError as e:
+        logger.warning("[mapping-inject] %s design-system.json 写入失败：%s", slug, e)
+        return False

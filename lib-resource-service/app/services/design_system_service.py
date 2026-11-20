@@ -453,6 +453,11 @@ def import_parts(
         if report[part].get("provided") and report[part].get("ok"):
             report[part]["count"] = counts[part]
     save_json_file(slug, data)
+    # 映射投影注入（v4.4：部件重建 json 后刷新 mapping/mappingLibraryName 键，防冲掉；无行则不写）
+    try:
+        dmap.inject_mapping(db, slug)
+    except Exception as inject_e:
+        logger.warning("[parts-import] 映射投影注入失败（不阻塞导入）：%s", inject_e)
     file_size = _dir_size(slug)
 
     # source_slug：tokens 原件 id 优先（v4 原件可缺失 → 替换模式沿用存量 id → slug 兜底）
