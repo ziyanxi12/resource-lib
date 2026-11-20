@@ -28,6 +28,7 @@ from typing import Dict, List, Optional, Tuple
 
 from app.config import settings
 from app.services import design_system_zip as dzip
+from app.services import ds_mapping_service as dmap
 
 logger = logging.getLogger(__name__)
 
@@ -404,6 +405,12 @@ def import_parts(
             if ingested["nested"]:
                 entry["nested"] = True
             report[part] = entry
+            # 组件包落盘成功 → HTML 组件清单自动同步进映射表（失败不阻塞上传）
+            if part == "components":
+                try:
+                    dmap.sync_html_components(db, slug, operator=None)
+                except Exception as sync_e:
+                    logger.warning("[parts-import] 组件映射自动同步失败（不阻塞上传）：%s", sync_e)
         except (dzip.ZipPackageError, ValueError) as e:
             report[part] = {"provided": True, "ok": False, "error": str(e)}
 

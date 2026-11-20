@@ -61,6 +61,11 @@ def _is_public_ds_endpoint(method: str, path: str) -> bool:
         rest = path[len("/api/design-systems/"):]
         if "/" not in rest and rest not in ("operation-logs", "whitelist"):
             return True
+        # GET /{slug}/mapping 组件映射读取（展示端模板第三列匿名消费）
+        if rest.endswith("/mapping") and "/" in rest:
+            segs = rest.split("/")
+            if len(segs) == 2 and segs[0] and segs[1] == "mapping" and segs[0] not in ("operation-logs", "whitelist"):
+                return True
     if method == "POST" and path == "/api/design-systems/usage/report":
         return True
     if method == "POST" and path == "/api/design-systems/events/refresh-identity":

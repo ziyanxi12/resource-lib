@@ -15,7 +15,7 @@
 
 import logging
 import os
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -27,6 +27,7 @@ from app.database import get_db
 from app.models.design_system import DesignSystem
 from app.models.operation_log import OperationLog
 from app.services import design_system_service as svc
+from app.services import ds_mapping_service as dmap
 from app.services import operation_log_service
 from app.services.operator import get_operator
 from app.config import settings
@@ -337,6 +338,61 @@ async def put_design_system_parts(
         **svc.format_item(row, svc.resolve_display_map(db, [row.created_by, row.updated_by])),
         "ingest": result["ingest"],
     }
+
+
+# ─────────────────────────── 3. 组件 ↔ Pixso 映射 ───────────────────────────
+
+@router.get("/{slug}/mapping")
+def get_component_mapping(slug: str, db: Session = Depends(get_db)):
+    """组件映射整表读取（展示端模板第三列消费；公开端点——鉴权豁免两段路径规则）。
+
+    无行（未 sync 的存量系统 / 无组件包系统）→ count 0，展示端保持两列。
+    """
+    _get_by_slug(db, slug)
+    return dmap.get_mapping(db, slug)
+
+
+@router.post("/{slug}/mapping/sync")
+def sync_component_mapping(slug: str, request: Request, db: Session = Depends(get_db)):
+    """HTML 组件清单 → 映射表同步（新组件插入 missing 行；已有行只刷中文名/分组，
+    Pixso 数据与 status 不动；清单里已不存在的组件行删除）。
+
+    - 存量系统一次性补数据用（新系统组件包上传后 import_parts 已自动挂钩）
+    - 数据源 = {slug}/assets/components/index.json（组件包落盘清单）；
+      无组件包 → skipped（不报错，现存行不动）
+    """
+    _get_by_slug(db, slug)
+    account, _op_name = get_operator(request)
+    result = dmap.sync_html_components(db, slug, operator=account)
+    _log(db, request, "update_parts", _get_by_slug(db, slug), {
+        "slug": slug, "mapping_sync": result, "note": "component mapping sync",
+    })
+    return {"slug": slug, **result}
+
+
+class MappingPutBody(BaseModel):
+    """匹配结果批量回填（匹配脚本调用）：items 里只提供要更新的字段（未提供字段不动）"""
+    items: List[Dict] = Field(..., min_length=1, description="[{component_name, pixso_name?, pixso_guid?, status?, ...}]")
+
+
+@router.put("/{slug}/mapping")
+def put_component_mapping(slug: str, body: MappingPutBody, request: Request, db: Session = Depends(get_db)):
+    """匹配结果批量回填（merge 语义）：按 component_name upsert 已有行的 Pixso 侧字段。
+
+    - match_type == "manual" 的存量行一律不覆盖（人工修正保护）
+    - component_name 不在表中 → 400（组件清单先经 sync 入表）
+    - 响应含 aligned/partial/missing 统计，匹配脚本打印对账
+    """
+    _get_by_slug(db, slug)
+    account, _op_name = get_operator(request)
+    try:
+        result = dmap.put_mapping(db, slug, body.items, operator=account)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    _log(db, request, "update_parts", _get_by_slug(db, slug), {
+        "slug": slug, "mapping_put": result, "note": "component mapping bulk update",
+    })
+    return {"slug": slug, **result}
 
 
 # ─────────────────────────── 3a. 详情 JSON ───────────────────────────
