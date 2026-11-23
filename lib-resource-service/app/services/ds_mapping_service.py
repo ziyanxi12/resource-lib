@@ -148,8 +148,10 @@ def get_mapping(db: Session, slug: str) -> Dict:
     return {"slug": slug, "count": len(items), "items": items}
 
 
-# PUT /{slug}/mapping 可写入的 Pixso 侧字段（HTML 侧字段只归 sync；component_name 为 join 键）
+# PUT /{slug}/mapping 可写字段：Pixso 侧全量 + html_zh（编辑弹窗写组件中文名；其余 HTML 侧
+# 字段 html_group 只归 sync；component_name 为 join 键不可改）
 _UPDATABLE_FIELDS = (
+    "html_zh",
     "pixso_name", "pixso_guid", "file_key", "page_id", "page_name", "pixso_category",
     "component_content_key", "match_type", "status", "url", "instance_spec", "instance_code",
 )
@@ -160,7 +162,9 @@ def put_mapping(db: Session, slug: str, items: List[Dict], operator: Optional[st
 
     - 按 component_name upsert：行不存在 → 400（组件清单先经 sync 入表，映射只回填已有行）；
       行存在 → 覆盖 _UPDATABLE_FIELDS 中请求提供的字段（未提供的字段不动）
-    - **manual 保护**：存量行 match_type == "manual" 的字段一律不覆盖（人工修正成果）
+    - **manual 保护**：存量行 match_type == "manual" 且请求项 match_type != "manual"（批量匹配
+      重跑通道）→ 跳过不覆盖（人工修正成果）；请求项自身带 match_type == "manual"（编辑弹窗的
+      人工编辑通道）→ 放行——人工行允许继续人工编辑
     - instance_spec 传 dict 自动 dumps（字符串原样存）；status/match_type 不校验枚举（前端枚举展示）
     - 返回 {"total": 行数, "updated": n, "skipped_manual": n, "missing": n, "aligned": n, "partial": n}
     """
@@ -175,7 +179,7 @@ def put_mapping(db: Session, slug: str, items: List[Dict], operator: Optional[st
     status_stat = {"aligned": 0, "partial": 0, "missing": 0}
     for it in items:
         row = by_name[it["component_name"]]
-        if row.match_type == "manual":
+        if row.match_type == "manual" and it.get("match_type") != "manual":
             skipped += 1
             status_stat[row.status or "missing"] = status_stat.get(row.status or "missing", 0) + 1
             continue

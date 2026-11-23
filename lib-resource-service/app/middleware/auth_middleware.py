@@ -66,6 +66,18 @@ def _is_public_ds_endpoint(method: str, path: str) -> bool:
             segs = rest.split("/")
             if len(segs) == 2 and segs[0] and segs[1] == "mapping" and segs[0] not in ("operation-logs", "whitelist"):
                 return True
+    # PUT /{slug}/mapping 组件映射编辑（展示端编辑页 #/design-system/:id/edit 匿名保存，demo 阶段豁免，生产再收紧）
+    if method == "PUT" and path.startswith("/api/design-systems/") and path.endswith("/mapping"):
+        rest = path[len("/api/design-systems/"):]
+        segs = rest.split("/")
+        if len(segs) == 2 and segs[0] and segs[1] == "mapping" and segs[0] not in ("operation-logs", "whitelist"):
+            return True
+    # POST /{slug}/mapping/sync HTML 组件清单同步（编辑页进入时幂等兜底，一并豁免）
+    if method == "POST" and path.startswith("/api/design-systems/") and path.endswith("/mapping/sync"):
+        rest = path[len("/api/design-systems/"):]
+        segs = rest.split("/")
+        if len(segs) == 3 and segs[0] and segs[1] == "mapping" and segs[2] == "sync" and segs[0] not in ("operation-logs", "whitelist"):
+            return True
     if method == "POST" and path == "/api/design-systems/usage/report":
         return True
     if method == "POST" and path == "/api/design-systems/events/refresh-identity":
