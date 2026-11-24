@@ -1,11 +1,12 @@
 """组件 ↔ Pixso 映射服务（ds_component_mapping 表）
 
-- sync_html_components：HTML 组件清单入库/同步（数据源 = {slug}/assets/components/index.json）。
+- sync_html_components：HTML 组件清单入库/同步。数据源优先级：{slug}/assets/components/index.json
+  （组件包落盘清单，含 shortNames 中文名）；缺失时兜底 {slug}/design-system.json 的
+  components.items[]（历史存量系统无组件包——zh 留空，编辑弹窗可写 html_zh 补）。
   新组件插入 missing 行、已有行只更新中文名/分组（Pixso 数据与 status 不动）、
   清单里已不存在的组件行删除（组件没了映射无意义）。
   触发：组件包 ingest 成功后自动挂钩（import_parts 内）+ POST /{slug}/mapping/sync 手动补（存量系统）。
 - get_mapping：读整表（渲染端消费，GET /{slug}/mapping 公开）。
-阶段 2（匹配脚本 + PUT 批量回填 Pixso 字段）格式定稿前，Pixso 侧字段恒 NULL。
 """
 
 import json
@@ -31,37 +32,66 @@ def _index_json_path(slug: str) -> str:
 
 
 def _load_component_index(slug: str) -> Optional[List[Dict]]:
-    """读组件清单并归一化为 [{name, zh, group}]；无清单/坏 JSON → None（sync 静默跳过）。
+    """读组件清单并归一化为 [{name, zh, group}]；两处数据源皆无/坏 JSON → None（sync 静默跳过）。
 
-    - items 路径形如「操作类/Button/spec.json」→ group=操作类 / name=Button；
-      无目录层级（GTS 之外的老格式）→ group=""
-    - 中文名：shortNames[name] 优先（key 为组件英文名）；无则空（展示端自行回落 spec title）
+    数据源优先级（历史存量系统均无组件包，② 为发布链路的兜底建表来源）：
+    ① {slug}/assets/components/index.json——组件包落盘清单：
+       - items 路径形如「操作类/Button/spec.json」→ group=操作类 / name=Button；
+         无目录层级（GTS 之外的老格式）→ group=""
+       - 中文名：shortNames[name] 优先（key 为组件英文名）；无则空（展示端自行回落 spec title）
+    ② {slug}/design-system.json 的 components.items[]——历史存量兜底（无组件包）：
+       - name=items[].name；group=group 数组首段（与 ① 语义对齐）；zh=""（编辑弹窗可写 html_zh 补）
     - name 去重（同名取首条，防脏清单产生 UNIQUE 冲突）
     """
     path = _index_json_path(slug)
-    if not os.path.isfile(path):
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                ix = json.load(f)
+        except (ValueError, OSError) as e:
+            logger.warning("[mapping-sync] %s index.json 读取失败（跳过同步）：%s", slug, e)
+            return None
+        items = ix.get("items")
+        if not isinstance(items, list):
+            return None
+        short_names = ix.get("shortNames") if isinstance(ix.get("shortNames"), dict) else {}
+        out, seen = [], set()
+        for raw in items:
+            if not isinstance(raw, str) or not raw.strip():
+                continue
+            parts = raw.replace("\\", "/").split("/")
+            name = parts[-2] if len(parts) >= 2 and parts[-1] == "spec.json" else ""
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            out.append({"name": name, "zh": str(short_names.get(name) or ""), "group": parts[0] if len(parts) >= 3 else ""})
+        return out
+
+    # ② 历史存量兜底：无组件包清单 → 从 design-system.json 的组件区读（zh 空，编辑弹窗可补）
+    ds_path = os.path.join(settings.FILE_ROOT_DIR, "design-systems", slug, "design-system.json")
+    if not os.path.isfile(ds_path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            ix = json.load(f)
+        with open(ds_path, "r", encoding="utf-8") as f:
+            ds = json.load(f)
     except (ValueError, OSError) as e:
-        logger.warning("[mapping-sync] %s index.json 读取失败（跳过同步）：%s", slug, e)
+        logger.warning("[mapping-sync] %s design-system.json 读取失败（跳过同步）：%s", slug, e)
         return None
-    items = ix.get("items")
+    items = ((ds or {}).get("components") or {}).get("items")
     if not isinstance(items, list):
         return None
-    short_names = ix.get("shortNames") if isinstance(ix.get("shortNames"), dict) else {}
     out, seen = [], set()
-    for raw in items:
-        if not isinstance(raw, str) or not raw.strip():
+    for it in items:
+        if not isinstance(it, dict):
             continue
-        parts = raw.replace("\\", "/").split("/")
-        name = parts[-2] if len(parts) >= 2 and parts[-1] == "spec.json" else ""
+        name = str(it.get("name") or "").strip()
         if not name or name in seen:
             continue
         seen.add(name)
-        out.append({"name": name, "zh": str(short_names.get(name) or ""), "group": parts[0] if len(parts) >= 3 else ""})
-    return out
+        g = it.get("group")
+        group = g[0] if isinstance(g, list) and g else (str(g) if g else "")
+        out.append({"name": name, "zh": "", "group": group})
+    return out or None
 
 
 def sync_html_components(db: Session, slug: str, operator: Optional[str] = None) -> Dict:

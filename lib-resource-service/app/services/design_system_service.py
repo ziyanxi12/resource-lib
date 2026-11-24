@@ -729,6 +729,11 @@ def migrate_design_systems_json() -> int:
                 row.file_size = _dir_size(row.slug)
                 if not row.file_path:
                     row.file_path = rel_path(row.slug)
+                # 映射投影恢复：rebuild 只组装 overview/token/components/patterns，
+                # 不携带 mapping/mappingLibraryName 键——启动重建会把已发布的投影冲掉
+                # （查看页第三列随之消失）。DB 为映射唯一可写源，重建后从 DB 行重注投影，
+                # 与 import_parts 组装收尾的防冲掉处理（防冲掉）保持一致。
+                dmap.inject_mapping(session, row.slug)
                 n += 1
             except Exception as e:  # noqa: BLE001
                 logger.warning("[migrate] %s design-system.json 重建失败（保留原 json）：%s", row.slug, e)
