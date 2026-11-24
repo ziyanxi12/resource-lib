@@ -141,6 +141,7 @@ def get_mapping(db: Session, slug: str) -> Dict:
         "file_key": r.file_key,
         "match_type": r.match_type,
         "url": r.url,
+        "thumbnail_url": r.thumbnail_url,
         "status": r.status or "missing",
         "instance_spec": _parse_json_field(r.instance_spec),
         "instance_code": r.instance_code,
@@ -149,11 +150,13 @@ def get_mapping(db: Session, slug: str) -> Dict:
 
 
 # PUT /{slug}/mapping 可写字段：Pixso 侧全量 + html_zh（编辑弹窗写组件中文名；其余 HTML 侧
-# 字段 html_group 只归 sync；component_name 为 join 键不可改）
+# 字段 html_group 只归 sync；component_name 为 join 键不可改）。thumbnail_url 为匹配时刻从
+# 组件库清单拷贝的缩略图相对路径（渲染端拼 origin+/api 前缀访问）
 _UPDATABLE_FIELDS = (
     "html_zh",
     "pixso_name", "pixso_guid", "file_key", "page_id", "page_name", "pixso_category",
     "component_content_key", "match_type", "status", "url", "instance_spec", "instance_code",
+    "thumbnail_url",
 )
 
 
@@ -241,6 +244,7 @@ def inject_mapping(db: Session, slug: str) -> bool:
         data["mapping"] = {r.component_name: {
             "pixso_name": r.pixso_name, "pixso_guid": r.pixso_guid,
             "url": r.url, "status": r.status or "missing",
+            "thumbnail_url": r.thumbnail_url,
         } for r in rows}
         data["mappingLibraryName"] = _library_name()
     else:

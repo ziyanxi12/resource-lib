@@ -37,6 +37,7 @@ class DsComponentMapping(Base):
     component_content_key = Column(String(100), nullable=True, comment="Pixso 组件 40 位内容 hash（变更检测：设计侧改组件 → hash 变 → 提示映射可能过期；非主键）")
     match_type = Column(String(20), nullable=True, comment="匹配方式：exact（名字精确）/ fuzzy（归一化匹配，建议人工复核）/ manual（人工指定，重跑匹配不覆盖）")
     url = Column(Text, nullable=True, comment="Pixso 跳转链接（https://…/app/design/{file_key}?item-id={pixso_guid}；空则渲染端不显示跳转按钮）")
+    thumbnail_url = Column(String(512), nullable=True, comment="Pixso 组件缩略图相对路径（图片服务的 /static/…；渲染端拼 origin+/api 前缀访问，匹配时刻从组件库清单 thumbnail_url 拷贝）")
     instance_spec = Column(Text, nullable=True, comment="实例参数 JSON 字符串：{defaults, bridges:{轴名:{axis, values:{html值→pixso值}}}}——runner 翻译 HTML 轴值后在组件集 children 里匹配变体创建实例")
     instance_code = Column(Text, nullable=True, comment="参数化调用表达式（组合组件等桥接搞不定的逃生通道，白名单函数+JSON字面量，不做任意 eval）")
 
