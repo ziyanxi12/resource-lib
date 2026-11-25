@@ -588,7 +588,13 @@ def _rewrite_skill_md_name(content: bytes, new_name: str) -> bytes:
 
 def _replace_frontmatter_name(text: str, new_name: str) -> str:
     """SKILL.md 文本 frontmatter 块内首个 name: 行替换（无 frontmatter/无 name 行时原样返回——
-    上游 ingest_skill_zip_bytes 已校验存在，此处仅防御）。"""
+    上游 ingest_skill_zip_bytes 已校验存在，此处仅防御）。
+
+    格式容错（与 design_system_md.parse_frontmatter 同口径）：
+    - 入口去 UTF-8 BOM——否则 BOM 包「报告的 skill_name 已带前缀、包内 SKILL.md 却没改成」
+    - 改写正则捕获并回填行尾 \\r——原 (?m)^(\\s*)name:\\s*.*$ 的 .* 会吞掉 CRLF 行的 \\r，
+      改写后产生混合换行；新写法只改 name 行内容、原换行风格原样保留。"""
+    text = text.lstrip("\ufeff")
     m = re.match(r"^---\s*\n", text)
     if not m:
         return text
@@ -596,5 +602,6 @@ def _replace_frontmatter_name(text: str, new_name: str) -> str:
     if end == -1:
         return text
     head, body = text[:end], text[end:]
-    replaced = re.sub(r"(?m)^(\s*)name:\s*.*$", lambda mo: "%sname: %s" % (mo.group(1), new_name), head, count=1)
+    replaced = re.sub(r"(?m)^(\s*)name:[^\r\n]*(\r?)$",
+                      lambda mo: "%sname: %s%s" % (mo.group(1), new_name, mo.group(2)), head, count=1)
     return replaced + body

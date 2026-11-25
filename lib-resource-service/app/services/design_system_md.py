@@ -11,7 +11,8 @@
 - 完全不可解码（非 UTF-8）由调用方（design_system_zip.parse_md_root）降级为空 dict
 
 注意：parse_frontmatter 本身仍抛 ValueError——skill 附件（SKILL.md）的严格校验
-（design_system_zip.extract_skill_name）依赖它，勿改。
+（design_system_zip.extract_skill_name）依赖它；函数内的 CRLF/BOM 归一仅为格式容错，
+抛错语义与 frontmatter/name 闸门不变，勿改语义。
 """
 
 import json
@@ -28,6 +29,12 @@ COVERAGE_KEYS = ["overview", "color", "typography", "spacing", "radius", "shadow
 
 
 def parse_frontmatter(text: str) -> "OrderedDict[str, object]":
+    # 格式容错归一（不改变抛错语义与「缺 frontmatter 即拒」的闸门）：
+    # - CRLF：Windows 换行的首行是 ---\r\n，\r 会挡住 ^---\n → 规范 SKILL.md 被误判
+    #   「缺少 frontmatter」而拒传（skill 包上传链路实测）
+    # - BOM：UTF-8 BOM（\ufeff）同样挡住 ^--- → 同款误杀
+    # 仅函数内归一；调用方后续处理（split_sections 等）仍拿原文，无副作用。
+    text = text.replace("\r\n", "\n").lstrip("\ufeff")
     m = re.match(r"^---\n(.*?)\n---", text, re.DOTALL)
     if not m:
         raise ValueError("缺少 frontmatter（--- ... --- 头部块，octo-design-md/1 格式）")
