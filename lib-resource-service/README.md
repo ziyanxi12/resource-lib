@@ -88,7 +88,7 @@ DB_URL=sqlite:///./dev.db
 
 FILE_ROOT_DIR=./storage          # 上传文件存储根目录
 USE_MOCK=true                    # true=不调用真实外部 API
-VECTOR_SERVICE_URL=http://localhost:8008
+VECTOR_SERVICE_URL=http://localhost:8007
 ```
 
 > **数据库会自动建表**，启动时 `Base.metadata.create_all()` 自动执行，无需手动建表。  

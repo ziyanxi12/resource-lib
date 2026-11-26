@@ -123,6 +123,26 @@ async def lifespan(app: FastAPI):
     _ensure_column(engine, "design_systems", "preview_disabled", "BOOLEAN NOT NULL DEFAULT 0")
     _ensure_column(engine, "design_systems", "is_disabled", "BOOLEAN NOT NULL DEFAULT 0")
     _ensure_column(engine, "ds_component_mappings", "thumbnail_url", "VARCHAR(512)")
+    _ensure_column(engine, "ds_component_mappings", "mapping_uuid", "VARCHAR(36)")
+
+    # mapping_uuid 唯一索引（防重硬兜底：UUIDv4 碰撞概率 ~2^-61/对，万一发生插入报错而非静默重复）
+    try:
+        from sqlalchemy import inspect as _inspect, text as _text
+        _insp = _inspect(engine)
+        if "ds_component_mappings" in _insp.get_table_names():
+            if "uq_ds_mapping_uuid" not in {i["name"] for i in _insp.get_indexes("ds_component_mappings")}:
+                with engine.begin() as conn:
+                    conn.execute(_text("CREATE UNIQUE INDEX uq_ds_mapping_uuid ON ds_component_mappings (mapping_uuid)"))
+                logger.info("自动迁移：ds_component_mappings 表新增唯一索引 uq_ds_mapping_uuid")
+    except Exception as e:
+        logger.warning("补 uq_ds_mapping_uuid 失败: %s", e)
+
+    # mapping_uuid 存量回填（老行补 UUIDv4；原型代码嵌入用，幂等）
+    try:
+        from app.services import ds_mapping_service as _dmap
+        _dmap.backfill_mapping_uuids()
+    except Exception as e:
+        logger.warning("mapping_uuid 存量回填失败: %s", e)
 
     # design_systems.source_slug 存量回填：老数据 slug == MD id，回填后 URL/语义零变化
     try:

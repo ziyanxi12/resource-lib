@@ -12,6 +12,7 @@
 import json
 import logging
 import os
+import uuid
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -94,6 +95,26 @@ def _load_component_index(slug: str) -> Optional[List[Dict]]:
     return out or None
 
 
+def backfill_mapping_uuids() -> int:
+    """存量回填：mapping_uuid 为空的行逐行补 UUIDv4（启动时调用，幂等——已有值不动）。
+
+    行业务场景：原型代码嵌入 uuid → 代码转设计稿时经 GET /mapping 反查映射行；
+    新行由 sync 生成，此处只兜老数据。
+    """
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        rows = db.query(DsComponentMapping).filter(DsComponentMapping.mapping_uuid.is_(None)).all()
+        for r in rows:
+            r.mapping_uuid = str(uuid.uuid4())
+        if rows:
+            db.commit()
+            logger.info("[mapping-uuid] 存量回填 %d 行", len(rows))
+        return len(rows)
+    finally:
+        db.close()
+
+
 def sync_html_components(db: Session, slug: str, operator: Optional[str] = None) -> Dict:
     """HTML 组件清单 → 映射表 upsert（全量同步语义）。
 
@@ -128,6 +149,7 @@ def sync_html_components(db: Session, slug: str, operator: Optional[str] = None)
                 slug=slug, component_name=c["name"],
                 html_zh=c["zh"] or None, html_group=c["group"] or None,
                 status="missing", created_by=operator, updated_by=operator,
+                mapping_uuid=str(uuid.uuid4()),  # 新行生成引用键（已有行永不重生成）
             ))
             added += 1
     db.commit()
@@ -149,9 +171,10 @@ def _parse_json_field(val: Optional[str]) -> Optional[dict]:
 
 
 def get_mapping(db: Session, slug: str) -> Dict:
-    """整表读取：{slug, count, items:[{component_name, html_zh, html_group,
-    pixso_name, pixso_guid, status, match_type, url, pixso_category, instance_spec(已解析), instance_code}]}。
-    无行 → count 0。"""
+    """整表读取：{slug, count, items:[{mapping_uuid, component_name, html_zh, html_group,
+    pixso_name, pixso_guid, status, match_type, url, pixso_category, thumbnail_url,
+    instance_spec(已解析), instance_code}]}。
+    无行 → count 0。mapping_uuid 供原型代码反查（代码转设计稿链路），投影/前端不消费。"""
     q = db.query(DesignSystem).filter(DesignSystem.slug == slug, DesignSystem.is_deleted == 0).first()
     if not q:
         return {"slug": slug, "count": 0, "items": []}
@@ -163,6 +186,7 @@ def get_mapping(db: Session, slug: str) -> Dict:
     )
     items = [{
         "component_name": r.component_name,
+        "mapping_uuid": r.mapping_uuid,
         "html_zh": r.html_zh or "",
         "html_group": r.html_group or "",
         "pixso_name": r.pixso_name,

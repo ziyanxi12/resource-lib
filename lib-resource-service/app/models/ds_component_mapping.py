@@ -18,9 +18,16 @@ class DsComponentMapping(Base):
     __table_args__ = (
         UniqueConstraint("slug", "component_name", name="uq_ds_mapping_slug_component"),
         Index("idx_ds_mapping_slug", "slug"),
+        Index("uq_ds_mapping_uuid", "mapping_uuid", unique=True),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    # ── 行唯一标识（2026-11：原型代码嵌入——代码转设计稿时经 GET /mapping 按 uuid 反查映射行）──
+    # UUIDv4 服务端生成：sync 新插行赋值、已有行永不重生成（组件删除重建视为新映射）；
+    # 客户端不可写（不在 _UPDATABLE_FIELDS）；存量行启动时回填。
+    # 唯一性保证：v4 有 122 位随机量（碰撞概率 ~2^-61/对），另有上方唯一索引硬兜底——
+    # 万一碰撞插入报错而非静默重复。
+    mapping_uuid = Column(String(36), nullable=True, comment="行唯一标识 UUIDv4（原型代码引用键；服务端生成，客户端不可写）")
     # ── HTML 组件侧（sync 入库；join 键 = component_name，与 spec.json 的 name 一致） ──
     slug = Column(String(100), nullable=False, comment="设计系统 slug（多系统共存）")
     component_name = Column(String(255), nullable=False, comment="HTML 组件名（assets/components 下路径段，如 Button）")
@@ -39,7 +46,7 @@ class DsComponentMapping(Base):
     url = Column(Text, nullable=True, comment="Pixso 跳转链接（https://…/app/design/{file_key}?item-id={pixso_guid}；空则渲染端不显示跳转按钮）")
     thumbnail_url = Column(String(512), nullable=True, comment="Pixso 组件缩略图相对路径（图片服务的 /static/…；渲染端拼 origin+/api 前缀访问，匹配时刻从组件库清单 thumbnail_url 拷贝）")
     instance_spec = Column(Text, nullable=True, comment="实例参数 JSON 字符串：{defaults, bridges:{轴名:{axis, values:{html值→pixso值}}}}——runner 翻译 HTML 轴值后在组件集 children 里匹配变体创建实例")
-    instance_code = Column(Text, nullable=True, comment="参数化调用表达式（组合组件等桥接搞不定的逃生通道，白名单函数+JSON字面量，不做任意 eval）")
+    instance_code = Column(Text, nullable=True, comment="设计组件生成代码字符串（设计师用 AI 生成，处理组件属性；第一期后端不验证格式，存取原样，规范后续定）")
 
     # ── 状态与审计 ──
     status = Column(String(20), nullable=False, default="missing", comment="aligned（已对齐）/ partial（部分对齐）/ missing（未关联）")

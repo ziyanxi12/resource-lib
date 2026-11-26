@@ -278,7 +278,7 @@ FILE_ROOT_DIR=./storage
 
 # 外部服务
 USE_MOCK=true
-VECTOR_SERVICE_URL=http://localhost:8008
+VECTOR_SERVICE_URL=http://localhost:8007
 ```
 
 ---
