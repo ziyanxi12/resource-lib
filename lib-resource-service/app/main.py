@@ -124,6 +124,7 @@ async def lifespan(app: FastAPI):
     _ensure_column(engine, "design_systems", "is_disabled", "BOOLEAN NOT NULL DEFAULT 0")
     _ensure_column(engine, "ds_component_mappings", "thumbnail_url", "VARCHAR(512)")
     _ensure_column(engine, "ds_component_mappings", "mapping_uuid", "VARCHAR(36)")
+    _ensure_column(engine, "ds_component_mappings", "library_name", "VARCHAR(255)")
 
     # mapping_uuid 唯一索引（防重硬兜底：UUIDv4 碰撞概率 ~2^-61/对，万一发生插入报错而非静默重复）
     try:

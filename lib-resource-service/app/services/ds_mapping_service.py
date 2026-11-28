@@ -193,6 +193,7 @@ def get_mapping(db: Session, slug: str) -> Dict:
         "pixso_guid": r.pixso_guid,
         "pixso_category": r.pixso_category,
         "file_key": r.file_key,
+        "library_name": r.library_name,
         "match_type": r.match_type,
         "url": r.url,
         "thumbnail_url": r.thumbnail_url,
@@ -210,7 +211,7 @@ _UPDATABLE_FIELDS = (
     "html_zh",
     "pixso_name", "pixso_guid", "file_key", "page_id", "page_name", "pixso_category",
     "component_content_key", "match_type", "status", "url", "instance_spec", "instance_code",
-    "thumbnail_url",
+    "thumbnail_url", "library_name",
 )
 
 
@@ -301,8 +302,8 @@ def inject_mapping(db: Session, slug: str) -> bool:
             "thumbnail_url": r.thumbnail_url,
             "html_zh": r.html_zh, "file_key": r.file_key,
             "match_type": r.match_type, "pixso_category": r.pixso_category,
+            "library_name": r.library_name,
         } for r in rows}
-        data["mappingLibraryName"] = _library_name()
         # components.items[].zh 回写（中文名统一展示：查看页/编辑页同一格式「中文 英文」）
         by_name = {r.component_name: r for r in rows}
         items = data.get("components", {}).get("items", [])
@@ -313,7 +314,7 @@ def inject_mapping(db: Session, slug: str) -> bool:
                     it["zh"] = row.html_zh
     else:
         data.pop("mapping", None)
-        data.pop("mappingLibraryName", None)
+    data.pop("mappingLibraryName", None)
 
     try:
         with open(path, "w", encoding="utf-8") as f:

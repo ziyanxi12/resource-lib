@@ -38,6 +38,7 @@ class DsComponentMapping(Base):
     pixso_name = Column(String(255), nullable=True, comment="Pixso 组件集名（如 Button；普通组件取首段名，如 Pagination）")
     pixso_guid = Column(String(100), nullable=True, comment="Pixso 组件集 node_id（实例创建主锚点：getNodeByIdAsync → children 按变体匹配 → createInstance）")
     file_key = Column(String(100), nullable=True, comment="Pixso 文件 id（拼跳转 url / 跨文件定位；本地组件为所属文件 key）")
+    library_name = Column(String(255), nullable=True, comment="组件库名称（订阅列表库名，per-component 展示来源行用）")
     page_id = Column(String(100), nullable=True, comment="Pixso 页 id")
     page_name = Column(String(255), nullable=True, comment="Pixso 页名")
     pixso_category = Column(String(255), nullable=True, comment="Pixso 侧分类（containing_frame.name，如 操作类）")
