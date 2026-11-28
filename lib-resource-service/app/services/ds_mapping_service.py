@@ -299,8 +299,18 @@ def inject_mapping(db: Session, slug: str) -> bool:
             "pixso_name": r.pixso_name, "pixso_guid": r.pixso_guid,
             "url": r.url, "status": r.status or "missing",
             "thumbnail_url": r.thumbnail_url,
+            "html_zh": r.html_zh, "file_key": r.file_key,
+            "match_type": r.match_type, "pixso_category": r.pixso_category,
         } for r in rows}
         data["mappingLibraryName"] = _library_name()
+        # components.items[].zh 回写（中文名统一展示：查看页/编辑页同一格式「中文 英文」）
+        by_name = {r.component_name: r for r in rows}
+        items = data.get("components", {}).get("items", [])
+        for it in items:
+            if isinstance(it, dict) and it.get("name"):
+                row = by_name.get(it["name"])
+                if row and row.html_zh:
+                    it["zh"] = row.html_zh
     else:
         data.pop("mapping", None)
         data.pop("mappingLibraryName", None)
